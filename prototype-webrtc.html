@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fireproof WebRTC P2P Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            margin-top: 0;
+            color: #333;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 20px 0;
+            font-weight: 500;
+        }
+        .status.disconnected { background: #fee; color: #c33; }
+        .status.connecting { background: #ffc; color: #863; }
+        .status.connected { background: #efe; color: #3a3; }
+
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        textarea {
+            font-family: monospace;
+            font-size: 12px;
+            min-height: 80px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px 5px 5px 0;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .section {
+            margin: 30px 0;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 4px;
+        }
+        .section h3 {
+            margin-top: 0;
+        }
+        label {
+            display: block;
+            font-weight: 500;
+            margin: 15px 0 5px 0;
+            color: #555;
+        }
+        .data-display {
+            background: #f0f0f0;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+            min-height: 40px;
+            font-family: monospace;
+            font-size: 13px;
+        }
+        .role-select {
+            margin: 20px 0;
+        }
+        .role-select button {
+            margin: 5px;
+            padding: 15px 30px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔥 Fireproof + WebRTC P2P Test</h1>
+
+        <div id="roleSelection" class="role-select">
+            <h3>Choose Role:</h3>
+            <button onclick="initPeer1()">Peer 1 (Offer)</button>
+            <button onclick="initPeer2()">Peer 2 (Answer)</button>
+        </div>
+
+        <div id="mainUI" style="display: none;">
+            <div class="status" id="status">Disconnected</div>
+
+            <div class="section">
+                <h3>Database Test</h3>
+                <label>Document Title (syncs between peers):</label>
+                <input type="text" id="docTitle" placeholder="Type something...">
+                <button onclick="saveDoc()">Save Document</button>
+
+                <label>All Documents:</label>
+                <div class="data-display" id="docsDisplay">No documents yet</div>
+            </div>
+
+            <div class="section" id="connectionSection">
+                <h3>WebRTC Connection</h3>
+                <div id="peer1Section" style="display: none;">
+                    <label>1. Send this offer to Peer 2:</label>
+                    <textarea id="offerText" readonly></textarea>
+                    <button onclick="copyToClipboard('offerText')">Copy Offer</button>
+
+                    <label>2. Paste answer from Peer 2:</label>
+                    <textarea id="answerInput" placeholder="Paste answer here..."></textarea>
+                    <button onclick="acceptAnswer()">Accept Answer</button>
+                </div>
+
+                <div id="peer2Section" style="display: none;">
+                    <label>1. Paste offer from Peer 1:</label>
+                    <textarea id="offerInput" placeholder="Paste offer here..."></textarea>
+                    <button onclick="createAnswer()">Create Answer</button>
+
+                    <label>2. Send this answer to Peer 1:</label>
+                    <textarea id="answerText" readonly></textarea>
+                    <button onclick="copyToClipboard('answerText')">Copy Answer</button>
+                </div>
+            </div>
+
+            <div class="section">
+                <h3>Debug Log</h3>
+                <div class="data-display" id="debugLog" style="max-height: 200px; overflow-y: auto;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        let db;
+        let rtcConnection;
+        let dataChannel;
+        let isPeer1 = false;
+
+        // Log helper
+        function log(message) {
+            const logDiv = document.getElementById('debugLog');
+            const time = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `<div>[${time}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(message);
+        }
+
+        function updateStatus(status, message) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.className = `status ${status}`;
+            statusDiv.textContent = message;
+            log(`Status: ${message}`);
+        }
+
+        // Initialize Fireproof
+        async function initFireproof() {
+            try {
+                // Try to import from CDN
+                const { fireproof } = await import('https://cdn.jsdelivr.net/npm/@fireproof/core/+esm');
+                db = fireproof('webrtc-test');
+                log('✅ Fireproof initialized');
+
+                // Load initial documents
+                await loadDocs();
+
+                // Watch for changes
+                db.subscribe((changes) => {
+                    log(`📄 Database changed: ${changes.length} docs`);
+                    loadDocs();
+                });
+
+                return true;
+            } catch (error) {
+                log(`❌ Error initializing Fireproof: ${error.message}`);
+                return false;
+            }
+        }
+
+        // Save document
+        window.saveDoc = async function() {
+            const title = document.getElementById('docTitle').value;
+            if (!title.trim()) return;
+
+            try {
+                const doc = {
+                    title: title,
+                    timestamp: Date.now(),
+                    peer: isPeer1 ? 'peer1' : 'peer2'
+                };
+
+                const result = await db.put(doc);
+                log(`💾 Saved doc: ${result.id}`);
+
+                // Broadcast change over WebRTC
+                if (dataChannel && dataChannel.readyState === 'open') {
+                    dataChannel.send(JSON.stringify({
+                        type: 'sync',
+                        doc: { ...doc, _id: result.id }
+                    }));
+                    log('📡 Broadcasted change to peer');
+                }
+
+                document.getElementById('docTitle').value = '';
+                await loadDocs();
+            } catch (error) {
+                log(`❌ Error saving: ${error.message}`);
+            }
+        };
+
+        // Load all documents
+        async function loadDocs() {
+            try {
+                const result = await db.allDocs();
+                const docsDisplay = document.getElementById('docsDisplay');
+
+                if (result.rows && result.rows.length > 0) {
+                    docsDisplay.innerHTML = result.rows.map(row => {
+                        const doc = row.value;
+                        return `<div>📄 ${doc.title} (by ${doc.peer}, ${new Date(doc.timestamp).toLocaleTimeString()})</div>`;
+                    }).join('');
+                    log(`✅ Displaying ${result.rows.length} documents`);
+                } else {
+                    docsDisplay.innerHTML = 'No documents yet';
+                }
+            } catch (error) {
+                log(`❌ Error loading docs: ${error.message}`);
+            }
+        }
+
+        // WebRTC Setup
+        function setupRTC() {
+            rtcConnection = new RTCPeerConnection({
+                iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+            });
+
+            rtcConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    log(`🧊 ICE candidate: ${event.candidate.candidate.substring(0, 50)}...`);
+                }
+            };
+
+            rtcConnection.onconnectionstatechange = () => {
+                log(`Connection state: ${rtcConnection.connectionState}`);
+                if (rtcConnection.connectionState === 'connected') {
+                    updateStatus('connected', 'Connected via WebRTC');
+                } else if (rtcConnection.connectionState === 'connecting') {
+                    updateStatus('connecting', 'Connecting...');
+                } else if (rtcConnection.connectionState === 'disconnected' ||
+                           rtcConnection.connectionState === 'failed') {
+                    updateStatus('disconnected', 'Disconnected');
+                }
+            };
+
+            return rtcConnection;
+        }
+
+        // Peer 1: Create Offer
+        window.initPeer1 = async function() {
+            isPeer1 = true;
+            document.getElementById('roleSelection').style.display = 'none';
+            document.getElementById('mainUI').style.display = 'block';
+            document.getElementById('peer1Section').style.display = 'block';
+
+            log('🚀 Initializing as Peer 1 (Offerer)');
+            updateStatus('connecting', 'Initializing...');
+
+            await initFireproof();
+            setupRTC();
+
+            // Create data channel
+            dataChannel = rtcConnection.createDataChannel('fireproof-sync');
+            setupDataChannel();
+
+            // Create offer
+            const offer = await rtcConnection.createOffer();
+            await rtcConnection.setLocalDescription(offer);
+
+            // Wait for ICE gathering to complete
+            await new Promise((resolve) => {
+                if (rtcConnection.iceGatheringState === 'complete') {
+                    resolve();
+                } else {
+                    rtcConnection.addEventListener('icegatheringstatechange', () => {
+                        if (rtcConnection.iceGatheringState === 'complete') {
+                            resolve();
+                        }
+                    });
+                }
+            });
+
+            const offerText = JSON.stringify(rtcConnection.localDescription);
+            document.getElementById('offerText').value = offerText;
+            log('📤 Offer created. Copy and send to Peer 2');
+        };
+
+        // Peer 1: Accept Answer
+        window.acceptAnswer = async function() {
+            const answerText = document.getElementById('answerInput').value;
+            if (!answerText.trim()) {
+                alert('Please paste an answer');
+                return;
+            }
+
+            try {
+                const answer = JSON.parse(answerText);
+                await rtcConnection.setRemoteDescription(answer);
+                log('✅ Answer accepted. Waiting for connection...');
+            } catch (error) {
+                log(`❌ Error accepting answer: ${error.message}`);
+            }
+        };
+
+        // Peer 2: Create Answer
+        window.initPeer2 = async function() {
+            isPeer1 = false;
+            document.getElementById('roleSelection').style.display = 'none';
+            document.getElementById('mainUI').style.display = 'block';
+            document.getElementById('peer2Section').style.display = 'block';
+
+            log('🚀 Initializing as Peer 2 (Answerer)');
+            updateStatus('connecting', 'Initializing...');
+
+            await initFireproof();
+            setupRTC();
+
+            // Set up data channel listener
+            rtcConnection.ondatachannel = (event) => {
+                dataChannel = event.channel;
+                setupDataChannel();
+                log('📡 Data channel received');
+            };
+        };
+
+        window.createAnswer = async function() {
+            const offerText = document.getElementById('offerInput').value;
+            if (!offerText.trim()) {
+                alert('Please paste an offer');
+                return;
+            }
+
+            try {
+                const offer = JSON.parse(offerText);
+                await rtcConnection.setRemoteDescription(offer);
+
+                const answer = await rtcConnection.createAnswer();
+                await rtcConnection.setLocalDescription(answer);
+
+                // Wait for ICE gathering
+                await new Promise((resolve) => {
+                    if (rtcConnection.iceGatheringState === 'complete') {
+                        resolve();
+                    } else {
+                        rtcConnection.addEventListener('icegatheringstatechange', () => {
+                            if (rtcConnection.iceGatheringState === 'complete') {
+                                resolve();
+                            }
+                        });
+                    }
+                });
+
+                const answerText = JSON.stringify(rtcConnection.localDescription);
+                document.getElementById('answerText').value = answerText;
+                log('📤 Answer created. Copy and send to Peer 1');
+            } catch (error) {
+                log(`❌ Error creating answer: ${error.message}`);
+            }
+        };
+
+        // Data Channel Setup
+        function setupDataChannel() {
+            dataChannel.onopen = () => {
+                log('✅ Data channel opened');
+                updateStatus('connected', 'Connected - Ready to sync');
+            };
+
+            dataChannel.onclose = () => {
+                log('❌ Data channel closed');
+                updateStatus('disconnected', 'Data channel closed');
+            };
+
+            dataChannel.onmessage = async (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    log(`📨 Received: ${message.type}`);
+
+                    if (message.type === 'sync' && message.doc) {
+                        // Receive document from peer
+                        await db.put(message.doc);
+                        log(`💾 Synced doc from peer: ${message.doc._id}`);
+                        await loadDocs();
+                    }
+                } catch (error) {
+                    log(`❌ Error handling message: ${error.message}`);
+                }
+            };
+        }
+
+        // Copy to clipboard helper
+        window.copyToClipboard = function(elementId) {
+            const element = document.getElementById(elementId);
+            element.select();
+            document.execCommand('copy');
+            log('📋 Copied to clipboard');
+        };
+
+        log('🔥 Ready to start. Choose your role above.');
+    </script>
+</body>
+</html>

@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fireproof + PeerJS P2P Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            margin-top: 0;
+            color: #333;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 20px 0;
+            font-weight: 500;
+        }
+        .status.disconnected { background: #fee; color: #c33; }
+        .status.connecting { background: #ffc; color: #863; }
+        .status.connected { background: #efe; color: #3a3; }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px 5px 5px 0;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        button.danger {
+            background: #dc3545;
+        }
+        button.danger:hover {
+            background: #c82333;
+        }
+        .section {
+            margin: 30px 0;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 4px;
+        }
+        .section h3 {
+            margin-top: 0;
+        }
+        label {
+            display: block;
+            font-weight: 500;
+            margin: 15px 0 5px 0;
+            color: #555;
+        }
+        .data-display {
+            background: #f0f0f0;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+            min-height: 40px;
+            font-family: monospace;
+            font-size: 13px;
+        }
+        .peer-id-display {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 16px;
+            font-weight: bold;
+            text-align: center;
+            color: #1565c0;
+            margin: 15px 0;
+        }
+        .paired-devices {
+            background: #f0f0f0;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .paired-device {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+            background: white;
+            margin: 5px 0;
+            border-radius: 4px;
+        }
+        .paired-device .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        .paired-device .status-indicator.online {
+            background: #4caf50;
+        }
+        .paired-device .status-indicator.offline {
+            background: #ccc;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔥 Fireproof + PeerJS P2P Test</h1>
+
+        <div class="status" id="status">Initializing...</div>
+
+        <div class="section">
+            <h3>Your Device</h3>
+            <label>Your Peer ID (share this with other devices):</label>
+            <div class="peer-id-display" id="myPeerId">Connecting...</div>
+            <button onclick="copyPeerId()">Copy My Peer ID</button>
+        </div>
+
+        <div class="section">
+            <h3>Paired Devices</h3>
+            <div class="paired-devices" id="pairedDevices">
+                <div style="text-align: center; color: #999;">No paired devices yet</div>
+            </div>
+
+            <label>Add New Device (paste their Peer ID):</label>
+            <input type="text" id="remotePeerId" placeholder="Paste peer ID here...">
+            <button onclick="connectToPeer()">Connect to Device</button>
+        </div>
+
+        <div class="section">
+            <h3>Database Test</h3>
+            <label>Document Title (syncs between all paired devices):</label>
+            <input type="text" id="docTitle" placeholder="Type something...">
+            <button onclick="saveDoc()">Save Document</button>
+
+            <label>All Documents:</label>
+            <div class="data-display" id="docsDisplay">No documents yet</div>
+        </div>
+
+        <div class="section">
+            <h3>Debug Log</h3>
+            <div class="data-display" id="debugLog" style="max-height: 200px; overflow-y: auto;"></div>
+            <button onclick="clearLog()">Clear Log</button>
+        </div>
+    </div>
+
+    <script type="module">
+        // Import PeerJS
+        const Peer = (await import('https://cdn.jsdelivr.net/npm/peerjs@1.5.4/+esm')).default;
+
+        let db;
+        let peer;
+        let connections = new Map(); // peerId -> connection
+        const STORAGE_KEY = 'paired-devices';
+
+        // Log helper
+        function log(message) {
+            const logDiv = document.getElementById('debugLog');
+            const time = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `<div>[${time}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(message);
+        }
+
+        window.clearLog = function() {
+            document.getElementById('debugLog').innerHTML = '';
+        };
+
+        function updateStatus(status, message) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.className = `status ${status}`;
+            statusDiv.textContent = message;
+            log(`Status: ${message}`);
+        }
+
+        // LocalStorage helpers
+        function getPairedDevices() {
+            const stored = localStorage.getItem(STORAGE_KEY);
+            return stored ? JSON.parse(stored) : [];
+        }
+
+        function addPairedDevice(peerId) {
+            const devices = getPairedDevices();
+            if (!devices.includes(peerId)) {
+                devices.push(peerId);
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(devices));
+                log(`✅ Saved paired device: ${peerId}`);
+            }
+        }
+
+        function removePairedDevice(peerId) {
+            const devices = getPairedDevices();
+            const filtered = devices.filter(id => id !== peerId);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+            log(`🗑️ Removed paired device: ${peerId}`);
+            updatePairedDevicesUI();
+        }
+
+        function updatePairedDevicesUI() {
+            const devices = getPairedDevices();
+            const container = document.getElementById('pairedDevices');
+
+            if (devices.length === 0) {
+                container.innerHTML = '<div style="text-align: center; color: #999;">No paired devices yet</div>';
+                return;
+            }
+
+            container.innerHTML = devices.map(peerId => {
+                const isConnected = connections.has(peerId);
+                return `
+                    <div class="paired-device">
+                        <span>
+                            <span class="status-indicator ${isConnected ? 'online' : 'offline'}"></span>
+                            ${peerId}
+                        </span>
+                        <div>
+                            ${!isConnected ? `<button onclick="reconnectToPeer('${peerId}')">Reconnect</button>` : ''}
+                            <button class="danger" onclick="unpairDevice('${peerId}')">Remove</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        window.unpairDevice = function(peerId) {
+            if (confirm(`Remove device ${peerId}?`)) {
+                // Close connection if open
+                const conn = connections.get(peerId);
+                if (conn) {
+                    conn.close();
+                    connections.delete(peerId);
+                }
+                removePairedDevice(peerId);
+                updateConnectionStatus();
+            }
+        };
+
+        window.reconnectToPeer = function(peerId) {
+            log(`🔄 Reconnecting to ${peerId}...`);
+            connectToPeer(peerId);
+        };
+
+        // Initialize Fireproof
+        async function initFireproof() {
+            try {
+                const { fireproof } = await import('https://cdn.jsdelivr.net/npm/@fireproof/core/+esm');
+                db = fireproof('peerjs-test');
+                log('✅ Fireproof initialized');
+
+                await loadDocs();
+
+                db.subscribe((changes) => {
+                    log(`📄 Database changed: ${changes.length} docs`);
+                    loadDocs();
+                });
+
+                return true;
+            } catch (error) {
+                log(`❌ Error initializing Fireproof: ${error.message}`);
+                return false;
+            }
+        }
+
+        // Initialize PeerJS
+        async function initPeerJS() {
+            try {
+                // Try to get stored peer ID or generate new one
+                let storedPeerId = localStorage.getItem('my-peer-id');
+
+                peer = new Peer(storedPeerId, {
+                    debug: 2 // Enable debug logging
+                });
+
+                peer.on('open', (id) => {
+                    log(`✅ PeerJS connected with ID: ${id}`);
+                    document.getElementById('myPeerId').textContent = id;
+
+                    // Store peer ID for persistence
+                    localStorage.setItem('my-peer-id', id);
+
+                    updateStatus('disconnected', 'Ready - No peers connected');
+
+                    // Auto-reconnect to known peers
+                    autoConnectToPairedDevices();
+                });
+
+                peer.on('connection', (conn) => {
+                    log(`📞 Incoming connection from: ${conn.peer}`);
+                    handleConnection(conn);
+                });
+
+                peer.on('error', (err) => {
+                    log(`❌ PeerJS error: ${err.type} - ${err.message}`);
+                    if (err.type === 'unavailable-id') {
+                        // ID taken, clear stored ID and reload
+                        localStorage.removeItem('my-peer-id');
+                        log('🔄 Peer ID conflict, generating new ID...');
+                        setTimeout(() => location.reload(), 1000);
+                    }
+                });
+
+                peer.on('disconnected', () => {
+                    log('⚠️ Disconnected from PeerJS server, reconnecting...');
+                    peer.reconnect();
+                });
+
+                return true;
+            } catch (error) {
+                log(`❌ Error initializing PeerJS: ${error.message}`);
+                return false;
+            }
+        }
+
+        // Auto-connect to previously paired devices
+        function autoConnectToPairedDevices() {
+            const devices = getPairedDevices();
+            log(`🔄 Auto-connecting to ${devices.length} paired devices...`);
+            devices.forEach(peerId => {
+                setTimeout(() => connectToPeer(peerId), 500);
+            });
+            updatePairedDevicesUI();
+        }
+
+        // Connect to a peer
+        window.connectToPeer = function(peerIdArg) {
+            const peerId = peerIdArg || document.getElementById('remotePeerId').value.trim();
+
+            if (!peerId) {
+                alert('Please enter a peer ID');
+                return;
+            }
+
+            if (peerId === peer.id) {
+                alert("Can't connect to yourself!");
+                return;
+            }
+
+            if (connections.has(peerId)) {
+                log(`⚠️ Already connected to ${peerId}`);
+                return;
+            }
+
+            log(`📞 Connecting to ${peerId}...`);
+            updateStatus('connecting', `Connecting to ${peerId}...`);
+
+            const conn = peer.connect(peerId, {
+                reliable: true,
+                serialization: 'json'
+            });
+
+            handleConnection(conn);
+            document.getElementById('remotePeerId').value = '';
+        };
+
+        // Handle a connection (incoming or outgoing)
+        function handleConnection(conn) {
+            conn.on('open', () => {
+                log(`✅ Connected to ${conn.peer}`);
+                connections.set(conn.peer, conn);
+                addPairedDevice(conn.peer);
+                updatePairedDevicesUI();
+                updateConnectionStatus();
+
+                // Send a sync request when connection opens
+                conn.send({ type: 'sync-request' });
+            });
+
+            conn.on('data', async (data) => {
+                log(`📨 Received from ${conn.peer}: ${data.type}`);
+
+                if (data.type === 'sync' && data.doc) {
+                    // Receive document from peer
+                    await db.put(data.doc);
+                    log(`💾 Synced doc from peer: ${data.doc._id}`);
+                    await loadDocs();
+                } else if (data.type === 'sync-request') {
+                    // Peer is requesting all our data
+                    log(`📤 Sending all docs to ${conn.peer}...`);
+                    const result = await db.allDocs();
+                    if (result.rows && result.rows.length > 0) {
+                        result.rows.forEach(row => {
+                            conn.send({ type: 'sync', doc: row.value });
+                        });
+                    }
+                }
+            });
+
+            conn.on('close', () => {
+                log(`❌ Connection closed with ${conn.peer}`);
+                connections.delete(conn.peer);
+                updatePairedDevicesUI();
+                updateConnectionStatus();
+            });
+
+            conn.on('error', (err) => {
+                log(`❌ Connection error with ${conn.peer}: ${err}`);
+            });
+        }
+
+        function updateConnectionStatus() {
+            const count = connections.size;
+            if (count === 0) {
+                updateStatus('disconnected', 'No peers connected');
+            } else {
+                updateStatus('connected', `Connected to ${count} peer${count > 1 ? 's' : ''}`);
+            }
+        }
+
+        // Save document
+        window.saveDoc = async function() {
+            const title = document.getElementById('docTitle').value;
+            if (!title.trim()) return;
+
+            try {
+                const doc = {
+                    title: title,
+                    timestamp: Date.now(),
+                    deviceId: peer.id.substring(0, 8)
+                };
+
+                const result = await db.put(doc);
+                log(`💾 Saved doc: ${result.id}`);
+
+                // Broadcast to all connected peers
+                connections.forEach((conn, peerId) => {
+                    conn.send({
+                        type: 'sync',
+                        doc: { ...doc, _id: result.id }
+                    });
+                    log(`📡 Sent to ${peerId}`);
+                });
+
+                document.getElementById('docTitle').value = '';
+                await loadDocs();
+            } catch (error) {
+                log(`❌ Error saving: ${error.message}`);
+            }
+        };
+
+        // Load all documents
+        async function loadDocs() {
+            try {
+                const result = await db.allDocs();
+                const docsDisplay = document.getElementById('docsDisplay');
+
+                if (result.rows && result.rows.length > 0) {
+                    docsDisplay.innerHTML = result.rows.map(row => {
+                        const doc = row.value;
+                        return `<div>📄 ${doc.title} (by device ${doc.deviceId}, ${new Date(doc.timestamp).toLocaleTimeString()})</div>`;
+                    }).join('');
+                } else {
+                    docsDisplay.innerHTML = 'No documents yet';
+                }
+            } catch (error) {
+                log(`❌ Error loading docs: ${error.message}`);
+            }
+        }
+
+        // Copy peer ID to clipboard
+        window.copyPeerId = function() {
+            const peerId = peer.id;
+            navigator.clipboard.writeText(peerId).then(() => {
+                log('📋 Peer ID copied to clipboard');
+                alert('Peer ID copied! Share this with other devices.');
+            });
+        };
+
+        // Initialize everything
+        (async function init() {
+            log('🚀 Starting application...');
+            await initFireproof();
+            await initPeerJS();
+            updatePairedDevicesUI();
+        })();
+    </script>
+</body>
+</html>

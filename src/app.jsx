@@ -1,18 +1,11 @@
 import { useState, useEffect } from 'preact/hooks'
 import { BookmarkList } from './components/bookmarks'
+import PairingFlow from './components/pairing/PairingFlow'
 
 // Placeholder component (will be implemented in Phase 2+)
 const BookmarksView = () => <BookmarkList />
 
-const PairingView = () => (
-  <div className="p-4">
-    <h1 className="text-2xl font-bold mb-4">Pair Device</h1>
-    <div className="card">
-      <p className="text-gray-600">Pairing flow will be implemented in Phase 4</p>
-      <p className="text-sm text-gray-500 mt-2">QR code + verification words</p>
-    </div>
-  </div>
-)
+const PairingView = () => <PairingFlow />
 
 const SettingsView = () => (
   <div className="p-4">

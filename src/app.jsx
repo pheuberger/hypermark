@@ -1,15 +1,8 @@
 import { useState, useEffect } from 'preact/hooks'
+import { BookmarkList } from './components/bookmarks'
 
-// Placeholder components (will be implemented in Phase 2+)
-const BookmarksView = () => (
-  <div className="p-4">
-    <h1 className="text-2xl font-bold mb-4">Bookmarks</h1>
-    <div className="card">
-      <p className="text-gray-600">Bookmark list will be implemented in Phase 2</p>
-      <p className="text-sm text-gray-500 mt-2">Local storage with Fireproof</p>
-    </div>
-  </div>
-)
+// Placeholder component (will be implemented in Phase 2+)
+const BookmarksView = () => <BookmarkList />
 
 const PairingView = () => (
   <div className="p-4">

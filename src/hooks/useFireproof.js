@@ -63,15 +63,23 @@ export function useLiveQuery(db, query = {}) {
 
     async function loadDocs() {
       try {
+        console.log('[DEBUG] useLiveQuery - loadDocs called')
         // Query all documents matching the criteria
         const allDocs = await db.allDocs()
+        console.log('[DEBUG] useLiveQuery - allDocs:', allDocs)
+        console.log('[DEBUG] useLiveQuery - allDocs.rows:', allDocs.rows.length, allDocs.rows)
+        console.log('[DEBUG] useLiveQuery - first row:', allDocs.rows[0])
 
         // Filter by query parameters
-        let filteredDocs = allDocs.rows.map(row => row.doc)
+        let filteredDocs = allDocs.rows
+          .map(row => row.value || row.doc) // Fireproof returns data in row.value
+          .filter(doc => doc != null) // Filter out undefined/null docs
+        console.log('[DEBUG] useLiveQuery - before filter:', filteredDocs.length)
 
         // Apply query filters
         if (query.type) {
           filteredDocs = filteredDocs.filter(doc => doc.type === query.type)
+          console.log('[DEBUG] useLiveQuery - after type filter:', filteredDocs.length, 'type:', query.type)
         }
 
         if (query.filter) {
@@ -79,6 +87,7 @@ export function useLiveQuery(db, query = {}) {
         }
 
         if (mounted) {
+          console.log('[DEBUG] useLiveQuery - setting docs:', filteredDocs)
           setDocs(filteredDocs)
           setLoading(false)
         }
@@ -96,6 +105,7 @@ export function useLiveQuery(db, query = {}) {
 
     // Subscribe to changes
     const unsubscribe = db.subscribe((changes) => {
+      console.log('[DEBUG] useLiveQuery - db.subscribe callback fired, changes:', changes)
       // Reload on any change
       loadDocs()
     })

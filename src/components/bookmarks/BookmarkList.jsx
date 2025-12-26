@@ -25,6 +25,8 @@ export function BookmarkList() {
     type: 'bookmark',
   })
 
+  console.log('[DEBUG] BookmarkList render - bookmarks:', bookmarks.length, bookmarks)
+
   // UI state
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingBookmark, setEditingBookmark] = useState(null)
@@ -93,18 +95,28 @@ export function BookmarkList() {
 
   // Save bookmark (create or update)
   const handleSave = async (bookmarkData) => {
-    if (!db) return
+    console.log('[DEBUG] handleSave called with:', bookmarkData)
+    console.log('[DEBUG] db instance:', db)
+
+    if (!db) {
+      console.error('[DEBUG] No db instance!')
+      return
+    }
 
     try {
       if (bookmarkData._id) {
         // Update existing
+        console.log('[DEBUG] Updating bookmark:', bookmarkData._id)
         await updateBookmark(db, bookmarkData._id, bookmarkData)
       } else {
         // Create new
-        await createBookmark(db, bookmarkData)
+        console.log('[DEBUG] Creating new bookmark')
+        const result = await createBookmark(db, bookmarkData)
+        console.log('[DEBUG] Bookmark created:', result)
       }
+      console.log('[DEBUG] Save completed successfully')
     } catch (error) {
-      console.error('Failed to save bookmark:', error)
+      console.error('[DEBUG] Failed to save bookmark:', error)
       throw error
     }
   }
@@ -172,18 +184,31 @@ export function BookmarkList() {
   // Empty state
   if (bookmarks.length === 0) {
     return (
-      <div className="p-4">
-        <div className="text-center py-12">
-          <div className="text-6xl mb-4">📚</div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-            Welcome to Hypermark!
-          </h2>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">
-            Start by adding your first bookmark.
-          </p>
-          <Button onClick={handleAddNew}>Add Bookmark</Button>
+      <>
+        <div className="p-4">
+          <div className="text-center py-12">
+            <div className="text-6xl mb-4">📚</div>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+              Welcome to Hypermark!
+            </h2>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
+              Start by adding your first bookmark.
+            </p>
+            <Button onClick={handleAddNew}>Add Bookmark</Button>
+          </div>
         </div>
-      </div>
+
+        {/* Add/Edit form modal - must be outside conditional to always render */}
+        <BookmarkForm
+          isOpen={isFormOpen}
+          onClose={() => {
+            setIsFormOpen(false)
+            setEditingBookmark(null)
+          }}
+          onSave={handleSave}
+          initialData={editingBookmark}
+        />
+      </>
     )
   }
 

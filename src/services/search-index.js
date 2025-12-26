@@ -5,7 +5,7 @@ import MiniSearch from 'minisearch'
  */
 export function createSearchIndex() {
   return new MiniSearch({
-    fields: ['title', 'description', 'tags'], // Fields to index
+    fields: ['title', 'description', 'tags', 'url'], // Fields to index
     storeFields: ['_id', 'title', 'url', 'tags'], // Fields to return in results
     searchOptions: {
       boost: { title: 2, tags: 1.5 }, // Boost title and tags in relevance

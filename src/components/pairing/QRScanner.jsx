@@ -197,6 +197,8 @@ export default function QRScanner({ onScanned, onError }) {
           <video
             ref={videoRef}
             class="w-full rounded-lg shadow-lg bg-black"
+            autoplay
+            muted
             playsInline
           />
           {scanning && (

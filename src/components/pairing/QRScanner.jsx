@@ -32,35 +32,29 @@ export default function QRScanner({ onScanned, onError }) {
   async function requestCameraPermission() {
     setCameraStatus('requesting')
 
+    // Skip the test stream on iOS - let qr-scanner handle everything
     try {
-      // Request camera access with rear camera preference
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' }, // rear camera
-      })
-
-      // Stop the test stream (qr-scanner will request again)
-      stream.getTracks().forEach((track) => track.stop())
-
       setCameraStatus('granted')
-      initializeScanner()
+      // Give the DOM a moment to render the video element
+      setTimeout(() => {
+        initializeScanner()
+      }, 100)
     } catch (err) {
       console.error('Camera permission error:', err)
-      if (
-        err.name === 'NotAllowedError' ||
-        err.name === 'PermissionDeniedError'
-      ) {
-        setCameraStatus('denied')
-        setShowManual(true) // Auto-show manual input
-      } else {
-        onError(new Error(`Camera error: ${err.message}`))
-      }
+      setCameraStatus('denied')
+      setShowManual(true)
+      onError(new Error(`Camera error: ${err.message}`))
     }
   }
 
   async function initializeScanner() {
-    if (!videoRef.current) return
+    if (!videoRef.current) {
+      console.error('Video ref not available')
+      return
+    }
 
     try {
+      console.log('Initializing QR scanner...')
       const scanner = new QrScanner(videoRef.current, handleQRDetected, {
         returnDetailedScanResult: true,
         highlightScanRegion: true,
@@ -69,13 +63,22 @@ export default function QRScanner({ onScanned, onError }) {
       })
 
       scannerRef.current = scanner
+
       await scanner.start()
+      console.log('QR scanner started successfully')
       setScanning(true)
     } catch (err) {
       console.error('Scanner initialization error:', err)
-      onError(new Error(`Scanner initialization failed: ${err.message}`))
-      setCameraStatus('denied')
-      setShowManual(true)
+
+      // Check if it's a permission error
+      if (err.name === 'NotAllowedError' || err.message.includes('permission')) {
+        setCameraStatus('denied')
+        setShowManual(true)
+      } else {
+        onError(new Error(`Scanner initialization failed: ${err.message}`))
+        setCameraStatus('denied')
+        setShowManual(true)
+      }
     }
   }
 

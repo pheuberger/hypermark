@@ -541,9 +541,8 @@ async function handlePairingComplete(msg) {
 
     console.log('Receiving LEK from:', initiatorDeviceName)
 
-    // Decrypt LEK
-    const deviceInfo = getDeviceInfo()
-    const additionalData = `${msgSessionId}:${deviceInfo.id}`
+    // Decrypt LEK (must use initiator's device ID in AAD to match encryption)
+    const additionalData = `${msgSessionId}:${initiatorDeviceId}`
 
     const lekRaw = await decryptData(
       sessionKey.value,
@@ -626,11 +625,10 @@ async function transferLEK() {
     const lekRaw = await exportLEK(lek)
 
     // Encrypt with session key using AES-GCM
-    const iv = generateRandomBytes(12)
     const deviceInfo = getDeviceInfo()
     const additionalData = `${session.value.sessionId}:${deviceInfo.id}`
 
-    const { ciphertext } = await encryptData(
+    const { ciphertext, iv } = await encryptData(
       sessionKey.value,
       lekRaw,
       additionalData

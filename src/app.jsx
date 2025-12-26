@@ -1,43 +1,97 @@
-import { useState } from 'preact/hooks'
-import preactLogo from './assets/preact.svg'
-import viteLogo from '/vite.svg'
-import './app.css'
+import { useState, useEffect } from 'preact/hooks'
 
-export function App() {
-  const [count, setCount] = useState(0)
+// Placeholder components (will be implemented in Phase 2+)
+const BookmarksView = () => (
+  <div className="p-4">
+    <h1 className="text-2xl font-bold mb-4">Bookmarks</h1>
+    <div className="card">
+      <p className="text-gray-600">Bookmark list will be implemented in Phase 2</p>
+      <p className="text-sm text-gray-500 mt-2">Local storage with Fireproof</p>
+    </div>
+  </div>
+)
+
+const PairingView = () => (
+  <div className="p-4">
+    <h1 className="text-2xl font-bold mb-4">Pair Device</h1>
+    <div className="card">
+      <p className="text-gray-600">Pairing flow will be implemented in Phase 4</p>
+      <p className="text-sm text-gray-500 mt-2">QR code + verification words</p>
+    </div>
+  </div>
+)
+
+const SettingsView = () => (
+  <div className="p-4">
+    <h1 className="text-2xl font-bold mb-4">Settings</h1>
+    <div className="card">
+      <p className="text-gray-600">Device management will be implemented in Phase 6</p>
+      <p className="text-sm text-gray-500 mt-2">View paired devices, sync settings</p>
+    </div>
+  </div>
+)
+
+// Navigation tabs
+const NavBar = ({ currentView, onNavigate }) => {
+  const tabs = [
+    { id: 'bookmarks', label: 'Bookmarks', icon: '📚' },
+    { id: 'pairing', label: 'Pair', icon: '🔗' },
+    { id: 'settings', label: 'Settings', icon: '⚙️' },
+  ]
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} class="logo" alt="Vite logo" />
-        </a>
-        <a href="https://preactjs.com" target="_blank">
-          <img src={preactLogo} class="logo preact" alt="Preact logo" />
-        </a>
+    <nav className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+      <div className="flex justify-around max-w-4xl mx-auto">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => onNavigate(tab.id)}
+            className={`flex-1 py-4 px-2 text-center transition-colors ${
+              currentView === tab.id
+                ? 'border-b-2 border-primary text-primary font-medium'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+            }`}
+          >
+            <span className="mr-2">{tab.icon}</span>
+            {tab.label}
+          </button>
+        ))}
       </div>
-      <h1>Vite + Preact</h1>
-      <div class="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/app.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p>
-        Check out{' '}
-        <a
-          href="https://preactjs.com/guide/v10/getting-started#create-a-vite-powered-preact-app"
-          target="_blank"
-        >
-          create-preact
-        </a>
-        , the official Preact + Vite starter
-      </p>
-      <p class="read-the-docs">
-        Click on the Vite and Preact logos to learn more
-      </p>
-    </>
+    </nav>
+  )
+}
+
+// Connection status indicator (placeholder)
+const ConnectionStatus = () => (
+  <div className="fixed top-4 right-4 px-3 py-1 rounded-full text-xs font-medium bg-gray-300 text-gray-700">
+    Offline
+  </div>
+)
+
+export function App() {
+  const [currentView, setCurrentView] = useState('bookmarks')
+
+  // View router
+  const renderView = () => {
+    switch (currentView) {
+      case 'bookmarks':
+        return <BookmarksView />
+      case 'pairing':
+        return <PairingView />
+      case 'settings':
+        return <SettingsView />
+      default:
+        return <BookmarksView />
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <ConnectionStatus />
+      <NavBar currentView={currentView} onNavigate={setCurrentView} />
+      <main className="max-w-4xl mx-auto pb-16">
+        {renderView()}
+      </main>
+    </div>
   )
 }

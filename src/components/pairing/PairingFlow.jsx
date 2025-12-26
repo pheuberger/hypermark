@@ -544,6 +544,9 @@ async function handlePairingComplete(msg) {
     // Decrypt LEK (must use initiator's device ID in AAD to match encryption)
     const additionalData = `${msgSessionId}:${initiatorDeviceId}`
 
+    // Get our device info for acknowledgment
+    const deviceInfo = getDeviceInfo()
+
     const lekRaw = await decryptData(
       sessionKey.value,
       base64ToArrayBuffer(encryptedLEK),

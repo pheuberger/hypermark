@@ -5,6 +5,7 @@
  */
 
 import { signal } from '@preact/signals'
+import { useEffect } from 'preact/hooks'
 import Peer from 'peerjs'
 import QRCodeDisplay from './QRCodeDisplay'
 import QRScanner from './QRScanner'
@@ -68,6 +69,11 @@ const sessionKey = signal(null)
 const peer = signal(null)
 
 export default function PairingFlow() {
+  // Cleanup PeerJS connection on component unmount
+  useEffect(() => {
+    return cleanupPairingState
+  }, [])
+
   // Check WebCrypto availability
   if (!isWebCryptoAvailable()) {
     return (
@@ -157,11 +163,11 @@ function VerifyingView() {
       </p>
 
       <div class="verification-words flex justify-center items-center gap-4 p-8 bg-gray-100 rounded-lg mb-6">
-        <span class="text-4xl font-bold lowercase">
+        <span class="text-4xl font-bold lowercase text-gray-900">
           {verificationWords.value?.[0] || '...'}
         </span>
         <span class="text-2xl text-gray-400">·</span>
-        <span class="text-4xl font-bold lowercase">
+        <span class="text-4xl font-bold lowercase text-gray-900">
           {verificationWords.value?.[1] || '...'}
         </span>
       </div>

@@ -109,25 +109,22 @@ export async function importPublicKey(base64Key) {
  * Perform ECDH key agreement to derive shared secret
  * @param {CryptoKey} privateKey - Local private key
  * @param {CryptoKey} publicKey - Peer's public key
- * @returns {Promise<CryptoKey>} - Derived AES key
+ * @returns {Promise<ArrayBuffer>} - Raw shared secret bytes (for HKDF)
  */
 export async function deriveSharedSecret(privateKey, publicKey) {
   try {
-    const sharedSecret = await crypto.subtle.deriveKey(
+    // Use deriveBits instead of deriveKey to get raw bytes
+    // This avoids creating an intermediate extractable AES key
+    const sharedSecretBits = await crypto.subtle.deriveBits(
       {
         name: 'ECDH',
         public: publicKey,
       },
       privateKey,
-      {
-        name: 'AES-GCM',
-        length: 256,
-      },
-      false, // non-extractable
-      ['encrypt', 'decrypt']
+      256 // 256 bits = 32 bytes
     )
 
-    return sharedSecret
+    return sharedSecretBits
   } catch (error) {
     console.error('Failed to derive shared secret:', error)
     throw new Error('Failed to derive shared secret: ' + error.message)
@@ -136,25 +133,14 @@ export async function deriveSharedSecret(privateKey, publicKey) {
 
 /**
  * Derive session key from shared secret using HKDF
- * @param {CryptoKey} sharedSecret - Shared secret from ECDH
+ * @param {ArrayBuffer} sharedSecretBits - Raw shared secret bytes from ECDH
  * @param {string} sessionId - Session ID for salt
  * @param {string} info - Context string
- * @returns {Promise<CryptoKey>} - Derived session key
+ * @returns {Promise<CryptoKey>} - Derived session key (non-extractable AES-GCM)
  */
-export async function deriveSessionKey(sharedSecret, sessionId, info = 'hypermark-pairing-v1') {
+export async function deriveSessionKey(sharedSecretBits, sessionId, info = 'hypermark-pairing-v1') {
   try {
-    // First, we need to get the raw shared secret to use as key material
-    // Since sharedSecret is non-extractable, we'll use deriveBits instead
-    const sharedSecretBits = await crypto.subtle.deriveBits(
-      {
-        name: 'ECDH',
-        public: sharedSecret.publicKey || sharedSecret,
-      },
-      sharedSecret.privateKey || sharedSecret,
-      256
-    )
-
-    // Import as raw key for HKDF
+    // Import raw shared secret as HKDF key material
     const baseKey = await crypto.subtle.importKey(
       'raw',
       sharedSecretBits,
@@ -176,7 +162,7 @@ export async function deriveSessionKey(sharedSecret, sessionId, info = 'hypermar
         name: 'AES-GCM',
         length: 256,
       },
-      false, // non-extractable
+      false, // non-extractable (secure!)
       ['encrypt', 'decrypt']
     )
 

@@ -110,13 +110,13 @@ export default function QRCodeDisplay({ session, verificationWords, onError }) {
       {/* Verification Words (progressive disclosure) */}
       {verificationWords && (
         <div class="verification-section bg-blue-50 p-4 rounded-lg mb-6">
-          <h3 class="text-lg font-semibold mb-3">Verification Words</h3>
+          <h3 class="text-lg font-semibold text-gray-900 mb-3">Verification Words</h3>
           <div class="words-display flex justify-center items-center gap-3 mb-2">
-            <span class="word text-3xl font-bold lowercase">
+            <span class="word text-3xl font-bold lowercase text-gray-900">
               {verificationWords[0]}
             </span>
             <span class="separator text-2xl text-gray-400">·</span>
-            <span class="word text-3xl font-bold lowercase">
+            <span class="word text-3xl font-bold lowercase text-gray-900">
               {verificationWords[1]}
             </span>
           </div>

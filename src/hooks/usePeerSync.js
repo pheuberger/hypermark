@@ -16,6 +16,9 @@ import {
   createHelloMessage,
   createHelloAckMessage,
   createErrorMessage,
+  createSyncStateMessage,
+  createSyncRequestMessage,
+  createSyncDataMessage,
   isValidMessage,
 } from '../services/sync-messages'
 
@@ -290,7 +293,18 @@ async function handleMessage(db, conn, msg, deviceInfo) {
       case MESSAGE_TYPES.HELLO_ACK:
         await handleHelloAckMessage(db, conn, msg, deviceInfo)
         break
-      // More message types will be added in next tasks
+      case MESSAGE_TYPES.SYNC_STATE:
+        await handleSyncStateMessage(db, conn, msg, deviceInfo)
+        break
+      case MESSAGE_TYPES.SYNC_REQUEST:
+        await handleSyncRequestMessage(db, conn, msg)
+        break
+      case MESSAGE_TYPES.SYNC_DATA:
+        await handleSyncDataMessage(db, conn, msg)
+        break
+      case MESSAGE_TYPES.ERROR:
+        handleErrorMessage(msg)
+        break
       default:
         console.warn('[usePeerSync] Unknown message type:', msg.type)
     }
@@ -360,7 +374,8 @@ async function handleHelloMessage(db, conn, msg) {
     console.error('[usePeerSync] Failed to send HELLO_ACK:', err)
   }
 
-  // TODO: Start sync protocol (next task)
+  // Start sync protocol
+  await initiateSync(db, conn)
 }
 
 /**
@@ -383,7 +398,162 @@ async function handleHelloAckMessage(db, conn, msg, deviceInfo) {
     connectedDevices.value = new Map(connectedDevices.value)
   }
 
-  // TODO: Start sync protocol (next task)
+  // Start sync protocol
+  await initiateSync(db, conn)
+}
+
+/**
+ * Initiate sync protocol after authentication
+ */
+async function initiateSync(db, conn) {
+  try {
+    console.log('[usePeerSync] Initiating sync protocol')
+    syncState.value = 'syncing'
+
+    // Get our current clock head from Fireproof
+    const allDocs = await db._crdt.allDocs()
+    const clockHead = allDocs.head || []
+
+    console.log('[usePeerSync] Sending our clock head:', clockHead)
+
+    // Send our clock state to peer
+    conn.send(createSyncStateMessage({ clockHead }))
+  } catch (err) {
+    console.error('[usePeerSync] Failed to initiate sync:', err)
+    syncState.value = 'error'
+    syncError.value = err.message
+  }
+}
+
+/**
+ * Handle SYNC_STATE message - compare clocks and request missing changes
+ */
+async function handleSyncStateMessage(db, conn, msg, deviceInfo) {
+  try {
+    const { clockHead: peerClockHead } = msg
+    console.log('[usePeerSync] Received peer clock head:', peerClockHead)
+
+    // Get our current clock head
+    const allDocs = await db._crdt.allDocs()
+    const ourClockHead = allDocs.head || []
+
+    // Send our clock state back (if peer sent theirs first)
+    if (peerClockHead && peerClockHead.length > 0) {
+      conn.send(createSyncStateMessage({ clockHead: ourClockHead }))
+    }
+
+    // Request changes since peer's clock head
+    // Note: Fireproof's changes() API will determine what we're missing
+    if (peerClockHead && peerClockHead.length > 0) {
+      // Request changes we don't have
+      conn.send(createSyncRequestMessage({ since: peerClockHead }))
+    }
+
+    // Get changes peer doesn't have and send them
+    if (ourClockHead && ourClockHead.length > 0) {
+      await sendChangesToPeer(db, conn, peerClockHead)
+    }
+  } catch (err) {
+    console.error('[usePeerSync] Error handling SYNC_STATE:', err)
+  }
+}
+
+/**
+ * Handle SYNC_REQUEST message - send changes since given clock head
+ */
+async function handleSyncRequestMessage(db, conn, msg) {
+  try {
+    const { since } = msg
+    console.log('[usePeerSync] Received sync request since:', since)
+
+    await sendChangesToPeer(db, conn, since)
+  } catch (err) {
+    console.error('[usePeerSync] Error handling SYNC_REQUEST:', err)
+  }
+}
+
+/**
+ * Send changes to peer that they don't have
+ */
+async function sendChangesToPeer(db, conn, peerClockHead) {
+  try {
+    // Get changes since peer's clock head
+    const result = await db.changes(peerClockHead)
+    const changes = result.rows || []
+
+    if (changes.length === 0) {
+      console.log('[usePeerSync] No changes to send')
+      return
+    }
+
+    console.log('[usePeerSync] Sending', changes.length, 'changes to peer')
+
+    // Get current clock head
+    const allDocs = await db._crdt.allDocs()
+    const clockHead = allDocs.head || []
+
+    // Send changes
+    conn.send(createSyncDataMessage({
+      changes: changes.map(change => ({
+        key: change.key,
+        value: change.value,
+      })),
+      clockHead,
+    }))
+  } catch (err) {
+    console.error('[usePeerSync] Error sending changes:', err)
+  }
+}
+
+/**
+ * Handle SYNC_DATA message - apply incoming changes to our database
+ */
+async function handleSyncDataMessage(db, conn, msg) {
+  try {
+    const { changes, clockHead: peerClockHead } = msg
+    console.log('[usePeerSync] Received', changes.length, 'changes from peer')
+
+    if (!changes || changes.length === 0) {
+      console.log('[usePeerSync] No changes to apply')
+      syncState.value = 'connected'
+      return
+    }
+
+    // Apply each change to our database
+    for (const change of changes) {
+      try {
+        // Use put to add/update documents
+        // Fireproof's CRDT will handle conflicts automatically
+        if (change.value && !change.value._deleted) {
+          await db.put(change.value)
+          console.log('[usePeerSync] Applied change:', change.key)
+        } else if (change.value?._deleted) {
+          // Handle deletions
+          await db.del(change.key)
+          console.log('[usePeerSync] Applied deletion:', change.key)
+        }
+      } catch (err) {
+        console.error('[usePeerSync] Error applying change:', change.key, err)
+      }
+    }
+
+    console.log('[usePeerSync] Successfully applied', changes.length, 'changes')
+    syncState.value = 'connected'
+  } catch (err) {
+    console.error('[usePeerSync] Error handling SYNC_DATA:', err)
+    syncState.value = 'error'
+    syncError.value = err.message
+  }
+}
+
+/**
+ * Handle ERROR message from peer
+ */
+function handleErrorMessage(msg) {
+  const { error, code } = msg
+  console.error('[usePeerSync] Received error from peer:', error, code)
+  syncError.value = `Peer error: ${error}`
+  syncState.value = 'error'
 }
 
 /**

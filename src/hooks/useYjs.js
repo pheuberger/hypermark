@@ -7,11 +7,13 @@ import { useEffect, useState } from 'preact/hooks'
 import * as Y from 'yjs'
 import { WebrtcProvider } from 'y-webrtc'
 import { IndexeddbPersistence } from 'y-indexeddb'
+import { Awareness } from 'y-protocols/awareness'
 
 // Singleton Yjs doc (shared across app)
 let ydoc = null
 let webrtcProvider = null
 let indexeddbProvider = null
+let awareness = null
 
 /**
  * Initialize Yjs document with providers
@@ -29,16 +31,15 @@ function initializeYjs(roomName = 'hypermark') {
     console.log('[Yjs] IndexedDB synced')
   })
 
+  // Create awareness instance for presence/user info sharing
+  awareness = new Awareness(ydoc)
+
   // Setup WebRTC provider for P2P sync
   // Note: We'll disable this initially and enable only for paired devices
   webrtcProvider = new WebrtcProvider(roomName, ydoc, {
     signaling: ['wss://signaling.yjs.dev'], // Public signaling server
     password: null, // We'll set this per-room for security
-    awareness: {
-      // Share device info with peers
-      deviceId: null, // Set after pairing
-      deviceName: null,
-    },
+    awareness: awareness, // Pass the awareness instance
     maxConns: 20, // Max peer connections
     filterBcConns: true, // Only connect to peers in same room
   })
@@ -115,4 +116,4 @@ export function reconnectYjsWebRTC() {
   }
 }
 
-export { ydoc, webrtcProvider, indexeddbProvider }
+export { ydoc, webrtcProvider, indexeddbProvider, awareness }

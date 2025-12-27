@@ -20,6 +20,16 @@ export const MESSAGE_TYPES = {
  * @returns {Object} - Hello message
  */
 export function createHelloMessage({ deviceId, deviceName, publicKey }) {
+  if (!deviceId || typeof deviceId !== 'string') {
+    throw new Error('deviceId is required and must be a non-empty string')
+  }
+  if (!deviceName || typeof deviceName !== 'string') {
+    throw new Error('deviceName is required and must be a non-empty string')
+  }
+  if (!publicKey || typeof publicKey !== 'string') {
+    throw new Error('publicKey is required and must be a non-empty string')
+  }
+
   return {
     type: MESSAGE_TYPES.HELLO,
     deviceId,
@@ -37,6 +47,13 @@ export function createHelloMessage({ deviceId, deviceName, publicKey }) {
  * @returns {Object} - Hello ACK message
  */
 export function createHelloAckMessage({ deviceId, deviceName }) {
+  if (!deviceId || typeof deviceId !== 'string') {
+    throw new Error('deviceId is required and must be a non-empty string')
+  }
+  if (!deviceName || typeof deviceName !== 'string') {
+    throw new Error('deviceName is required and must be a non-empty string')
+  }
+
   return {
     type: MESSAGE_TYPES.HELLO_ACK,
     deviceId,
@@ -81,6 +98,10 @@ export function createSyncRequestMessage({ since }) {
  * @returns {Object} - Sync data message
  */
 export function createSyncDataMessage({ changes, clockHead }) {
+  if (!Array.isArray(changes)) {
+    throw new Error('changes is required and must be an array')
+  }
+
   return {
     type: MESSAGE_TYPES.SYNC_DATA,
     changes,
@@ -111,10 +132,35 @@ export function createErrorMessage({ error, code }) {
  * @returns {boolean} - True if valid
  */
 export function isValidMessage(msg) {
-  return (
-    msg &&
-    typeof msg === 'object' &&
-    typeof msg.type === 'string' &&
-    Object.values(MESSAGE_TYPES).includes(msg.type)
-  )
+  if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') {
+    return false
+  }
+
+  if (!Object.values(MESSAGE_TYPES).includes(msg.type)) {
+    return false
+  }
+
+  // Validate message-specific required fields
+  switch (msg.type) {
+    case MESSAGE_TYPES.HELLO:
+      return !!(msg.deviceId && msg.deviceName && msg.publicKey && msg.timestamp)
+
+    case MESSAGE_TYPES.HELLO_ACK:
+      return !!(msg.deviceId && msg.deviceName && msg.timestamp)
+
+    case MESSAGE_TYPES.SYNC_STATE:
+      return !!(Array.isArray(msg.clockHead) && msg.timestamp)
+
+    case MESSAGE_TYPES.SYNC_REQUEST:
+      return !!(Array.isArray(msg.since) && msg.timestamp)
+
+    case MESSAGE_TYPES.SYNC_DATA:
+      return !!(Array.isArray(msg.changes) && Array.isArray(msg.clockHead) && msg.timestamp)
+
+    case MESSAGE_TYPES.ERROR:
+      return !!(msg.error && msg.timestamp)
+
+    default:
+      return false
+  }
 }

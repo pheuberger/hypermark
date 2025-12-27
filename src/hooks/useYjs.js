@@ -35,13 +35,14 @@ function initializeYjs(roomName = 'hypermark') {
   awareness = new Awareness(ydoc)
 
   // Setup WebRTC provider for P2P sync
-  // Note: We'll disable this initially and enable only for paired devices
+  // Start disconnected - will be enabled after device pairing
   webrtcProvider = new WebrtcProvider(roomName, ydoc, {
     signaling: ['wss://signaling.yjs.dev'], // Public signaling server
     password: null, // We'll set this per-room for security
     awareness: awareness, // Pass the awareness instance
     maxConns: 20, // Max peer connections
     filterBcConns: true, // Only connect to peers in same room
+    connect: false, // Don't connect automatically
   })
 
   webrtcProvider.on('status', ({ connected }) => {
@@ -52,6 +53,8 @@ function initializeYjs(roomName = 'hypermark') {
     if (added.length) console.log('[Yjs] Peers added:', added)
     if (removed.length) console.log('[Yjs] Peers removed:', removed)
   })
+
+  console.log('[Yjs] WebRTC provider created (disconnected until pairing)')
 
   // Initialize data structures
   if (!ydoc.getMap('bookmarks').size) {

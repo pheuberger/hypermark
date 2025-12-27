@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'preact/hooks'
-import { useFireproof, useLiveQuery } from '../../hooks/useFireproof'
+import { useState, useMemo, useEffect } from 'preact/hooks'
+import { useYjs } from '../../hooks/useYjs'
 import { useSearch, useDebounce } from '../../hooks/useSearch'
 import { BookmarkItem } from './BookmarkItem'
 import { BookmarkForm } from './BookmarkForm'
@@ -7,6 +7,7 @@ import { BookmarkSearch } from './BookmarkSearch'
 import { Button } from '../ui/Button'
 import { Tag } from '../ui/Tag'
 import {
+  getAllBookmarks,
   createBookmark,
   updateBookmark,
   deleteBookmark,
@@ -18,14 +19,32 @@ import {
  * Main bookmark list view with filters and sorting
  */
 export function BookmarkList() {
-  const { db, loading: dbLoading, error: dbError } = useFireproof()
+  const { bookmarks: bookmarksMap, synced } = useYjs()
+  const [bookmarks, setBookmarks] = useState([])
 
-  // Query all bookmarks
-  const { docs: bookmarks, loading: bookmarksLoading } = useLiveQuery(db, {
-    type: 'bookmark',
-  })
+  // Load and observe bookmarks
+  useEffect(() => {
+    // Initial load
+    const loadBookmarks = () => {
+      const loaded = getAllBookmarks()
+      console.log('[BookmarkList] Loaded bookmarks:', loaded.length, loaded)
+      setBookmarks(loaded)
+    }
 
-  console.log('[DEBUG] BookmarkList render - bookmarks:', bookmarks.length, bookmarks)
+    loadBookmarks()
+
+    // Observe changes to bookmarks map
+    const observer = () => {
+      console.log('[BookmarkList] Bookmarks changed, reloading')
+      loadBookmarks()
+    }
+
+    bookmarksMap.observe(observer)
+
+    return () => {
+      bookmarksMap.unobserve(observer)
+    }
+  }, [bookmarksMap])
 
   // UI state
   const [isFormOpen, setIsFormOpen] = useState(false)
@@ -94,39 +113,26 @@ export function BookmarkList() {
   }
 
   // Save bookmark (create or update)
-  const handleSave = async (bookmarkData) => {
-    console.log('[DEBUG] handleSave called with:', bookmarkData)
-    console.log('[DEBUG] db instance:', db)
-
-    if (!db) {
-      console.error('[DEBUG] No db instance!')
-      return
-    }
-
+  const handleSave = (bookmarkData) => {
     try {
       if (bookmarkData._id) {
         // Update existing
-        console.log('[DEBUG] Updating bookmark:', bookmarkData._id)
-        await updateBookmark(db, bookmarkData._id, bookmarkData)
+        updateBookmark(bookmarkData._id, bookmarkData)
       } else {
         // Create new
-        console.log('[DEBUG] Creating new bookmark')
-        const result = await createBookmark(db, bookmarkData)
-        console.log('[DEBUG] Bookmark created:', result)
+        createBookmark(bookmarkData)
       }
-      console.log('[DEBUG] Save completed successfully')
     } catch (error) {
-      console.error('[DEBUG] Failed to save bookmark:', error)
+      console.error('Failed to save bookmark:', error)
+      alert('Failed to save bookmark: ' + error.message)
       throw error
     }
   }
 
   // Delete bookmark
-  const handleDelete = async (bookmarkId) => {
-    if (!db) return
-
+  const handleDelete = (bookmarkId) => {
     try {
-      await deleteBookmark(db, bookmarkId)
+      deleteBookmark(bookmarkId)
     } catch (error) {
       console.error('Failed to delete bookmark:', error)
       alert('Failed to delete bookmark: ' + error.message)
@@ -134,11 +140,9 @@ export function BookmarkList() {
   }
 
   // Toggle read later
-  const handleToggleReadLater = async (bookmarkId) => {
-    if (!db) return
-
+  const handleToggleReadLater = (bookmarkId) => {
     try {
-      await toggleReadLater(db, bookmarkId)
+      toggleReadLater(bookmarkId)
     } catch (error) {
       console.error('Failed to toggle read later:', error)
       alert('Failed to update bookmark: ' + error.message)
@@ -159,24 +163,11 @@ export function BookmarkList() {
   }
 
   // Loading state
-  if (dbLoading || bookmarksLoading) {
+  if (!synced) {
     return (
       <div className="p-4 text-center">
         <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-primary border-t-transparent"></div>
         <p className="mt-2 text-gray-600 dark:text-gray-400">Loading bookmarks...</p>
-      </div>
-    )
-  }
-
-  // Error state
-  if (dbError) {
-    return (
-      <div className="p-4">
-        <div className="bg-red-50 dark:bg-red-900 border border-red-200 dark:border-red-700 rounded-lg p-4">
-          <p className="text-red-600 dark:text-red-400">
-            Failed to load database: {dbError.message}
-          </p>
-        </div>
       </div>
     )
   }

@@ -87,12 +87,35 @@ export function usePeerSync(db) {
           console.log('[usePeerSync] PeerJS disconnected')
           if (mounted) {
             syncState.value = 'disconnected'
-            // Try to reconnect after delay
-            setTimeout(() => {
-              if (mounted && peer && !peer.destroyed) {
-                peer.reconnect()
+
+            // Try to reconnect with exponential backoff
+            let retryCount = 0
+            const maxRetries = 5
+
+            const reconnect = () => {
+              if (retryCount >= maxRetries) {
+                console.log('[usePeerSync] Max PeerJS reconnection attempts reached')
+                syncState.value = 'error'
+                syncError.value = 'Could not reconnect to signaling server'
+                return
               }
-            }, 5000)
+
+              if (!mounted || !peer || peer.destroyed) {
+                return
+              }
+
+              retryCount++
+              const delay = 5000 * Math.pow(2, retryCount - 1)
+              console.log(`[usePeerSync] Reconnecting PeerJS in ${delay/1000}s (attempt ${retryCount}/${maxRetries})`)
+
+              setTimeout(() => {
+                if (mounted && peer && !peer.destroyed) {
+                  peer.reconnect()
+                }
+              }, delay)
+            }
+
+            reconnect()
           }
         })
 
@@ -250,16 +273,38 @@ async function connectToDevice(db, peer, deviceInfo, reconnectionTimeouts) {
     connectedDevices.value.delete(deviceId)
     connectedDevices.value = new Map(connectedDevices.value) // Trigger signal update
 
-    // Try to reconnect after delay
-    const timeoutId = setTimeout(() => {
-      if (peerInstance.value && !peerInstance.value.destroyed) {
-        connectToDevice(db, peerInstance.value, deviceInfo, reconnectionTimeouts)
-      }
-    }, 10000)
+    // Try to reconnect with exponential backoff
+    let retryCount = 0
+    const maxRetries = 5
+    const baseDelay = 5000 // 5 seconds
 
-    if (reconnectionTimeouts && reconnectionTimeouts.current) {
-      reconnectionTimeouts.current.add(timeoutId)
+    const reconnect = () => {
+      if (retryCount >= maxRetries) {
+        console.log('[usePeerSync] Max reconnection attempts reached for', deviceName)
+        return
+      }
+
+      if (!peerInstance.value || peerInstance.value.destroyed) {
+        console.log('[usePeerSync] Peer destroyed, cannot reconnect')
+        return
+      }
+
+      retryCount++
+      const delay = baseDelay * Math.pow(2, retryCount - 1) // Exponential backoff
+      console.log(`[usePeerSync] Reconnecting to ${deviceName} in ${delay/1000}s (attempt ${retryCount}/${maxRetries})`)
+
+      const timeoutId = setTimeout(() => {
+        if (peerInstance.value && !peerInstance.value.destroyed) {
+          connectToDevice(db, peerInstance.value, deviceInfo, reconnectionTimeouts)
+        }
+      }, delay)
+
+      if (reconnectionTimeouts && reconnectionTimeouts.current) {
+        reconnectionTimeouts.current.add(timeoutId)
+      }
     }
+
+    reconnect()
   })
 
   conn.on('error', (err) => {

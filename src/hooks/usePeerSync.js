@@ -41,6 +41,7 @@ export function usePeerSync(db) {
 
     let mounted = true
     let peer = null
+    let unsubscribe = null
 
     async function initializePeerSync() {
       try {
@@ -94,6 +95,44 @@ export function usePeerSync(db) {
             }, 5000)
           }
         })
+
+        // Subscribe to local database changes
+        unsubscribe = db.subscribe(async (changes) => {
+          console.log('[usePeerSync] Local changes detected:', changes)
+
+          // Push changes to all connected devices
+          const devices = connectedDevices.value
+          if (devices.size === 0) {
+            console.log('[usePeerSync] No connected devices to push to')
+            return
+          }
+
+          try {
+            // Get current clock head
+            const allDocs = await db._crdt.allDocs()
+            const clockHead = allDocs.head || []
+
+            // Convert changes to sync format
+            const changesArray = Array.isArray(changes) ? changes : [changes]
+            const syncChanges = changesArray.map(change => ({
+              key: change.key || change.id,
+              value: change.value || change.doc,
+            }))
+
+            // Send to all connected devices
+            devices.forEach(({ conn, deviceInfo }) => {
+              if (conn.open) {
+                console.log('[usePeerSync] Pushing changes to', deviceInfo.deviceName)
+                conn.send(createSyncDataMessage({
+                  changes: syncChanges,
+                  clockHead,
+                }))
+              }
+            })
+          } catch (err) {
+            console.error('[usePeerSync] Error pushing changes:', err)
+          }
+        }, true) // Pass true to include updates
       } catch (err) {
         console.error('[usePeerSync] Failed to initialize:', err)
         if (mounted) {
@@ -108,6 +147,11 @@ export function usePeerSync(db) {
     // Cleanup on unmount
     return () => {
       mounted = false
+
+      // Unsubscribe from database changes
+      if (unsubscribe) {
+        unsubscribe()
+      }
 
       // Clear all reconnection timeouts
       if (reconnectionTimeouts.current) {

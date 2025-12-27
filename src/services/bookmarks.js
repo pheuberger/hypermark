@@ -1,6 +1,10 @@
 /**
- * Bookmark CRUD operations and validation
+ * Bookmark Service
+ * CRUD operations for bookmarks using Yjs
  */
+
+import * as Y from 'yjs'
+import { ydoc } from '../hooks/useYjs'
 
 /**
  * Normalize URL to canonical form
@@ -88,133 +92,191 @@ export function validateBookmark(data) {
 }
 
 /**
- * Create a new bookmark
- * @param {Database} db - Fireproof database instance
- * @param {Object} bookmarkData - Bookmark data
- * @returns {Promise<Object>} - Created bookmark with _id
+ * Get all bookmarks as array
  */
-export async function createBookmark(db, bookmarkData) {
+export function getAllBookmarks() {
+  const bookmarksMap = ydoc.getMap('bookmarks')
+  const bookmarks = []
+
+  for (const [id, bookmark] of bookmarksMap.entries()) {
+    bookmarks.push(bookmarkToObject(id, bookmark))
+  }
+
+  // Sort by createdAt descending
+  return bookmarks.sort((a, b) => b.createdAt - a.createdAt)
+}
+
+/**
+ * Get single bookmark by ID
+ */
+export function getBookmark(id) {
+  const bookmarksMap = ydoc.getMap('bookmarks')
+  const bookmark = bookmarksMap.get(id)
+
+  if (!bookmark) {
+    throw new Error(`Bookmark not found: ${id}`)
+  }
+  return bookmarkToObject(id, bookmark)
+}
+
+/**
+ * Create new bookmark
+ */
+export function createBookmark(bookmarkData) {
   // Validate input
   const validated = validateBookmark(bookmarkData)
 
-  // Create bookmark document
+  const id = `bookmark:${generateId()}`
   const now = Date.now()
-  const bookmark = {
-    _id: `bookmark:${crypto.randomUUID()}`,
-    type: 'bookmark',
-    ...validated,
-    createdAt: now,
-    updatedAt: now,
-  }
 
-  // Save to database
-  await db.put(bookmark)
+  // Create Y.Map for bookmark
+  const bookmark = new Y.Map([
+    ['id', id],
+    ['url', validated.url],
+    ['title', validated.title],
+    ['description', validated.description],
+    ['tags', new Y.Array(validated.tags)],
+    ['readLater', validated.readLater],
+    ['favicon', validated.favicon],
+    ['preview', validated.preview],
+    ['createdAt', now],
+    ['updatedAt', now],
+  ])
 
-  return bookmark
+  // Add to bookmarks map
+  const bookmarksMap = ydoc.getMap('bookmarks')
+  bookmarksMap.set(id, bookmark)
+
+  console.log('[Bookmarks] Created:', id)
+  return bookmarkToObject(id, bookmark)
 }
 
 /**
- * Update an existing bookmark
- * @param {Database} db - Fireproof database instance
- * @param {string} bookmarkId - Bookmark ID to update
- * @param {Object} updates - Fields to update
- * @returns {Promise<Object>} - Updated bookmark
+ * Update existing bookmark
  */
-export async function updateBookmark(db, bookmarkId, updates) {
-  // Get existing bookmark
-  const existing = await db.get(bookmarkId)
+export function updateBookmark(id, updates) {
+  const bookmarksMap = ydoc.getMap('bookmarks')
+  const bookmark = bookmarksMap.get(id)
 
-  if (!existing || existing.type !== 'bookmark') {
-    throw new Error('Bookmark not found')
+  if (!bookmark) {
+    throw new Error(`Bookmark not found: ${id}`)
   }
 
-  // Merge updates with existing data
-  const merged = {
-    ...existing,
-    ...updates,
-    _id: bookmarkId, // Preserve ID
-    type: 'bookmark', // Preserve type
-    createdAt: existing.createdAt, // Preserve creation time
-    updatedAt: Date.now(), // Update timestamp
-  }
-
-  // Validate merged data
+  // Merge with existing for validation
+  const existing = bookmarkToObject(id, bookmark)
+  const merged = { ...existing, ...updates }
   const validated = validateBookmark(merged)
 
-  // Create updated document
-  const updated = {
-    ...existing,
-    ...validated,
-    updatedAt: Date.now(),
+  // Update fields
+  if (updates.title !== undefined) bookmark.set('title', validated.title)
+  if (updates.url !== undefined) bookmark.set('url', validated.url)
+  if (updates.description !== undefined) bookmark.set('description', validated.description)
+  if (updates.readLater !== undefined) bookmark.set('readLater', validated.readLater)
+  if (updates.favicon !== undefined) bookmark.set('favicon', validated.favicon)
+  if (updates.preview !== undefined) bookmark.set('preview', validated.preview)
+
+  // Update tags (replace entire array)
+  if (updates.tags !== undefined) {
+    const tagsArray = bookmark.get('tags')
+    tagsArray.delete(0, tagsArray.length) // Clear
+    tagsArray.insert(0, validated.tags) // Insert new
   }
 
-  // Save to database
-  await db.put(updated)
+  bookmark.set('updatedAt', Date.now())
 
-  return updated
+  console.log('[Bookmarks] Updated:', id)
+  return bookmarkToObject(id, bookmark)
 }
 
 /**
- * Delete a bookmark
- * @param {Database} db - Fireproof database instance
- * @param {string} bookmarkId - Bookmark ID to delete
- * @returns {Promise<void>}
+ * Delete bookmark
  */
-export async function deleteBookmark(db, bookmarkId) {
-  // Get existing bookmark to verify it exists
-  const existing = await db.get(bookmarkId)
+export function deleteBookmark(id) {
+  const bookmarksMap = ydoc.getMap('bookmarks')
 
-  if (!existing || existing.type !== 'bookmark') {
-    throw new Error('Bookmark not found')
+  if (!bookmarksMap.has(id)) {
+    throw new Error(`Bookmark not found: ${id}`)
   }
 
-  // Delete from database
-  await db.del(bookmarkId)
+  bookmarksMap.delete(id)
+  console.log('[Bookmarks] Deleted:', id)
 }
 
 /**
- * Get a single bookmark by ID
- * @param {Database} db - Fireproof database instance
- * @param {string} bookmarkId - Bookmark ID
- * @returns {Promise<Object>} - Bookmark document
+ * Toggle read-later status
  */
-export async function getBookmark(db, bookmarkId) {
-  const doc = await db.get(bookmarkId)
+export function toggleReadLater(id) {
+  const bookmarksMap = ydoc.getMap('bookmarks')
+  const bookmark = bookmarksMap.get(id)
 
-  if (!doc || doc.type !== 'bookmark') {
-    throw new Error('Bookmark not found')
+  if (!bookmark) {
+    throw new Error(`Bookmark not found: ${id}`)
   }
 
-  return doc
+  const current = bookmark.get('readLater')
+  bookmark.set('readLater', !current)
+  bookmark.set('updatedAt', Date.now())
+
+  console.log('[Bookmarks] Toggled read-later:', id, !current)
+  return !current
 }
 
 /**
- * Get all bookmarks
- * @param {Database} db - Fireproof database instance
- * @returns {Promise<Array>} - Array of bookmark documents
+ * Add tag to bookmark
  */
-export async function getAllBookmarks(db) {
-  const result = await db.allDocs()
+export function addTag(id, tag) {
+  const bookmarksMap = ydoc.getMap('bookmarks')
+  const bookmark = bookmarksMap.get(id)
 
-  // Filter for bookmark documents only
-  const bookmarks = result.rows
-    .map(row => row.doc)
-    .filter(doc => doc && doc.type === 'bookmark')
+  if (!bookmark) {
+    throw new Error(`Bookmark not found: ${id}`)
+  }
 
-  return bookmarks
+  const normalized = tag.toLowerCase().trim()
+  if (!normalized) {
+    throw new Error('Tag cannot be empty')
+  }
+
+  const tags = bookmark.get('tags')
+  const existingTags = tags.toArray()
+
+  if (!existingTags.includes(normalized)) {
+    tags.push([normalized])
+    bookmark.set('updatedAt', Date.now())
+    console.log('[Bookmarks] Added tag:', id, normalized)
+  }
 }
 
 /**
- * Check if a URL already exists in bookmarks
- * @param {Database} db - Fireproof database instance
- * @param {string} url - URL to check
- * @returns {Promise<Array>} - Array of existing bookmarks with this URL
+ * Remove tag from bookmark
  */
-export async function findBookmarksByUrl(db, url) {
+export function removeTag(id, tag) {
+  const bookmarksMap = ydoc.getMap('bookmarks')
+  const bookmark = bookmarksMap.get(id)
+
+  if (!bookmark) {
+    throw new Error(`Bookmark not found: ${id}`)
+  }
+
+  const normalized = tag.toLowerCase().trim()
+  const tags = bookmark.get('tags')
+  const index = tags.toArray().indexOf(normalized)
+
+  if (index !== -1) {
+    tags.delete(index, 1)
+    bookmark.set('updatedAt', Date.now())
+    console.log('[Bookmarks] Removed tag:', id, normalized)
+  }
+}
+
+/**
+ * Find bookmarks by URL
+ */
+export function findBookmarksByUrl(url) {
   const normalized = normalizeUrl(url)
-  const allBookmarks = await getAllBookmarks(db)
+  const all = getAllBookmarks()
 
-  return allBookmarks.filter(bookmark => {
+  return all.filter(bookmark => {
     try {
       return normalizeUrl(bookmark.url) === normalized
     } catch {
@@ -225,93 +287,75 @@ export async function findBookmarksByUrl(db, url) {
 
 /**
  * Get bookmarks by tag
- * @param {Database} db - Fireproof database instance
- * @param {string} tag - Tag to filter by
- * @returns {Promise<Array>} - Array of bookmarks with this tag
  */
-export async function getBookmarksByTag(db, tag) {
+export function getBookmarksByTag(tag) {
   const normalized = tag.toLowerCase().trim()
-  const allBookmarks = await getAllBookmarks(db)
+  const all = getAllBookmarks()
 
-  return allBookmarks.filter(bookmark =>
-    Array.isArray(bookmark.tags) &&
-    bookmark.tags.some(t => t.toLowerCase() === normalized)
-  )
+  return all.filter(bookmark => bookmark.tags.includes(normalized))
 }
 
 /**
- * Get all unique tags from all bookmarks
- * @param {Database} db - Fireproof database instance
- * @returns {Promise<Array>} - Array of unique tag strings
+ * Get all read-later bookmarks
  */
-export async function getAllTags(db) {
-  const allBookmarks = await getAllBookmarks(db)
+export function getReadLaterBookmarks() {
+  const all = getAllBookmarks()
+  return all.filter(bookmark => bookmark.readLater)
+}
 
-  const tagSet = new Set()
-  allBookmarks.forEach(bookmark => {
-    if (Array.isArray(bookmark.tags)) {
-      bookmark.tags.forEach(tag => tagSet.add(tag))
+/**
+ * Get all unique tags
+ */
+export function getAllTags() {
+  const bookmarksMap = ydoc.getMap('bookmarks')
+  const tagsSet = new Set()
+
+  for (const [_, bookmark] of bookmarksMap.entries()) {
+    const tags = bookmark.get('tags')
+    if (tags) {
+      tags.toArray().forEach(tag => tagsSet.add(tag))
     }
-  })
-
-  return Array.from(tagSet).sort()
-}
-
-/**
- * Toggle read-later status on a bookmark
- * @param {Database} db - Fireproof database instance
- * @param {string} bookmarkId - Bookmark ID
- * @returns {Promise<Object>} - Updated bookmark
- */
-export async function toggleReadLater(db, bookmarkId) {
-  const bookmark = await getBookmark(db, bookmarkId)
-
-  return updateBookmark(db, bookmarkId, {
-    readLater: !bookmark.readLater
-  })
-}
-
-/**
- * Add a tag to a bookmark
- * @param {Database} db - Fireproof database instance
- * @param {string} bookmarkId - Bookmark ID
- * @param {string} tag - Tag to add
- * @returns {Promise<Object>} - Updated bookmark
- */
-export async function addTag(db, bookmarkId, tag) {
-  const bookmark = await getBookmark(db, bookmarkId)
-  const normalized = tag.toLowerCase().trim()
-
-  if (!normalized) {
-    throw new Error('Tag cannot be empty')
   }
 
-  // Check if tag already exists
-  const tags = bookmark.tags || []
-  if (tags.some(t => t.toLowerCase() === normalized)) {
-    return bookmark // Already has this tag
-  }
-
-  return updateBookmark(db, bookmarkId, {
-    tags: [...tags, normalized]
-  })
+  return Array.from(tagsSet).sort()
 }
 
 /**
- * Remove a tag from a bookmark
- * @param {Database} db - Fireproof database instance
- * @param {string} bookmarkId - Bookmark ID
- * @param {string} tag - Tag to remove
- * @returns {Promise<Object>} - Updated bookmark
+ * Search bookmarks by query string
  */
-export async function removeTag(db, bookmarkId, tag) {
-  const bookmark = await getBookmark(db, bookmarkId)
-  const normalized = tag.toLowerCase().trim()
+export function searchBookmarks(query) {
+  const all = getAllBookmarks()
+  const lowerQuery = query.toLowerCase()
 
-  const tags = bookmark.tags || []
-  const filtered = tags.filter(t => t.toLowerCase() !== normalized)
-
-  return updateBookmark(db, bookmarkId, {
-    tags: filtered
+  return all.filter(bookmark => {
+    return (
+      bookmark.title.toLowerCase().includes(lowerQuery) ||
+      bookmark.description.toLowerCase().includes(lowerQuery) ||
+      bookmark.url.toLowerCase().includes(lowerQuery) ||
+      bookmark.tags.some(tag => tag.toLowerCase().includes(lowerQuery))
+    )
   })
+}
+
+// Helper functions
+
+function generateId() {
+  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+}
+
+function bookmarkToObject(id, ymap) {
+  return {
+    _id: id,
+    id: id,
+    type: 'bookmark',
+    url: ymap.get('url'),
+    title: ymap.get('title'),
+    description: ymap.get('description') || '',
+    tags: ymap.get('tags')?.toArray() || [],
+    readLater: ymap.get('readLater') || false,
+    favicon: ymap.get('favicon') || null,
+    preview: ymap.get('preview') || null,
+    createdAt: ymap.get('createdAt'),
+    updatedAt: ymap.get('updatedAt'),
+  }
 }

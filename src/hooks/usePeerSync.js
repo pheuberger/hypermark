@@ -4,7 +4,7 @@
  */
 
 import { signal } from '@preact/signals'
-import { useEffect } from 'preact/hooks'
+import { useEffect, useRef } from 'preact/hooks'
 import Peer from 'peerjs'
 import { getPeerJSId } from '../utils/device-id'
 import { getAllPairedDevices, updateDeviceLastSeen, getDevice } from '../services/device-registry'
@@ -31,6 +31,8 @@ const syncError = signal(null)
  * @returns {Object} - Sync state and methods
  */
 export function usePeerSync(db) {
+  const reconnectionTimeouts = useRef(new Set())
+
   useEffect(() => {
     if (!db) return
 
@@ -58,7 +60,7 @@ export function usePeerSync(db) {
           if (mounted) {
             syncState.value = 'connected'
             // Start connecting to paired devices
-            connectToPairedDevices(db, peer)
+            connectToPairedDevices(db, peer, reconnectionTimeouts)
           }
         })
 
@@ -103,6 +105,13 @@ export function usePeerSync(db) {
     // Cleanup on unmount
     return () => {
       mounted = false
+
+      // Clear all reconnection timeouts
+      if (reconnectionTimeouts.current) {
+        reconnectionTimeouts.current.forEach(clearTimeout)
+        reconnectionTimeouts.current.clear()
+      }
+
       if (peer && !peer.destroyed) {
         // Close all connections
         const devices = connectedDevices.value
@@ -131,14 +140,14 @@ export function usePeerSync(db) {
 /**
  * Connect to all paired devices
  */
-async function connectToPairedDevices(db, peer) {
+async function connectToPairedDevices(db, peer, reconnectionTimeouts) {
   try {
     const devices = await getAllPairedDevices(db)
     console.log('[usePeerSync] Connecting to', devices.length, 'paired devices')
 
     for (const device of devices) {
       try {
-        await connectToDevice(db, peer, device)
+        await connectToDevice(db, peer, device, reconnectionTimeouts)
       } catch (err) {
         console.error('[usePeerSync] Failed to connect to', device.deviceName, err)
       }
@@ -151,7 +160,12 @@ async function connectToPairedDevices(db, peer) {
 /**
  * Connect to a specific device
  */
-async function connectToDevice(db, peer, deviceInfo) {
+async function connectToDevice(db, peer, deviceInfo, reconnectionTimeouts) {
+  if (!db) {
+    console.error('[usePeerSync] Cannot connect: database not available')
+    return
+  }
+
   const { deviceId, peerID, deviceName } = deviceInfo
 
   // Don't connect to ourselves
@@ -190,11 +204,15 @@ async function connectToDevice(db, peer, deviceInfo) {
     connectedDevices.value = new Map(connectedDevices.value) // Trigger signal update
 
     // Try to reconnect after delay
-    setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       if (peerInstance.value && !peerInstance.value.destroyed) {
-        connectToDevice(db, peerInstance.value, deviceInfo)
+        connectToDevice(db, peerInstance.value, deviceInfo, reconnectionTimeouts)
       }
     }, 10000)
+
+    if (reconnectionTimeouts && reconnectionTimeouts.current) {
+      reconnectionTimeouts.current.add(timeoutId)
+    }
   })
 
   conn.on('error', (err) => {
@@ -329,10 +347,18 @@ async function handleHelloMessage(db, conn, msg) {
 
   // Send ACK
   const deviceInfo = getDeviceInfo()
-  conn.send(createHelloAckMessage({
-    deviceId: deviceInfo.id,
-    deviceName: deviceInfo.name,
-  }))
+  try {
+    if (conn.open) {
+      conn.send(createHelloAckMessage({
+        deviceId: deviceInfo.id,
+        deviceName: deviceInfo.name,
+      }))
+    } else {
+      console.warn('[usePeerSync] Connection closed before sending HELLO_ACK')
+    }
+  } catch (err) {
+    console.error('[usePeerSync] Failed to send HELLO_ACK:', err)
+  }
 
   // TODO: Start sync protocol (next task)
 }

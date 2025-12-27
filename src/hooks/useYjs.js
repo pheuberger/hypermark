@@ -34,27 +34,10 @@ function initializeYjs(roomName = 'hypermark') {
   // Create awareness instance for presence/user info sharing
   awareness = new Awareness(ydoc)
 
-  // Setup WebRTC provider for P2P sync
-  // Start disconnected - will be enabled after device pairing
-  webrtcProvider = new WebrtcProvider(roomName, ydoc, {
-    signaling: ['wss://signaling.yjs.dev'], // Public signaling server
-    password: null, // We'll set this per-room for security
-    awareness: awareness, // Pass the awareness instance
-    maxConns: 20, // Max peer connections
-    filterBcConns: true, // Only connect to peers in same room
-    connect: false, // Don't connect automatically
-  })
-
-  webrtcProvider.on('status', ({ connected }) => {
-    console.log('[Yjs] WebRTC status:', connected ? 'connected' : 'disconnected')
-  })
-
-  webrtcProvider.on('peers', ({ added, removed }) => {
-    if (added.length) console.log('[Yjs] Peers added:', added)
-    if (removed.length) console.log('[Yjs] Peers removed:', removed)
-  })
-
-  console.log('[Yjs] WebRTC provider created (disconnected until pairing)')
+  // WebRTC provider will be created later during device pairing
+  // For now, just use local IndexedDB storage
+  webrtcProvider = null
+  console.log('[Yjs] Initialized with IndexedDB only (WebRTC will be enabled after pairing)')
 
   // Initialize data structures
   if (!ydoc.getMap('bookmarks').size) {
@@ -112,10 +95,32 @@ export function disconnectYjsWebRTC() {
 
 /**
  * Reconnect to WebRTC (after pairing)
+ * Creates provider if it doesn't exist yet
  */
 export function reconnectYjsWebRTC() {
-  if (webrtcProvider) {
+  if (!webrtcProvider && ydoc && awareness) {
+    // Create WebRTC provider for the first time
+    webrtcProvider = new WebrtcProvider('hypermark', ydoc, {
+      signaling: ['wss://signaling.yjs.dev'],
+      password: null, // Will be set by setYjsRoomPassword
+      awareness: awareness,
+      maxConns: 20,
+      filterBcConns: true,
+    })
+
+    webrtcProvider.on('status', ({ connected }) => {
+      console.log('[Yjs] WebRTC status:', connected ? 'connected' : 'disconnected')
+    })
+
+    webrtcProvider.on('peers', ({ added, removed }) => {
+      if (added.length) console.log('[Yjs] Peers added:', added)
+      if (removed.length) console.log('[Yjs] Peers removed:', removed)
+    })
+
+    console.log('[Yjs] WebRTC provider created and connecting')
+  } else if (webrtcProvider && !webrtcProvider.connected) {
     webrtcProvider.connect()
+    console.log('[Yjs] WebRTC reconnecting')
   }
 }
 

@@ -1,9 +1,6 @@
 import { useState, useEffect } from 'preact/hooks'
 import { BookmarkList } from './components/bookmarks'
 import PairingFlow from './components/pairing/PairingFlow'
-import ConnectionStatus from './components/sync/ConnectionStatus'
-import { useFireproof } from './hooks/useFireproof'
-import { usePeerSync } from './hooks/usePeerSync'
 
 // Placeholder component (will be implemented in Phase 2+)
 const BookmarksView = () => <BookmarkList />
@@ -50,14 +47,15 @@ const NavBar = ({ currentView, onNavigate }) => {
   )
 }
 
+// Connection status indicator (placeholder)
+const ConnectionStatus = () => (
+  <div className="fixed top-4 right-4 px-3 py-1 rounded-full text-xs font-medium bg-gray-300 text-gray-700">
+    Offline
+  </div>
+)
+
 export function App() {
   const [currentView, setCurrentView] = useState('bookmarks')
-
-  // Initialize Fireproof database
-  const { db } = useFireproof()
-
-  // Initialize P2P sync (always running in background)
-  usePeerSync(db)
 
   // View router
   const renderView = () => {
@@ -75,9 +73,7 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="fixed top-4 right-4 z-50">
-        <ConnectionStatus />
-      </div>
+      <ConnectionStatus />
       <NavBar currentView={currentView} onNavigate={setCurrentView} />
       <main className="max-w-4xl mx-auto pb-16">
         {renderView()}

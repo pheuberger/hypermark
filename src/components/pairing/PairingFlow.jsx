@@ -35,6 +35,8 @@ import {
   storeDeviceKeypair,
 } from '../../services/key-storage'
 import { getDeviceInfo, getPeerJSId } from '../../utils/device-id'
+import { addPairedDevice } from '../../services/device-registry'
+import { setYjsRoomPassword, reconnectYjsWebRTC } from '../../hooks/useYjs'
 
 // State machine constants
 const STATES = {
@@ -560,6 +562,21 @@ async function handlePairingComplete(msg) {
 
     console.log('LEK imported successfully')
 
+    // Store initiator's device metadata in Yjs
+    addPairedDevice({
+      deviceId: initiatorDeviceId,
+      deviceName: initiatorDeviceName,
+      peerID: session.value.peerID,
+      publicKey: identityPublicKey,
+    })
+    console.log('[PairingFlow] Stored initiator device in Yjs')
+
+    // Enable Yjs P2P sync with LEK as room password
+    const lekBase64 = await exportLEK(lek)
+    setYjsRoomPassword(lekBase64)
+    reconnectYjsWebRTC()
+    console.log('[PairingFlow] Yjs P2P sync enabled with shared LEK')
+
     // Generate/retrieve our device keypair
     let deviceKeypair = await retrieveDeviceKeypair()
     if (!deviceKeypair) {
@@ -594,8 +611,21 @@ async function handlePairingAck(msg) {
 
   console.log('Pairing acknowledged by:', deviceName)
 
-  // Store responder's device metadata
-  // (Will be synced to Fireproof in Phase 5)
+  // Store responder's device metadata in Yjs
+  addPairedDevice({
+    deviceId,
+    deviceName,
+    peerID: session.value.peerID,
+    publicKey: identityPublicKey,
+  })
+  console.log('[PairingFlow] Stored responder device in Yjs')
+
+  // Enable Yjs P2P sync with LEK as room password
+  const lek = await retrieveLEK()
+  const lekBase64 = await exportLEK(lek)
+  setYjsRoomPassword(lekBase64)
+  reconnectYjsWebRTC()
+  console.log('[PairingFlow] Yjs P2P sync enabled with shared LEK')
 
   // Cleanup ephemeral keys
   cleanupEphemeralKeys()

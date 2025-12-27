@@ -51,10 +51,14 @@ export async function getAllPairedDevices(db) {
 /**
  * Get a specific device by ID
  * @param {Database} db - Fireproof database
- * @param {string} deviceId - Device ID
+ * @param {string} deviceId - Device ID (must be non-empty string)
  * @returns {Promise<Object|null>} - Device document or null
  */
 export async function getDevice(db, deviceId) {
+  if (!deviceId || typeof deviceId !== 'string') {
+    throw new Error('Invalid deviceId parameter')
+  }
+
   try {
     const doc = await db.get(`device:${deviceId}`)
     if (doc && doc.type === '_device' && !doc._deleted) {
@@ -72,10 +76,15 @@ export async function getDevice(db, deviceId) {
 /**
  * Update device last-seen timestamp
  * @param {Database} db - Fireproof database
- * @param {string} deviceId - Device ID
+ * @param {string} deviceId - Device ID (must be non-empty string)
  * @returns {Promise<void>}
+ * @note Silently does nothing if device doesn't exist (safe for concurrent updates)
  */
 export async function updateDeviceLastSeen(db, deviceId) {
+  if (!deviceId || typeof deviceId !== 'string') {
+    throw new Error('Invalid deviceId parameter')
+  }
+
   const device = await getDevice(db, deviceId)
   if (device) {
     await db.put({
@@ -88,12 +97,17 @@ export async function updateDeviceLastSeen(db, deviceId) {
 /**
  * Unpair a device (soft delete)
  * @param {Database} db - Fireproof database
- * @param {string} deviceId - Device ID
+ * @param {string} deviceId - Device ID (must be non-empty string)
  * @returns {Promise<void>}
  */
 export async function unpairDevice(db, deviceId) {
-  const device = await getDevice(db, deviceId)
-  if (device) {
-    await db.del(`device:${deviceId}`)
+  if (!deviceId || typeof deviceId !== 'string') {
+    throw new Error('Invalid deviceId parameter')
   }
+
+  const device = await getDevice(db, deviceId)
+  if (!device) {
+    throw new Error(`Device not found: ${deviceId}`)
+  }
+  await db.del(`device:${deviceId}`)
 }

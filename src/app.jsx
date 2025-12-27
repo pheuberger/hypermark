@@ -58,11 +58,8 @@ const ConnectionStatus = () => (
 export function App() {
   const [currentView, setCurrentView] = useState('bookmarks')
 
-  // Test Yjs initialization
-  const { doc, synced, bookmarks } = useYjs()
-  console.log('[App] Yjs doc:', doc)
-  console.log('[App] Synced:', synced)
-  console.log('[App] Bookmarks:', bookmarks.size)
+  // Initialize Yjs
+  useYjs()
 
   // View router
   const renderView = () => {

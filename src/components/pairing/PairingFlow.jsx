@@ -35,6 +35,8 @@ import {
   storeDeviceKeypair,
 } from '../../services/key-storage'
 import { getDeviceInfo, getPeerJSId } from '../../utils/device-id'
+import { addPairedDevice } from '../../services/device-registry'
+import { useFireproof } from '../../hooks/useFireproof'
 
 // State machine constants
 const STATES = {
@@ -67,8 +69,18 @@ const verificationWords = signal(null)
 const ephemeralKeypair = signal(null)
 const sessionKey = signal(null)
 const peer = signal(null)
+const db = signal(null)
 
 export default function PairingFlow() {
+  const { db: dbInstance } = useFireproof()
+
+  // Set db signal when database is ready
+  useEffect(() => {
+    if (dbInstance) {
+      db.value = dbInstance
+    }
+  }, [dbInstance])
+
   // Cleanup PeerJS connection on component unmount
   useEffect(() => {
     return cleanupPairingState
@@ -567,6 +579,21 @@ async function handlePairingComplete(msg) {
       await storeDeviceKeypair(deviceKeypair)
     }
 
+    // Store initiator's device metadata in Fireproof
+    if (db.value) {
+      try {
+        await addPairedDevice(db.value, {
+          deviceId: initiatorDeviceId,
+          deviceName: initiatorDeviceName,
+          peerID: connection.value.peer, // The PeerJS ID of the initiator
+          publicKey: identityPublicKey,
+        })
+        console.log('Device registered:', initiatorDeviceName)
+      } catch (err) {
+        console.error('Failed to register device:', err)
+      }
+    }
+
     // Send acknowledgment
     const ourPublicKey = await exportPublicKey(deviceKeypair.publicKey)
     connection.value.send({
@@ -594,8 +621,20 @@ async function handlePairingAck(msg) {
 
   console.log('Pairing acknowledged by:', deviceName)
 
-  // Store responder's device metadata
-  // (Will be synced to Fireproof in Phase 5)
+  // Store responder's device metadata in Fireproof
+  if (db.value) {
+    try {
+      await addPairedDevice(db.value, {
+        deviceId,
+        deviceName,
+        peerID: connection.value.peer, // The PeerJS ID of the responder
+        publicKey: identityPublicKey,
+      })
+      console.log('Device registered:', deviceName)
+    } catch (err) {
+      console.error('Failed to register device:', err)
+    }
+  }
 
   // Cleanup ephemeral keys
   cleanupEphemeralKeys()

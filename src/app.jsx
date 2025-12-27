@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'preact/hooks'
 import { BookmarkList } from './components/bookmarks'
 import PairingFlow from './components/pairing/PairingFlow'
+import { useYjs } from './hooks/useYjs'
 
 // Placeholder component (will be implemented in Phase 2+)
 const BookmarksView = () => <BookmarkList />
@@ -56,6 +57,12 @@ const ConnectionStatus = () => (
 
 export function App() {
   const [currentView, setCurrentView] = useState('bookmarks')
+
+  // Test Yjs initialization
+  const { doc, synced, bookmarks } = useYjs()
+  console.log('[App] Yjs doc:', doc)
+  console.log('[App] Synced:', synced)
+  console.log('[App] Bookmarks:', bookmarks.size)
 
   // View router
   const renderView = () => {

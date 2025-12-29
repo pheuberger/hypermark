@@ -1,5 +1,7 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@plugin "daisyui";
 
-/* DaisyUI handles all component styling, so we don't need custom classes here */
+@theme {
+  --color-primary: #0ea5e9;
+  --color-secondary: #8b5cf6;
+}

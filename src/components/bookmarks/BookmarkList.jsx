@@ -13,7 +13,6 @@ import {
   updateBookmark,
   deleteBookmark,
   toggleReadLater,
-  getAllTags,
 } from '../../services/bookmarks'
 
 /**
@@ -61,17 +60,6 @@ export function BookmarkList() {
 
   // Apply search filter
   const searchedBookmarks = useSearch(bookmarks, debouncedSearchQuery)
-
-  // Get all unique tags from bookmarks
-  const allTags = useMemo(() => {
-    const tagSet = new Set()
-    bookmarks.forEach((bookmark) => {
-      if (Array.isArray(bookmark.tags)) {
-        bookmark.tags.forEach((tag) => tagSet.add(tag))
-      }
-    })
-    return Array.from(tagSet).sort()
-  }, [bookmarks])
 
   // Filter bookmarks
   const filteredBookmarks = useMemo(() => {

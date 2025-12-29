@@ -3,6 +3,7 @@ import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { Input, TextArea } from '../ui/Input'
 import { Tag } from '../ui/Tag'
+import { Plus } from '../ui/Icons'
 
 /**
  * Bookmark add/edit form in modal
@@ -199,16 +200,17 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
               onKeyPress={handleTagKeyPress}
               placeholder="Add a tag..."
               disabled={loading}
-              className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
+              className="input input-bordered flex-1"
             />
-            <Button
+            <button
               type="button"
-              variant="secondary"
               onClick={addTag}
               disabled={loading || !tagInput.trim()}
+              className="btn btn-secondary btn-square"
+              aria-label="Add tag"
             >
-              Add
-            </Button>
+              <Plus className="w-5 h-5" />
+            </button>
           </div>
 
           {/* Display tags */}
@@ -237,20 +239,16 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
               checked={formData.readLater}
               onChange={(e) => updateField('readLater', e.target.checked)}
               disabled={loading}
-              className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary"
+              className="checkbox checkbox-primary"
             />
-            <span className="text-sm text-gray-700 dark:text-gray-300">
-              Mark as read later
-            </span>
+            <span className="text-sm">Mark as read later</span>
           </label>
         </div>
 
         {/* Submit error */}
         {errors.submit && (
-          <div className="mb-4 p-3 bg-red-50 dark:bg-red-900 border border-red-200 dark:border-red-700 rounded-lg">
-            <p className="text-sm text-red-600 dark:text-red-400">
-              {errors.submit}
-            </p>
+          <div className="alert alert-error mb-4">
+            <span>{errors.submit}</span>
           </div>
         )}
 

@@ -6,6 +6,7 @@ import { BookmarkForm } from './BookmarkForm'
 import { BookmarkSearch } from './BookmarkSearch'
 import { Button } from '../ui/Button'
 import { Tag } from '../ui/Tag'
+import { PackageOpen } from '../ui/Icons'
 import {
   getAllBookmarks,
   createBookmark,
@@ -166,8 +167,8 @@ export function BookmarkList() {
   if (!synced) {
     return (
       <div className="p-4 text-center">
-        <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-primary border-t-transparent"></div>
-        <p className="mt-2 text-gray-600 dark:text-gray-400">Loading bookmarks...</p>
+        <span className="loading loading-spinner loading-lg text-primary"></span>
+        <p className="mt-2 opacity-70">Loading bookmarks...</p>
       </div>
     )
   }
@@ -178,13 +179,9 @@ export function BookmarkList() {
       <>
         <div className="p-4">
           <div className="text-center py-12">
-            <div className="text-6xl mb-4">📚</div>
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-              Welcome to Hypermark!
-            </h2>
-            <p className="text-gray-600 dark:text-gray-400 mb-6">
-              Start by adding your first bookmark.
-            </p>
+            <PackageOpen className="w-16 h-16 mx-auto mb-4 opacity-50" />
+            <h2 className="text-2xl font-bold mb-2">Welcome to Hypermark!</h2>
+            <p className="opacity-70 mb-6">Start by adding your first bookmark.</p>
             <Button onClick={handleAddNew}>Add Bookmark</Button>
           </div>
         </div>
@@ -215,9 +212,9 @@ export function BookmarkList() {
         />
 
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+          <h1 className="text-2xl font-bold">
             Bookmarks
-            <span className="ml-2 text-sm font-normal text-gray-500">
+            <span className="ml-2 text-sm font-normal opacity-60">
               ({filteredBookmarks.length})
             </span>
           </h1>
@@ -228,11 +225,7 @@ export function BookmarkList() {
         <div className="flex flex-wrap items-center gap-2 mb-4">
           <button
             onClick={clearFilter}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              filterView === 'all'
-                ? 'bg-primary text-white'
-                : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
-            }`}
+            className={`btn btn-sm ${filterView === 'all' ? 'btn-primary' : 'btn-ghost'}`}
           >
             All
           </button>
@@ -241,13 +234,9 @@ export function BookmarkList() {
               setFilterView('read-later')
               setSelectedTag(null)
             }}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              filterView === 'read-later'
-                ? 'bg-primary text-white'
-                : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
-            }`}
+            className={`btn btn-sm ${filterView === 'read-later' ? 'btn-primary' : 'btn-ghost'}`}
           >
-            🔖 Read Later
+            Read Later
           </button>
 
           {/* Active tag filter */}
@@ -264,7 +253,7 @@ export function BookmarkList() {
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
-            className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-primary"
+            className="select select-bordered select-sm"
           >
             <option value="recent">Recent First</option>
             <option value="oldest">Oldest First</option>
@@ -275,18 +264,16 @@ export function BookmarkList() {
         {/* Tag cloud */}
         {allTags.length > 0 && filterView !== 'tag' && (
           <div className="mb-4">
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-              Filter by tag:
-            </p>
+            <p className="text-sm opacity-70 mb-2">Filter by tag:</p>
             <div className="flex flex-wrap gap-1">
               {allTags.map((tag) => (
-                <Tag
+                <span
                   key={tag}
                   onClick={() => handleTagClick(tag)}
-                  variant="gray"
+                  className="badge badge-secondary badge-md cursor-pointer hover:opacity-80"
                 >
                   {tag}
-                </Tag>
+                </span>
               ))}
             </div>
           </div>
@@ -296,9 +283,7 @@ export function BookmarkList() {
       {/* Bookmarks list */}
       {filteredBookmarks.length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-gray-600 dark:text-gray-400">
-            No bookmarks found.
-          </p>
+          <p className="opacity-70">No bookmarks found.</p>
           <Button onClick={clearFilter} variant="secondary" className="mt-4">
             Clear Filters
           </Button>

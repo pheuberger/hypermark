@@ -3,9 +3,9 @@ import { useYjs } from '../../hooks/useYjs'
 import { useSearch, useDebounce } from '../../hooks/useSearch'
 import { BookmarkItem } from './BookmarkItem'
 import { BookmarkForm } from './BookmarkForm'
-import { BookmarkSearch } from './BookmarkSearch'
+import { TagSidebar } from './TagSidebar'
+import { FilterBar } from './FilterBar'
 import { Button } from '../ui/Button'
-import { Tag } from '../ui/Tag'
 import { PackageOpen } from '../ui/Icons'
 import {
   getAllBookmarks,
@@ -163,12 +163,28 @@ export function BookmarkList() {
     setSearchQuery('')
   }
 
+  // Handle filter change from sidebar
+  const handleFilterChange = (view) => {
+    setFilterView(view)
+    setSelectedTag(null)
+  }
+
+  // Handle tag selection from sidebar
+  const handleTagSelect = (tag) => {
+    setFilterView('tag')
+    setSelectedTag(tag)
+  }
+
   // Loading state
   if (!synced) {
     return (
-      <div className="p-4 text-center">
-        <span className="loading loading-spinner loading-lg text-primary"></span>
-        <p className="mt-2 opacity-70">Loading bookmarks...</p>
+      <div className="flex h-screen">
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <span className="loading loading-spinner loading-lg text-primary"></span>
+            <p className="mt-2 opacity-70">Loading bookmarks...</p>
+          </div>
+        </div>
       </div>
     )
   }
@@ -176,9 +192,9 @@ export function BookmarkList() {
   // Empty state
   if (bookmarks.length === 0) {
     return (
-      <>
-        <div className="p-4">
-          <div className="text-center py-12">
+      <div className="flex h-screen">
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center py-12 px-4">
             <PackageOpen className="w-16 h-16 mx-auto mb-4 opacity-50" />
             <h2 className="text-2xl font-bold mb-2">Welcome to Hypermark!</h2>
             <p className="opacity-70 mb-6">Start by adding your first bookmark.</p>
@@ -186,7 +202,7 @@ export function BookmarkList() {
           </div>
         </div>
 
-        {/* Add/Edit form modal - must be outside conditional to always render */}
+        {/* Add/Edit form modal */}
         <BookmarkForm
           isOpen={isFormOpen}
           onClose={() => {
@@ -196,112 +212,61 @@ export function BookmarkList() {
           onSave={handleSave}
           initialData={editingBookmark}
         />
-      </>
+      </div>
     )
   }
 
   return (
-    <div className="p-4">
-      {/* Header with search and add button */}
-      <div className="mb-6">
-        {/* Search bar */}
-        <BookmarkSearch
-          value={searchQuery}
-          onChange={setSearchQuery}
+    <div className="flex h-screen overflow-hidden">
+      {/* Left Sidebar */}
+      <TagSidebar
+        bookmarks={bookmarks}
+        selectedFilter={filterView}
+        selectedTag={selectedTag}
+        onFilterChange={handleFilterChange}
+        onTagSelect={handleTagSelect}
+      />
+
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Filter Bar */}
+        <FilterBar
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          selectedFilter={filterView}
+          selectedTag={selectedTag}
+          onClearFilter={clearFilter}
+          sortBy={sortBy}
+          onSortChange={setSortBy}
           resultCount={filteredBookmarks.length}
+          onAddNew={handleAddNew}
         />
 
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-2xl font-bold">
-            Bookmarks
-            <span className="ml-2 text-sm font-normal opacity-60">
-              ({filteredBookmarks.length})
-            </span>
-          </h1>
-          <Button onClick={handleAddNew}>+ Add Bookmark</Button>
-        </div>
-
-        {/* View filters */}
-        <div className="flex flex-wrap items-center gap-2 mb-4">
-          <button
-            onClick={clearFilter}
-            className={`btn btn-sm ${filterView === 'all' ? 'btn-primary' : 'btn-ghost'}`}
-          >
-            All
-          </button>
-          <button
-            onClick={() => {
-              setFilterView('read-later')
-              setSelectedTag(null)
-            }}
-            className={`btn btn-sm ${filterView === 'read-later' ? 'btn-primary' : 'btn-ghost'}`}
-          >
-            Read Later
-          </button>
-
-          {/* Active tag filter */}
-          {filterView === 'tag' && selectedTag && (
-            <Tag variant="selected" onRemove={clearFilter}>
-              {selectedTag}
-            </Tag>
-          )}
-
-          {/* Spacer */}
-          <div className="flex-1"></div>
-
-          {/* Sort dropdown */}
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
-            className="select select-bordered select-sm"
-          >
-            <option value="recent">Recent First</option>
-            <option value="oldest">Oldest First</option>
-            <option value="title">By Title</option>
-          </select>
-        </div>
-
-        {/* Tag cloud */}
-        {allTags.length > 0 && filterView !== 'tag' && (
-          <div className="mb-4">
-            <p className="text-sm opacity-70 mb-2">Filter by tag:</p>
-            <div className="flex flex-wrap gap-1">
-              {allTags.map((tag) => (
-                <span
-                  key={tag}
-                  onClick={() => handleTagClick(tag)}
-                  className="badge badge-secondary badge-md cursor-pointer hover:opacity-80"
-                >
-                  {tag}
-                </span>
+        {/* Bookmarks List */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {filteredBookmarks.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="opacity-70">No bookmarks found.</p>
+              <Button onClick={clearFilter} variant="secondary" className="mt-4">
+                Clear Filters
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4 max-w-4xl mx-auto">
+              {filteredBookmarks.map((bookmark) => (
+                <BookmarkItem
+                  key={bookmark._id}
+                  bookmark={bookmark}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                  onToggleReadLater={handleToggleReadLater}
+                  onTagClick={handleTagClick}
+                />
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
-
-      {/* Bookmarks list */}
-      {filteredBookmarks.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="opacity-70">No bookmarks found.</p>
-          <Button onClick={clearFilter} variant="secondary" className="mt-4">
-            Clear Filters
-          </Button>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {filteredBookmarks.map((bookmark) => (
-            <BookmarkItem
-              key={bookmark._id}
-              bookmark={bookmark}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-              onToggleReadLater={handleToggleReadLater}
-              onTagClick={handleTagClick}
-            />
-          ))}
-        </div>
-      )}
 
       {/* Add/Edit form modal */}
       <BookmarkForm

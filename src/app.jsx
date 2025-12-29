@@ -71,10 +71,10 @@ export function App() {
   }
 
   return (
-    <div className="min-h-screen bg-base-300">
+    <div className="min-h-screen bg-base-300 flex flex-col">
       <ConnectionStatus />
       <NavBar currentView={currentView} onNavigate={setCurrentView} />
-      <main className="max-w-4xl mx-auto pb-16">
+      <main className="flex-1 overflow-hidden">
         {renderView()}
       </main>
     </div>

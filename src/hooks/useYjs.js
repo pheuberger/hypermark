@@ -10,7 +10,7 @@ import { WebrtcProvider } from 'y-webrtc'
 import { IndexeddbPersistence } from 'y-indexeddb'
 import { Awareness } from 'y-protocols/awareness'
 import { retrieveLEK } from '../services/key-storage'
-import { exportLEK, arrayBufferToBase64 } from '../services/crypto'
+import { deriveYjsPassword } from '../services/crypto'
 
 // Singleton Yjs doc (shared across app)
 let ydoc = null
@@ -71,12 +71,11 @@ async function autoReconnectWebRTC() {
 
     console.log('[Yjs] LEK found, auto-reconnecting to WebRTC...')
 
-    // Export LEK and convert to base64 for Yjs room password
-    const lekForYjs = await exportLEK(lek)
-    const lekBase64 = arrayBufferToBase64(lekForYjs)
+    // Derive Yjs password from LEK (not raw LEK)
+    const yjsPassword = await deriveYjsPassword(lek)
 
-    // Reconnect to WebRTC with LEK as password
-    reconnectYjsWebRTC(lekBase64)
+    // Reconnect to WebRTC with derived password
+    reconnectYjsWebRTC(yjsPassword)
   } catch (err) {
     console.error('[Yjs] Auto-reconnect failed:', err)
     // Don't throw - this is a best-effort operation

@@ -9,6 +9,7 @@ import { webrtcProviderSignal } from '../../hooks/useYjs'
 export default function ConnectionStatus() {
   const [connected, setConnected] = useState(false)
   const [peerCount, setPeerCount] = useState(0)
+  const [synced, setSynced] = useState(false)
 
   useEffect(() => {
     const provider = webrtcProviderSignal.value
@@ -25,40 +26,47 @@ export default function ConnectionStatus() {
       setPeerCount(webrtcPeers ? webrtcPeers.length : 0)
     }
 
+    const handleSynced = ({ synced }) => {
+      setSynced(synced)
+    }
+
     provider.on('status', handleStatus)
     provider.on('peers', handlePeers)
+    provider.on('synced', handleSynced)
 
     // Get initial state
     setConnected(provider.connected || false)
     setPeerCount(provider.room?.webrtcConns?.size || 0)
+    setSynced(provider.synced || false)
 
     return () => {
       provider.off('status', handleStatus)
       provider.off('peers', handlePeers)
+      provider.off('synced', handleSynced)
     }
   }, [webrtcProviderSignal.value])
 
+  // Don't show badge when offline
+  if (!webrtcProviderSignal.value || !connected || peerCount === 0) {
+    return null
+  }
+
   const getBadgeStyle = () => {
-    if (!webrtcProviderSignal.value) return 'bg-gray-100 text-gray-700'
-    if (connected && peerCount > 0) return 'bg-green-100 text-green-800'
-    if (connected) return 'bg-yellow-100 text-yellow-800'
-    return 'bg-gray-100 text-gray-700'
+    if (synced) return 'bg-green-100 text-green-800'
+    return 'bg-yellow-100 text-yellow-800'
   }
 
   const getStatusText = () => {
-    if (!webrtcProviderSignal.value) return 'Offline'
-    if (connected && peerCount > 0) {
-      return `Syncing (${peerCount} peer${peerCount !== 1 ? 's' : ''})`
+    const peerText = `${peerCount} peer${peerCount !== 1 ? 's' : ''}`
+    if (synced) {
+      return `Synced (${peerText})`
     }
-    if (connected) return 'Online (no peers)'
-    return 'Offline'
+    return `Syncing (${peerText})`
   }
 
   const getIcon = () => {
-    if (!webrtcProviderSignal.value) return '○'
-    if (connected && peerCount > 0) return '●'
-    if (connected) return '◐'
-    return '○'
+    if (synced) return '●'
+    return '◐'
   }
 
   return (

@@ -621,12 +621,12 @@ async function handlePairingAck(msg) {
   })
   console.log('[PairingFlow] Stored responder device in Yjs')
 
-  // Enable Yjs P2P sync with LEK as room password
+  // Enable Yjs P2P sync with derived password (not raw LEK)
   const lek = await retrieveLEK()
-  const lekBase64 = await exportLEK(lek)
-  setYjsRoomPassword(lekBase64)
+  const yjsPassword = await deriveYjsPassword(lek)
+  setYjsRoomPassword(yjsPassword)
   reconnectYjsWebRTC()
-  console.log('[PairingFlow] Yjs P2P sync enabled with shared LEK')
+  console.log('[PairingFlow] Yjs P2P sync enabled with derived password')
 
   // Cleanup ephemeral keys
   cleanupEphemeralKeys()

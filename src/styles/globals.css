@@ -1,7 +1,0 @@
-@import "tailwindcss";
-@plugin "daisyui";
-
-@theme {
-  --color-primary: #0ea5e9;
-  --color-secondary: #8b5cf6;
-}

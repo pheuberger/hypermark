@@ -9,6 +9,7 @@ export {
   Bookmark,
   BookmarkPlus,
   BookOpenCheck,
+  BookmarkCheck,
   Plus,
   Edit,
   Trash2,
@@ -20,4 +21,5 @@ export {
   ChevronDown,
   Menu,
   Check,
+  ArrowUpDown,
 } from 'lucide-preact'

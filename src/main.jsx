@@ -1,5 +1,5 @@
-import { render } from 'preact'
-import './styles/globals.css'
-import { App } from './app.jsx'
+import { render } from "preact";
+import "./app.css";
+import { App } from "./app.jsx";
 
-render(<App />, document.getElementById('app'))
+render(<App />, document.getElementById("app"));

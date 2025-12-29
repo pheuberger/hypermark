@@ -4,14 +4,17 @@
  */
 
 import { useEffect, useState } from 'preact/hooks'
+import { signal } from '@preact/signals'
 import * as Y from 'yjs'
 import { WebrtcProvider } from 'y-webrtc'
 import { IndexeddbPersistence } from 'y-indexeddb'
 import { Awareness } from 'y-protocols/awareness'
+import { retrieveLEK } from '../services/key-storage'
+import { exportLEK, arrayBufferToBase64 } from '../services/crypto'
 
 // Singleton Yjs doc (shared across app)
 let ydoc = null
-let webrtcProvider = null
+const webrtcProviderSignal = signal(null)
 let indexeddbProvider = null
 let awareness = null
 
@@ -36,7 +39,7 @@ function initializeYjs(roomName = 'hypermark') {
 
   // WebRTC provider will be created later during device pairing
   // For now, just use local IndexedDB storage
-  webrtcProvider = null
+  webrtcProviderSignal.value = null
   console.log('[Yjs] Initialized with IndexedDB only (WebRTC will be enabled after pairing)')
 
   // Initialize data structures
@@ -48,6 +51,39 @@ function initializeYjs(roomName = 'hypermark') {
 }
 
 /**
+ * Auto-reconnect to WebRTC if device is already paired
+ * Checks for LEK in storage and reconnects if found
+ */
+async function autoReconnectWebRTC() {
+  try {
+    // Check if WebRTC is already connected
+    if (webrtcProviderSignal.value) {
+      console.log('[Yjs] WebRTC already connected, skipping auto-reconnect')
+      return
+    }
+
+    // Check if LEK exists (device is paired)
+    const lek = await retrieveLEK()
+    if (!lek) {
+      console.log('[Yjs] No LEK found, device not yet paired')
+      return
+    }
+
+    console.log('[Yjs] LEK found, auto-reconnecting to WebRTC...')
+
+    // Export LEK and convert to base64 for Yjs room password
+    const lekForYjs = await exportLEK(lek)
+    const lekBase64 = arrayBufferToBase64(lekForYjs)
+
+    // Reconnect to WebRTC with LEK as password
+    reconnectYjsWebRTC(lekBase64)
+  } catch (err) {
+    console.error('[Yjs] Auto-reconnect failed:', err)
+    // Don't throw - this is a best-effort operation
+  }
+}
+
+/**
  * Hook to access Yjs document
  */
 export function useYjs() {
@@ -55,13 +91,13 @@ export function useYjs() {
   const [synced, setSynced] = useState(false)
 
   useEffect(() => {
-    // Wait for IndexedDB to sync
-    const handleSynced = () => setSynced(true)
-    indexeddbProvider?.on('synced', handleSynced)
+    // Use whenSynced promise - resolves immediately if already synced
+    indexeddbProvider?.whenSynced.then(() => {
+      setSynced(true)
+    })
 
-    return () => {
-      indexeddbProvider?.off('synced', handleSynced)
-    }
+    // Auto-reconnect to WebRTC if LEK exists (device is already paired)
+    autoReconnectWebRTC()
   }, [])
 
   return {
@@ -78,8 +114,8 @@ export function useYjs() {
  * Call this after device pairing with shared secret
  */
 export function setYjsRoomPassword(password) {
-  if (webrtcProvider) {
-    webrtcProvider.password = password
+  if (webrtcProviderSignal.value) {
+    webrtcProviderSignal.value.password = password
     console.log('[Yjs] Room password set')
   }
 }
@@ -88,40 +124,60 @@ export function setYjsRoomPassword(password) {
  * Disconnect from WebRTC (for pairing flow)
  */
 export function disconnectYjsWebRTC() {
-  if (webrtcProvider) {
-    webrtcProvider.disconnect()
+  if (webrtcProviderSignal.value) {
+    webrtcProviderSignal.value.disconnect()
   }
 }
 
 /**
  * Reconnect to WebRTC (after pairing)
  * Creates provider if it doesn't exist yet
+ * @param {string} password - Optional room password (for initial creation)
  */
-export function reconnectYjsWebRTC() {
-  if (!webrtcProvider && ydoc && awareness) {
+export function reconnectYjsWebRTC(password = null) {
+  if (!webrtcProviderSignal.value && ydoc && awareness) {
     // Create WebRTC provider for the first time
-    webrtcProvider = new WebrtcProvider('hypermark', ydoc, {
-      signaling: ['wss://signaling.yjs.dev'],
-      password: null, // Will be set by setYjsRoomPassword
+    const signalingUrl = import.meta.env.VITE_SIGNALING_URL || 'ws://localhost:4444'
+    console.log('[Yjs] Creating WebRTC provider with password:', password ? `${password.substring(0, 20)}...` : 'null')
+    console.log('[Yjs] Password type:', typeof password, 'length:', password?.length)
+    console.log('[Yjs] Signaling server:', signalingUrl)
+    const provider = new WebrtcProvider('hypermark', ydoc, {
+      signaling: [signalingUrl],
+      password: password, // Use provided password if available
       awareness: awareness,
       maxConns: 20,
       filterBcConns: true,
     })
 
-    webrtcProvider.on('status', ({ connected }) => {
+    provider.on('status', ({ connected }) => {
       console.log('[Yjs] WebRTC status:', connected ? 'connected' : 'disconnected')
     })
 
-    webrtcProvider.on('peers', ({ added, removed }) => {
+    provider.on('peers', ({ added, removed }) => {
       if (added.length) console.log('[Yjs] Peers added:', added)
       if (removed.length) console.log('[Yjs] Peers removed:', removed)
     })
 
+    // Add error handler to catch connection issues
+    provider.on('synced', ({ synced }) => {
+      console.log('[Yjs] WebRTC synced:', synced)
+    })
+
+    // Update signal to trigger reactivity
+    webrtcProviderSignal.value = provider
     console.log('[Yjs] WebRTC provider created and connecting')
-  } else if (webrtcProvider && !webrtcProvider.connected) {
-    webrtcProvider.connect()
+  } else if (webrtcProviderSignal.value && !webrtcProviderSignal.value.connected) {
+    webrtcProviderSignal.value.connect()
     console.log('[Yjs] WebRTC reconnecting')
   }
 }
 
-export { ydoc, webrtcProvider, indexeddbProvider, awareness }
+/**
+ * Get the current ydoc instance
+ * Returns null if not initialized
+ */
+export function getYdocInstance() {
+  return ydoc
+}
+
+export { ydoc, webrtcProviderSignal, indexeddbProvider, awareness }

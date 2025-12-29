@@ -4,7 +4,16 @@
  */
 
 import * as Y from 'yjs'
-import { ydoc } from '../hooks/useYjs'
+import { getYdocInstance } from '../hooks/useYjs'
+
+// Helper to get ydoc instance
+function getYdoc() {
+  const doc = getYdocInstance()
+  if (!doc) {
+    throw new Error('[Bookmarks] Yjs not initialized')
+  }
+  return doc
+}
 
 /**
  * Normalize URL to canonical form
@@ -95,7 +104,7 @@ export function validateBookmark(data) {
  * Get all bookmarks as array
  */
 export function getAllBookmarks() {
-  const bookmarksMap = ydoc.getMap('bookmarks')
+  const bookmarksMap = getYdoc().getMap('bookmarks')
   const bookmarks = []
 
   for (const [id, bookmark] of bookmarksMap.entries()) {
@@ -110,7 +119,7 @@ export function getAllBookmarks() {
  * Get single bookmark by ID
  */
 export function getBookmark(id) {
-  const bookmarksMap = ydoc.getMap('bookmarks')
+  const bookmarksMap = getYdoc().getMap('bookmarks')
   const bookmark = bookmarksMap.get(id)
 
   if (!bookmark) {
@@ -144,7 +153,7 @@ export function createBookmark(bookmarkData) {
   ])
 
   // Add to bookmarks map
-  const bookmarksMap = ydoc.getMap('bookmarks')
+  const bookmarksMap = getYdoc().getMap('bookmarks')
   bookmarksMap.set(id, bookmark)
 
   console.log('[Bookmarks] Created:', id)
@@ -155,7 +164,7 @@ export function createBookmark(bookmarkData) {
  * Update existing bookmark
  */
 export function updateBookmark(id, updates) {
-  const bookmarksMap = ydoc.getMap('bookmarks')
+  const bookmarksMap = getYdoc().getMap('bookmarks')
   const bookmark = bookmarksMap.get(id)
 
   if (!bookmark) {
@@ -192,7 +201,7 @@ export function updateBookmark(id, updates) {
  * Delete bookmark
  */
 export function deleteBookmark(id) {
-  const bookmarksMap = ydoc.getMap('bookmarks')
+  const bookmarksMap = getYdoc().getMap('bookmarks')
 
   if (!bookmarksMap.has(id)) {
     throw new Error(`Bookmark not found: ${id}`)
@@ -206,7 +215,7 @@ export function deleteBookmark(id) {
  * Toggle read-later status
  */
 export function toggleReadLater(id) {
-  const bookmarksMap = ydoc.getMap('bookmarks')
+  const bookmarksMap = getYdoc().getMap('bookmarks')
   const bookmark = bookmarksMap.get(id)
 
   if (!bookmark) {
@@ -225,7 +234,7 @@ export function toggleReadLater(id) {
  * Add tag to bookmark
  */
 export function addTag(id, tag) {
-  const bookmarksMap = ydoc.getMap('bookmarks')
+  const bookmarksMap = getYdoc().getMap('bookmarks')
   const bookmark = bookmarksMap.get(id)
 
   if (!bookmark) {
@@ -251,7 +260,7 @@ export function addTag(id, tag) {
  * Remove tag from bookmark
  */
 export function removeTag(id, tag) {
-  const bookmarksMap = ydoc.getMap('bookmarks')
+  const bookmarksMap = getYdoc().getMap('bookmarks')
   const bookmark = bookmarksMap.get(id)
 
   if (!bookmark) {
@@ -307,7 +316,7 @@ export function getReadLaterBookmarks() {
  * Get all unique tags
  */
 export function getAllTags() {
-  const bookmarksMap = ydoc.getMap('bookmarks')
+  const bookmarksMap = getYdoc().getMap('bookmarks')
   const tagsSet = new Set()
 
   for (const [_, bookmark] of bookmarksMap.entries()) {

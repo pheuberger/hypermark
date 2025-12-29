@@ -4,14 +4,15 @@
  */
 
 import { useEffect, useState } from 'preact/hooks'
-import { webrtcProvider } from '../../hooks/useYjs'
+import { webrtcProviderSignal } from '../../hooks/useYjs'
 
 export default function ConnectionStatus() {
   const [connected, setConnected] = useState(false)
   const [peerCount, setPeerCount] = useState(0)
 
   useEffect(() => {
-    if (!webrtcProvider) {
+    const provider = webrtcProviderSignal.value
+    if (!provider) {
       // WebRTC not yet enabled (before pairing)
       return
     }
@@ -24,28 +25,28 @@ export default function ConnectionStatus() {
       setPeerCount(webrtcPeers ? webrtcPeers.length : 0)
     }
 
-    webrtcProvider.on('status', handleStatus)
-    webrtcProvider.on('peers', handlePeers)
+    provider.on('status', handleStatus)
+    provider.on('peers', handlePeers)
 
     // Get initial state
-    setConnected(webrtcProvider.connected || false)
-    setPeerCount(webrtcProvider.room?.webrtcConns?.size || 0)
+    setConnected(provider.connected || false)
+    setPeerCount(provider.room?.webrtcConns?.size || 0)
 
     return () => {
-      webrtcProvider.off('status', handleStatus)
-      webrtcProvider.off('peers', handlePeers)
+      provider.off('status', handleStatus)
+      provider.off('peers', handlePeers)
     }
-  }, [])
+  }, [webrtcProviderSignal.value])
 
   const getBadgeStyle = () => {
-    if (!webrtcProvider) return 'bg-gray-100 text-gray-700'
+    if (!webrtcProviderSignal.value) return 'bg-gray-100 text-gray-700'
     if (connected && peerCount > 0) return 'bg-green-100 text-green-800'
     if (connected) return 'bg-yellow-100 text-yellow-800'
     return 'bg-gray-100 text-gray-700'
   }
 
   const getStatusText = () => {
-    if (!webrtcProvider) return 'Offline'
+    if (!webrtcProviderSignal.value) return 'Offline'
     if (connected && peerCount > 0) {
       return `Syncing (${peerCount} peer${peerCount !== 1 ? 's' : ''})`
     }
@@ -54,7 +55,7 @@ export default function ConnectionStatus() {
   }
 
   const getIcon = () => {
-    if (!webrtcProvider) return '○'
+    if (!webrtcProviderSignal.value) return '○'
     if (connected && peerCount > 0) return '●'
     if (connected) return '◐'
     return '○'

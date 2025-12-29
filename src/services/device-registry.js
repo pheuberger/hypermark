@@ -4,12 +4,23 @@
  */
 
 import * as Y from 'yjs'
-import { ydoc } from '../hooks/useYjs'
+import { getYdocInstance } from '../hooks/useYjs'
+
+// Helper to get ydoc, with better error message
+function getYdoc() {
+  const doc = getYdocInstance()
+  if (!doc) {
+    console.error('[DeviceRegistry] ydoc is null. App component must mount first to initialize Yjs.')
+    throw new Error('[DeviceRegistry] Yjs not initialized. This is a bug - App should initialize Yjs on mount.')
+  }
+  return doc
+}
 
 export function addPairedDevice(deviceInfo) {
   const { deviceId, deviceName, peerID, publicKey } = deviceInfo
 
-  const devicesMap = ydoc.getMap('devices')
+  const doc = getYdoc()
+  const devicesMap = doc.getMap('devices')
 
   const device = new Y.Map([
     ['deviceId', deviceId],
@@ -27,7 +38,8 @@ export function addPairedDevice(deviceInfo) {
 }
 
 export function getAllPairedDevices() {
-  const devicesMap = ydoc.getMap('devices')
+  const doc = getYdoc()
+  const devicesMap = doc.getMap('devices')
   const devices = []
 
   for (const [id, device] of devicesMap.entries()) {
@@ -38,7 +50,8 @@ export function getAllPairedDevices() {
 }
 
 export function getDevice(deviceId) {
-  const devicesMap = ydoc.getMap('devices')
+  const doc = getYdoc()
+  const devicesMap = doc.getMap('devices')
   const device = devicesMap.get(deviceId)
 
   if (!device) return null
@@ -46,7 +59,8 @@ export function getDevice(deviceId) {
 }
 
 export function updateDeviceLastSeen(deviceId) {
-  const devicesMap = ydoc.getMap('devices')
+  const doc = getYdoc()
+  const devicesMap = doc.getMap('devices')
   const device = devicesMap.get(deviceId)
 
   if (device) {
@@ -55,7 +69,8 @@ export function updateDeviceLastSeen(deviceId) {
 }
 
 export function unpairDevice(deviceId) {
-  const devicesMap = ydoc.getMap('devices')
+  const doc = getYdoc()
+  const devicesMap = doc.getMap('devices')
   devicesMap.delete(deviceId)
   console.log('[DeviceRegistry] Device unpaired:', deviceId)
 }

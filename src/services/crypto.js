@@ -392,3 +392,46 @@ export async function importLEK(rawKey, extractable = false) {
     throw new Error('Failed to import LEK: ' + error.message)
   }
 }
+
+/**
+ * Derive Yjs room password from LEK using HKDF
+ * This allows us to avoid exposing the raw LEK to the Yjs network layer
+ * The derived password is cryptographically different from the LEK (defense in depth)
+ * @param {CryptoKey} lek - LEK to derive password from (must be extractable)
+ * @returns {Promise<string>} - Base64-encoded derived password
+ */
+export async function deriveYjsPassword(lek) {
+  try {
+    // Export LEK to raw bytes (requires extractable=true)
+    const lekRaw = await crypto.subtle.exportKey('raw', lek)
+
+    // Import raw bytes as HKDF key material
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw',
+      lekRaw,
+      'HKDF',
+      false, // not extractable (only used for this derivation)
+      ['deriveBits']
+    )
+
+    // Derive password using HKDF with fixed info (domain separator)
+    // All devices with same LEK will derive the same password
+    const info = new TextEncoder().encode('hypermark-yjs-room-password-v1')
+    const derivedBits = await crypto.subtle.deriveBits(
+      {
+        name: 'HKDF',
+        hash: 'SHA-256',
+        salt: new Uint8Array(32), // Zero salt is fine for high-entropy input
+        info: info, // Domain separator ensures derived key is different from LEK
+      },
+      keyMaterial,
+      256 // 256 bits output
+    )
+
+    // Convert to base64 for use as Yjs room password
+    return arrayBufferToBase64(derivedBits)
+  } catch (error) {
+    console.error('Failed to derive Yjs password:', error)
+    throw new Error('Failed to derive Yjs password: ' + error.message)
+  }
+}

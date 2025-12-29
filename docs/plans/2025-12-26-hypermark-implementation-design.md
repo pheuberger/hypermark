@@ -666,7 +666,7 @@ function encodeShortCode(session) {
 - LEK never transmitted in plaintext
 - Session key derived from ECDH (perfect forward secrecy)
 - WebRTC DTLS provides additional transport encryption
-- Non-extractable keys prevent key export
+- Yjs room password derived from LEK using HKDF (defense in depth)
 
 **Authentication:**
 - Verification words prevent MITM during pairing
@@ -679,13 +679,22 @@ function encodeShortCode(session) {
 - AAD binds encryption to session and device IDs
 - Fireproof commits are content-addressed (tamper-evident)
 
+**Key Derivation for Yjs:**
+- Yjs room password derived from LEK using HKDF-SHA256
+- Derived password is deterministic (all devices derive same value from same LEK)
+- Yjs network layer never sees the actual LEK
+- Compromised Yjs password does not compromise bookmark encryption
+- Defense in depth: separate derived keys for separate purposes
+- Domain separator ensures derived key is cryptographically different from LEK
+
 **Threat Mitigation:**
-- **Network eavesdropper:** Cannot see LEK (encrypted with SK)
+- **Network eavesdropper:** Cannot see LEK (encrypted with SK); sees derived password but cannot reverse to LEK
 - **Compromised WiFi/Evil twin:** Verification words will differ
 - **Compromised PeerJS server:** Cannot decrypt pairing messages
 - **QR intercept:** Useless without verification confirmation
 - **Replay attack:** sessionId + expiry prevents reuse
 - **Device theft:** Revoke via device list, but local data remains (device security boundary)
+- **Yjs password leak:** Bookmark data remains protected (encrypted with LEK, not derived password)
 
 ---
 

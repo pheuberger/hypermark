@@ -561,9 +561,14 @@ async function handlePairingComplete(msg) {
       additionalData
     )
 
-    // Import LEK as non-extractable
-    const lek = await importLEK(lekRaw, false)
+    // Import LEK as extractable (needed for deriving Yjs password and pairing additional devices)
+    const lek = await importLEK(lekRaw, true)
     await storeLEK(lek)
+
+    // Derive Yjs room password from LEK (not raw LEK)
+    const yjsPassword = await deriveYjsPassword(lek)
+    setYjsRoomPassword(yjsPassword)
+    reconnectYjsWebRTC()
 
     // Generate/retrieve our device keypair
     let deviceKeypair = await retrieveDeviceKeypair()
@@ -593,6 +598,14 @@ async function handlePairingComplete(msg) {
   }
 }
 ```
+
+**Security Improvements:**
+- LEK is imported as extractable to support deriving Yjs password via HKDF
+- Yjs password is derived using HKDF-SHA256, not direct LEK export
+- This ensures the Yjs network layer never sees the raw LEK
+- Derived password cannot be reversed to obtain the LEK
+- Defense in depth: compromised Yjs password doesn't compromise bookmark encryption
+- All devices derive the same password (deterministic derivation with fixed domain separator)
 
 ### Acknowledgment Handler (Initiator)
 

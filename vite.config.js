@@ -5,6 +5,6 @@ import preact from '@preact/preset-vite'
 export default defineConfig({
   plugins: [preact()],
   server: {
-    allowedHosts: ['happily-eccentrical-venus.ngrok-free.dev']
+    allowedHosts: ['happily-eccentrical-venus.ngrok-free.dev', 'fubbedibubbbb.ngrok.app']
   }
 })

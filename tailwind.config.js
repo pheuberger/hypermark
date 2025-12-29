@@ -12,6 +12,10 @@ export default {
       },
     },
   },
-  plugins: [],
+  plugins: [require('daisyui')],
+  daisyui: {
+    themes: ['night', 'light'], // Use built-in themes
+    darkTheme: 'night',
+  },
 }
 

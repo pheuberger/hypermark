@@ -34,16 +34,7 @@ export function Input({
         placeholder={placeholder}
         required={required}
         disabled={disabled}
-        className={`
-          w-full px-3 py-2 border rounded-lg
-          focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent
-          disabled:bg-gray-100 disabled:cursor-not-allowed
-          dark:bg-gray-700 dark:border-gray-600 dark:text-white
-          ${error
-            ? 'border-red-500 focus:ring-red-500'
-            : 'border-gray-300 dark:border-gray-600'
-          }
-        `}
+        className={`input input-bordered w-full ${error ? 'input-error' : ''}`}
         {...props}
       />
       {error && (
@@ -89,16 +80,7 @@ export function TextArea({
         required={required}
         disabled={disabled}
         rows={rows}
-        className={`
-          w-full px-3 py-2 border rounded-lg
-          focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent
-          disabled:bg-gray-100 disabled:cursor-not-allowed
-          dark:bg-gray-700 dark:border-gray-600 dark:text-white
-          ${error
-            ? 'border-red-500 focus:ring-red-500'
-            : 'border-gray-300 dark:border-gray-600'
-          }
-        `}
+        className={`textarea textarea-bordered w-full ${error ? 'textarea-error' : ''}`}
         {...props}
       />
       {error && (

@@ -1,7 +1,8 @@
 import { useEffect } from 'preact/hooks'
+import { X } from './Icons'
 
 /**
- * Reusable modal dialog component
+ * Reusable modal dialog component using DaisyUI
  */
 export function Modal({ isOpen, onClose, title, children }) {
   // Close on ESC key
@@ -18,58 +19,31 @@ export function Modal({ isOpen, onClose, title, children }) {
     return () => document.removeEventListener('keydown', handleEscape)
   }, [isOpen, onClose])
 
-  // Prevent body scroll when modal is open
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = ''
-    }
-    return () => {
-      document.body.style.overflow = ''
-    }
-  }, [isOpen])
-
   if (!isOpen) return null
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-            {title}
-          </h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-            aria-label="Close"
-          >
-            <svg
-              className="w-6 h-6"
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+    <dialog className="modal modal-open">
+      <div className="modal-box max-w-2xl">
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
+          aria-label="Close"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
+        {/* Title */}
+        <h3 className="font-bold text-lg mb-4">{title}</h3>
 
         {/* Content */}
-        <div className="p-4 overflow-y-auto max-h-[calc(90vh-8rem)]">
-          {children}
-        </div>
+        <div className="py-4">{children}</div>
       </div>
-    </div>
+
+      {/* Backdrop */}
+      <form method="dialog" className="modal-backdrop">
+        <button onClick={onClose}>close</button>
+      </form>
+    </dialog>
   )
 }

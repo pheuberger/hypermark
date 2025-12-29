@@ -1,17 +1,20 @@
+import { X } from './Icons'
+
 /**
- * Tag chip component
+ * Tag chip component using DaisyUI badge
  */
 export function Tag({ children, onRemove, onClick, variant = 'default' }) {
+  // Map variants to DaisyUI badge classes
   const variants = {
-    default: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-    selected: 'bg-primary text-white',
-    gray: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200',
+    default: 'badge-primary',
+    selected: 'badge-accent',
+    gray: 'badge-secondary',
   }
 
   return (
     <span
       className={`
-        inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium
+        badge badge-lg gap-1
         ${variants[variant]}
         ${onClick ? 'cursor-pointer hover:opacity-80' : ''}
       `}
@@ -24,20 +27,10 @@ export function Tag({ children, onRemove, onClick, variant = 'default' }) {
             e.stopPropagation()
             onRemove()
           }}
-          className="ml-1 hover:text-red-600 transition-colors"
+          className="ml-1 hover:text-error transition-colors"
           aria-label="Remove tag"
         >
-          <svg
-            className="w-3 h-3"
-            fill="none"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path d="M6 18L18 6M6 6l12 12" />
-          </svg>
+          <X className="w-3 h-3" />
         </button>
       )}
     </span>

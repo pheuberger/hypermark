@@ -1,9 +1,11 @@
-import { X, ArrowUpDown } from '../ui/Icons'
+import { X, ArrowUpDown, Menu } from '../ui/Icons'
 import { Button } from '../ui/Button'
 
 /**
  * Horizontal filter bar with search, active filters, and sort controls
  * Linear-inspired design with DaisyUI styling
+ * Mobile: Shows menu button to toggle sidebar
+ * Desktop: Shows Add button
  */
 export function FilterBar({
   searchQuery,
@@ -15,13 +17,23 @@ export function FilterBar({
   onSortChange,
   resultCount,
   onAddNew,
+  onToggleSidebar,
 }) {
   const hasActiveFilter = selectedFilter !== 'all' || searchQuery
 
   return (
     <div className="sticky top-0 z-10 bg-base-100 border-b border-base-300 px-4 py-3 space-y-3">
-      {/* Top row: Search and Add button */}
+      {/* Top row: Menu button (mobile), Search, and Add button (desktop) */}
       <div className="flex items-center gap-3">
+        {/* Menu button (mobile only) */}
+        <button
+          onClick={onToggleSidebar}
+          className="lg:hidden btn btn-ghost btn-square flex-shrink-0"
+          aria-label="Open menu"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+
         {/* Search input */}
         <div className="flex-1 relative">
           <input
@@ -42,8 +54,8 @@ export function FilterBar({
           )}
         </div>
 
-        {/* Add bookmark button */}
-        <Button onClick={onAddNew} className="flex-shrink-0">
+        {/* Add bookmark button (desktop only) */}
+        <Button onClick={onAddNew} className="hidden lg:flex flex-shrink-0">
           + New
         </Button>
       </div>

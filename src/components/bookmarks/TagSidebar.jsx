@@ -1,11 +1,21 @@
-import { useMemo } from 'preact/hooks'
-import { Tag as TagIcon, Hash, BookmarkCheck, PackageOpen } from '../ui/Icons'
+import { useMemo, useEffect } from 'preact/hooks'
+import { Tag as TagIcon, Hash, BookmarkCheck, PackageOpen, X } from '../ui/Icons'
 
 /**
  * Fixed left sidebar with tag navigation and counts
  * Linear-inspired design with DaisyUI styling
+ * Mobile: Collapsible overlay
+ * Desktop: Always visible fixed sidebar
  */
-export function TagSidebar({ bookmarks, selectedFilter, selectedTag, onFilterChange, onTagSelect }) {
+export function TagSidebar({
+  bookmarks,
+  selectedFilter,
+  selectedTag,
+  onFilterChange,
+  onTagSelect,
+  isOpen,
+  onClose,
+}) {
   // Calculate tag counts
   const tagCounts = useMemo(() => {
     const counts = {}
@@ -37,21 +47,70 @@ export function TagSidebar({ bookmarks, selectedFilter, selectedTag, onFilterCha
   // Calculate total bookmarks
   const totalCount = bookmarks.length
 
+  // Handle filter change and close sidebar on mobile
+  const handleFilterChange = (view) => {
+    onFilterChange(view)
+    onClose()
+  }
+
+  // Handle tag selection and close sidebar on mobile
+  const handleTagSelect = (tag) => {
+    onTagSelect(tag)
+    onClose()
+  }
+
+  // Close sidebar on escape key
+  useEffect(() => {
+    const handleEscape = (e) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [isOpen, onClose])
+
   return (
-    <aside className="w-64 h-screen bg-base-200 border-r border-base-300 flex flex-col overflow-hidden">
-      {/* Header */}
-      <div className="p-4 border-b border-base-300">
-        <div className="flex items-center gap-2 text-xl font-bold">
-          <TagIcon className="w-6 h-6 text-primary" />
-          <span>Hypermark</span>
+    <>
+      {/* Mobile overlay backdrop */}
+      {isOpen && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black/50 z-30"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside
+        className={`
+          w-64 h-screen bg-base-200 border-r border-base-300 flex flex-col overflow-hidden
+          lg:relative lg:translate-x-0
+          fixed top-0 left-0 z-40 transition-transform duration-300
+          ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+        `}
+      >
+        {/* Header */}
+        <div className="p-4 border-b border-base-300 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-xl font-bold">
+            <TagIcon className="w-6 h-6 text-primary" />
+            <span>Hypermark</span>
+          </div>
+          {/* Close button (mobile only) */}
+          <button
+            onClick={onClose}
+            className="lg:hidden btn btn-ghost btn-sm btn-circle"
+            aria-label="Close sidebar"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
-      </div>
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-2">
         {/* All bookmarks */}
         <button
-          onClick={() => onFilterChange('all')}
+          onClick={() => handleFilterChange('all')}
           className={`w-full px-4 py-2 flex items-center justify-between text-left transition-colors ${
             selectedFilter === 'all'
               ? 'bg-primary/10 text-primary font-medium border-l-2 border-primary'
@@ -67,7 +126,7 @@ export function TagSidebar({ bookmarks, selectedFilter, selectedTag, onFilterCha
 
         {/* Read Later */}
         <button
-          onClick={() => onFilterChange('read-later')}
+          onClick={() => handleFilterChange('read-later')}
           className={`w-full px-4 py-2 flex items-center justify-between text-left transition-colors ${
             selectedFilter === 'read-later'
               ? 'bg-primary/10 text-primary font-medium border-l-2 border-primary'
@@ -95,7 +154,7 @@ export function TagSidebar({ bookmarks, selectedFilter, selectedTag, onFilterCha
             {sortedTags.map(({ tag, count }) => (
               <button
                 key={tag}
-                onClick={() => onTagSelect(tag)}
+                onClick={() => handleTagSelect(tag)}
                 className={`w-full px-4 py-2 flex items-center justify-between text-left transition-colors ${
                   selectedFilter === 'tag' && selectedTag === tag
                     ? 'bg-primary/10 text-primary font-medium border-l-2 border-primary'
@@ -113,12 +172,13 @@ export function TagSidebar({ bookmarks, selectedFilter, selectedTag, onFilterCha
         )}
       </nav>
 
-      {/* Footer with version or info */}
-      <div className="p-4 border-t border-base-300">
-        <p className="text-xs opacity-40 text-center">
-          {totalCount} {totalCount === 1 ? 'bookmark' : 'bookmarks'}
-        </p>
-      </div>
-    </aside>
+        {/* Footer with version or info */}
+        <div className="p-4 border-t border-base-300">
+          <p className="text-xs opacity-40 text-center">
+            {totalCount} {totalCount === 1 ? 'bookmark' : 'bookmarks'}
+          </p>
+        </div>
+      </aside>
+    </>
   )
 }

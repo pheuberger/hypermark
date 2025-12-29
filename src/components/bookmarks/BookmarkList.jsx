@@ -6,7 +6,7 @@ import { BookmarkForm } from './BookmarkForm'
 import { TagSidebar } from './TagSidebar'
 import { FilterBar } from './FilterBar'
 import { Button } from '../ui/Button'
-import { PackageOpen } from '../ui/Icons'
+import { PackageOpen, Plus } from '../ui/Icons'
 import {
   getAllBookmarks,
   createBookmark,
@@ -54,6 +54,7 @@ export function BookmarkList() {
   const [selectedTag, setSelectedTag] = useState(null)
   const [sortBy, setSortBy] = useState('recent') // 'recent', 'oldest', 'title'
   const [searchQuery, setSearchQuery] = useState('')
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false) // Mobile sidebar toggle
 
   // Debounce search query
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
@@ -217,7 +218,7 @@ export function BookmarkList() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden relative">
       {/* Left Sidebar */}
       <TagSidebar
         bookmarks={bookmarks}
@@ -225,6 +226,8 @@ export function BookmarkList() {
         selectedTag={selectedTag}
         onFilterChange={handleFilterChange}
         onTagSelect={handleTagSelect}
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
       />
 
       {/* Main Content Area */}
@@ -240,10 +243,11 @@ export function BookmarkList() {
           onSortChange={setSortBy}
           resultCount={filteredBookmarks.length}
           onAddNew={handleAddNew}
+          onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
         />
 
         {/* Bookmarks List */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-4 pb-20 lg:pb-4">
           {filteredBookmarks.length === 0 ? (
             <div className="text-center py-12">
               <p className="opacity-70">No bookmarks found.</p>
@@ -267,6 +271,15 @@ export function BookmarkList() {
           )}
         </div>
       </div>
+
+      {/* Floating Action Button (Mobile only) */}
+      <button
+        onClick={handleAddNew}
+        className="lg:hidden fixed bottom-6 right-6 btn btn-primary btn-circle btn-lg shadow-lg z-20"
+        aria-label="Add bookmark"
+      >
+        <Plus className="w-6 h-6" />
+      </button>
 
       {/* Add/Edit form modal */}
       <BookmarkForm

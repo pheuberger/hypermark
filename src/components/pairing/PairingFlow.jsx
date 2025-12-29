@@ -21,6 +21,7 @@ import {
   decryptData,
   exportLEK,
   importLEK,
+  deriveYjsPassword,
   generateUUID,
   generateRandomBytes,
   arrayBufferToBase64,
@@ -556,8 +557,8 @@ async function handlePairingComplete(msg) {
       additionalData
     )
 
-    // Import LEK as non-extractable
-    const lek = await importLEK(lekRaw, false)
+    // Import LEK as extractable (needed for deriving Yjs password)
+    const lek = await importLEK(lekRaw, true)
     await storeLEK(lek)
 
     console.log('LEK imported successfully')
@@ -571,11 +572,11 @@ async function handlePairingComplete(msg) {
     })
     console.log('[PairingFlow] Stored initiator device in Yjs')
 
-    // Enable Yjs P2P sync with LEK as room password
-    const lekBase64 = await exportLEK(lek)
-    setYjsRoomPassword(lekBase64)
+    // Enable Yjs P2P sync with derived password (not raw LEK)
+    const yjsPassword = await deriveYjsPassword(lek)
+    setYjsRoomPassword(yjsPassword)
     reconnectYjsWebRTC()
-    console.log('[PairingFlow] Yjs P2P sync enabled with shared LEK')
+    console.log('[PairingFlow] Yjs P2P sync enabled with derived password')
 
     // Generate/retrieve our device keypair
     let deviceKeypair = await retrieveDeviceKeypair()

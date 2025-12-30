@@ -108,15 +108,6 @@ export function BookmarkList() {
     }
   }
 
-  const handleToggleReadLater = (bookmarkId) => {
-    try {
-      toggleReadLater(bookmarkId)
-    } catch (error) {
-      console.error('Failed to toggle read later:', error)
-      alert('Failed to update bookmark: ' + error.message)
-    }
-  }
-
   const handleTagClick = (tag) => {
     setFilterView('tag')
     setSelectedTag(tag)

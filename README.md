@@ -98,7 +98,7 @@ WebRTC signaling server URL. Required for device-to-device sync.
 - **Frontend:** Preact + Vite
 - **Sync:** Yjs CRDTs with WebRTC for P2P sync
 - **Storage:** IndexedDB for local persistence
-- **Pairing:** PeerJS with end-to-end encryption using Web Crypto API
+- **Pairing:** y-webrtc signaling with end-to-end encryption using Web Crypto API
 
 ## Security
 

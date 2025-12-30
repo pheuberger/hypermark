@@ -25,7 +25,7 @@ Hypermark is a **local-first PWA** that enables users to manage bookmarks privat
 | **State/Sync** | Yjs CRDTs |
 | **P2P Transport** | y-webrtc (WebRTC data channels) |
 | **Local Storage** | y-indexeddb (IndexedDB persistence) |
-| **Pairing** | PeerJS + Web Crypto API |
+| **Pairing** | y-webrtc signaling + Web Crypto API |
 | **Search** | MiniSearch (client-side full-text) |
 | **QR Codes** | qrcode (generation) + qr-scanner (scanning) |
 | **Compression** | pako (for QR payloads) |
@@ -40,7 +40,6 @@ Hypermark is a **local-first PWA** that enables users to manage bookmarks privat
   "yjs": "^13.6.28",
   "y-webrtc": "^10.3.0",
   "y-indexeddb": "^9.0.12",
-  "peerjs": "^1.5.5",
   "minisearch": "^6.3.0",
   "daisyui": "^5.5.14",
   "tailwindcss": "^4.1.18"
@@ -126,6 +125,7 @@ src/
 │   ├── key-storage.js   # LEK storage/retrieval
 │   ├── device-registry.js # Paired device management
 │   ├── search-index.js  # MiniSearch setup
+│   ├── signaling.js     # WebSocket client for y-webrtc signaling
 │   └── wordlist.js      # BIP39 wordlist for verification
 │
 ├── utils/
@@ -286,12 +286,14 @@ const yjsPassword = await deriveYjsPassword(lek)
 
 ### Pairing Security
 
-1. QR contains: `peerId`, `ephemeral public key`, `timestamp`
-2. Devices perform ECDH key exchange
+1. QR contains: `sessionId`, `ephemeral public key`, `signalingUrl`, `deviceName`, `expires`
+2. Devices connect to same signaling room and perform ECDH key exchange
 3. Shared secret derives session key via HKDF
 4. Verification words shown on both devices (MITM protection)
 5. User confirms words match before LEK transfer
 6. Session expires after 5 minutes
+
+**Note**: Pairing uses the same y-webrtc signaling server as sync (single server architecture).
 
 ---
 

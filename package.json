@@ -16,7 +16,6 @@
     "lucide-preact": "^0.562.0",
     "minisearch": "^6.3.0",
     "pako": "^2.1.0",
-    "peerjs": "^1.5.5",
     "preact": "^10.28.1",
     "qr-scanner": "^1.4.2",
     "qrcode": "^1.5.4",

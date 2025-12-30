@@ -1,6 +1,6 @@
 import { Input as ShadcnInput } from './input'
 import { Label } from './label'
-import { cn } from '@/lib/utils'
+import { cn } from '@/utils/cn'
 
 export function Input({
   label,

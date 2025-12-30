@@ -1,6 +1,6 @@
 import { X } from './Icons'
 import { Badge } from './badge'
-import { cn } from '@/lib/utils'
+import { cn } from '@/utils/cn'
 
 export function Tag({ children, onRemove, onClick, variant = 'default' }) {
   const variants = {

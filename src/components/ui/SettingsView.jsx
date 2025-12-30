@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import PairingFlow from '../pairing/PairingFlow'
-import { cn } from '@/lib/utils'
+import { cn } from '@/utils/cn'
 import { subscribeToWebrtcProvider } from '../../hooks/useYjs'
 import { ChevronLeft } from 'lucide-react'
 import { SettingSection, SettingRow, SettingCard, SettingsContainer } from './SettingsLayout'

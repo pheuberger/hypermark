@@ -1,6 +1,4 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import QRCodeDisplay from './QRCodeDisplay'
-import QRScanner from './QRScanner'
 import { Button } from '../ui/Button'
 import { Loader2, Monitor, Smartphone, Check, X, AlertCircle } from '../ui/Icons'
 import { SettingCard, SettingSection, SettingRow } from '../ui/SettingsLayout'
@@ -17,12 +15,18 @@ import {
   exportLEK,
   importLEK,
   deriveYjsPassword,
-  generateUUID,
   arrayBufferToBase64,
   base64ToArrayBuffer,
   isWebCryptoAvailable,
 } from '../../services/crypto'
-import { deriveVerificationWords } from '../../services/wordlist'
+import {
+  generatePairingCode,
+  parsePairingCode,
+  getRoomName,
+  derivePSK,
+  encryptMessage,
+  decryptMessage,
+} from '../../services/pairing-code'
 import {
   retrieveLEK,
   storeLEK,
@@ -32,14 +36,14 @@ import {
 import { getDeviceInfo } from '../../utils/device-id'
 import { addPairedDevice } from '../../services/device-registry'
 import { reconnectYjsWebRTC } from '../../hooks/useYjs'
-import { SignalingClient, getPairingRoomName, getSignalingUrl } from '../../services/signaling'
+import { SignalingClient, getSignalingUrl } from '../../services/signaling'
 
 const STATES = {
   INITIAL: 'initial',
   GENERATING: 'generating',
-  SCANNING: 'scanning',
-  WAITING_FOR_PEER: 'waiting_for_peer',
-  VERIFYING: 'verifying',
+  ENTERING_CODE: 'entering_code',
+  CONNECTING: 'connecting',
+  KEY_EXCHANGE: 'key_exchange',
   TRANSFERRING: 'transferring',
   IMPORTING: 'importing',
   COMPLETE: 'complete',
@@ -47,139 +51,180 @@ const STATES = {
 }
 
 const MESSAGE_TYPES = {
-  ANNOUNCE: 'announce',
-  HANDSHAKE: 'handshake',
-  CONFIRMED: 'confirmed',
+  KEY_EXCHANGE: 'key-exchange',
+  KEY_EXCHANGE_RESPONSE: 'key-exchange-response',
   LEK_TRANSFER: 'lek-transfer',
   ACK: 'ack',
   ERROR: 'error',
 }
 
+const SESSION_TIMEOUT_MS = 300000
+
 export default function PairingFlow() {
   const [pairingState, setPairingState] = useState(STATES.INITIAL)
   const [role, setRole] = useState(null)
   const [error, setError] = useState(null)
-  const [session, setSession] = useState(null)
-  const [verificationWords, setVerificationWords] = useState(null)
+  const [pairingCode, setPairingCode] = useState(null)
+  const [codeInput, setCodeInput] = useState('')
   
+  const roleRef = useRef(null)
+  const pskRef = useRef(null)
   const ephemeralKeypairRef = useRef(null)
   const sessionKeyRef = useRef(null)
   const signalingClientRef = useRef(null)
   const peerDeviceInfoRef = useRef(null)
+  const roomRef = useRef(null)
+  const timeoutRef = useRef(null)
 
   useEffect(() => {
     return () => cleanupPairingState()
   }, [])
 
-  const cleanupEphemeralKeys = useCallback(() => {
+  const cleanupPairingState = useCallback(() => {
+    pskRef.current = null
     ephemeralKeypairRef.current = null
     sessionKeyRef.current = null
-  }, [])
-
-  const cleanupPairingState = useCallback(() => {
-    cleanupEphemeralKeys()
+    peerDeviceInfoRef.current = null
+    roomRef.current = null
+    
     if (signalingClientRef.current) {
       signalingClientRef.current.close()
       signalingClientRef.current = null
     }
-    peerDeviceInfoRef.current = null
-  }, [cleanupEphemeralKeys])
+    
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current)
+      timeoutRef.current = null
+    }
+  }, [])
 
   const reset = useCallback(() => {
     console.log('[Pairing] Resetting')
     cleanupPairingState()
     setPairingState(STATES.INITIAL)
     setRole(null)
-    setSession(null)
-    setVerificationWords(null)
+    roleRef.current = null
+    setPairingCode(null)
+    setCodeInput('')
     setError(null)
   }, [cleanupPairingState])
 
   const handleError = useCallback((err) => {
     console.error('[Pairing] Error:', err)
-    setError(err.message || err)
+    setError(err.message || String(err))
     setPairingState(STATES.ERROR)
+  }, [])
+
+  const sendEncrypted = useCallback(async (messageType, payload) => {
+    if (!pskRef.current || !signalingClientRef.current || !roomRef.current) {
+      throw new Error('Not connected')
+    }
+    
+    const message = { type: messageType, ...payload }
+    const { ciphertext, iv } = await encryptMessage(pskRef.current, message)
+    
+    signalingClientRef.current.publish(roomRef.current, {
+      encrypted: true,
+      ciphertext,
+      iv,
+    })
   }, [])
 
   const handleSignalingMessage = useCallback(async (data) => {
     try {
-      console.log('[Pairing] Received message:', data.type)
+      if (!data.encrypted || !pskRef.current) {
+        console.log('[Pairing] Ignoring unencrypted or pre-PSK message')
+        return
+      }
+      
+      let message
+      try {
+        message = await decryptMessage(pskRef.current, data.ciphertext, data.iv)
+      } catch (decryptError) {
+        console.warn('[Pairing] Failed to decrypt - wrong code or MITM attempt')
+        return
+      }
+      
+      console.log('[Pairing] Received:', message.type)
 
-      switch (data.type) {
-        case MESSAGE_TYPES.HANDSHAKE:
-          await handleHandshake(data)
+      switch (message.type) {
+        case MESSAGE_TYPES.KEY_EXCHANGE:
+          await handleKeyExchange(message)
           break
-        case MESSAGE_TYPES.CONFIRMED:
-          await handleConfirmed()
+        case MESSAGE_TYPES.KEY_EXCHANGE_RESPONSE:
+          await handleKeyExchangeResponse(message)
           break
         case MESSAGE_TYPES.LEK_TRANSFER:
-          await handleLEKTransfer(data)
+          await handleLEKTransfer(message)
           break
         case MESSAGE_TYPES.ACK:
-          await handleAck(data)
+          await handleAck(message)
           break
         case MESSAGE_TYPES.ERROR:
-          handleRemoteError(data)
+          handleRemoteError(message)
           break
       }
     } catch (err) {
       console.error('[Pairing] Message handling error:', err)
-      setError(err.message)
-      setPairingState(STATES.ERROR)
+      handleError(err)
     }
-  }, [])
+  }, [handleError])
 
-  const handleHandshake = async (data) => {
-    if (role !== 'initiator') return
-
-    const { ephemeralPublicKey, deviceName, deviceId, sessionId } = data
-
-    if (sessionId !== session?.sessionId) {
-      throw new Error('Session ID mismatch')
-    }
-
-    console.log('[Pairing] Handshake received from:', deviceName)
+  const handleKeyExchange = async (message) => {
+    if (roleRef.current !== 'initiator') return
+    
+    const { ephemeralPublicKey, deviceName, deviceId } = message
+    console.log('[Pairing] Key exchange from:', deviceName)
+    
     peerDeviceInfoRef.current = { deviceId, deviceName }
-
+    
     const responderPublicKey = await importPublicKey(ephemeralPublicKey)
     const sharedSecret = await deriveSharedSecret(
       ephemeralKeypairRef.current.privateKey,
       responderPublicKey
     )
+    
+    const sessionId = `${roomRef.current}-${Date.now()}`
     const sk = await deriveSessionKey(sharedSecret, sessionId)
     sessionKeyRef.current = sk
-
-    const words = await deriveVerificationWords(sk, sessionId)
-    setVerificationWords(words)
-    setPairingState(STATES.VERIFYING)
+    
+    const deviceInfo = getDeviceInfo()
+    await sendEncrypted(MESSAGE_TYPES.KEY_EXCHANGE_RESPONSE, {
+      ephemeralPublicKey: await exportPublicKey(ephemeralKeypairRef.current.publicKey),
+      deviceId: deviceInfo.id,
+      deviceName: deviceInfo.name,
+      sessionId,
+    })
+    
+    setPairingState(STATES.TRANSFERRING)
+    await transferLEK(sessionId)
   }
 
-  const handleConfirmed = async () => {
-    console.log('[Pairing] Peer confirmed verification')
-
-    if (pairingState !== STATES.VERIFYING) {
-      console.log('[Pairing] Already past verification, ignoring duplicate CONFIRMED')
-      return
-    }
-
-    if (role === 'initiator') {
-      setPairingState(STATES.TRANSFERRING)
-      await transferLEK()
-    } else {
-      setPairingState(STATES.IMPORTING)
-    }
+  const handleKeyExchangeResponse = async (message) => {
+    if (roleRef.current !== 'responder') return
+    
+    const { ephemeralPublicKey, deviceName, deviceId, sessionId } = message
+    console.log('[Pairing] Key exchange response from:', deviceName)
+    
+    peerDeviceInfoRef.current = { deviceId, deviceName }
+    
+    const initiatorPublicKey = await importPublicKey(ephemeralPublicKey)
+    const sharedSecret = await deriveSharedSecret(
+      ephemeralKeypairRef.current.privateKey,
+      initiatorPublicKey
+    )
+    
+    const sk = await deriveSessionKey(sharedSecret, sessionId)
+    sessionKeyRef.current = sk
+    
+    setPairingState(STATES.IMPORTING)
   }
 
-  const handleLEKTransfer = async (data) => {
-    if (role !== 'responder') return
+  const handleLEKTransfer = async (message) => {
+    if (roleRef.current !== 'responder') return
 
     try {
-      const { encryptedLEK, iv, deviceId, deviceName, identityPublicKey, sessionId } = data
-
-      if (sessionId !== session?.sessionId) {
-        throw new Error('Session ID mismatch')
-      }
-
+      const { encryptedLEK, iv, deviceId, deviceName, identityPublicKey, sessionId } = message
       console.log('[Pairing] Receiving LEK from:', deviceName)
 
       const additionalData = `${sessionId}:${deviceId}`
@@ -212,28 +257,24 @@ export default function PairingFlow() {
 
       const deviceInfo = getDeviceInfo()
       const ourPublicKey = await exportPublicKey(deviceKeypair.publicKey)
-      const roomName = getPairingRoomName(session.sessionId)
 
-      signalingClientRef.current.publish(roomName, {
-        type: MESSAGE_TYPES.ACK,
+      await sendEncrypted(MESSAGE_TYPES.ACK, {
         deviceId: deviceInfo.id,
         deviceName: deviceInfo.name,
         identityPublicKey: ourPublicKey,
       })
 
-      cleanupEphemeralKeys()
       setPairingState(STATES.COMPLETE)
     } catch (err) {
       console.error('[Pairing] Failed to import LEK:', err)
-      setError(`Failed to import LEK: ${err.message}`)
-      setPairingState(STATES.ERROR)
+      handleError(new Error(`Failed to import LEK: ${err.message}`))
     }
   }
 
-  const handleAck = async (data) => {
-    if (role !== 'initiator') return
+  const handleAck = async (message) => {
+    if (roleRef.current !== 'initiator') return
 
-    const { deviceId, deviceName, identityPublicKey } = data
+    const { deviceId, deviceName, identityPublicKey } = message
     console.log('[Pairing] Acknowledged by:', deviceName)
 
     addPairedDevice({
@@ -246,17 +287,15 @@ export default function PairingFlow() {
     const yjsPassword = await deriveYjsPassword(lek)
     reconnectYjsWebRTC(yjsPassword)
 
-    cleanupEphemeralKeys()
     setPairingState(STATES.COMPLETE)
   }
 
-  const handleRemoteError = (data) => {
-    console.error('[Pairing] Error from peer:', data.message)
-    setError(`Peer error: ${data.message}`)
-    setPairingState(STATES.ERROR)
+  const handleRemoteError = (message) => {
+    console.error('[Pairing] Error from peer:', message.message)
+    handleError(new Error(`Peer error: ${message.message}`))
   }
 
-  const transferLEK = async () => {
+  const transferLEK = async (sessionId) => {
     try {
       console.log('[Pairing] Transferring LEK...')
 
@@ -265,66 +304,33 @@ export default function PairingFlow() {
 
       const lekRaw = await exportLEK(lek)
       const deviceInfo = getDeviceInfo()
-      const additionalData = `${session.sessionId}:${deviceInfo.id}`
+      const additionalData = `${sessionId}:${deviceInfo.id}`
 
       const { ciphertext, iv } = await encryptData(sessionKeyRef.current, lekRaw, additionalData)
 
       const deviceKeypair = await retrieveDeviceKeypair()
       const identityPublicKey = await exportPublicKey(deviceKeypair.publicKey)
 
-      const roomName = getPairingRoomName(session.sessionId)
-      signalingClientRef.current.publish(roomName, {
-        type: MESSAGE_TYPES.LEK_TRANSFER,
+      await sendEncrypted(MESSAGE_TYPES.LEK_TRANSFER, {
         encryptedLEK: arrayBufferToBase64(ciphertext),
         iv: arrayBufferToBase64(iv.buffer),
         deviceId: deviceInfo.id,
         deviceName: deviceInfo.name,
         identityPublicKey,
-        sessionId: session.sessionId,
+        sessionId,
       })
 
       console.log('[Pairing] LEK transferred, waiting for acknowledgment')
     } catch (err) {
       console.error('[Pairing] Failed to transfer LEK:', err)
-      setError(`Failed to transfer LEK: ${err.message}`)
-      setPairingState(STATES.ERROR)
+      handleError(new Error(`Failed to transfer LEK: ${err.message}`))
     }
-  }
-
-  const handleWordsMatch = async () => {
-    console.log('[Pairing] User confirmed words match')
-
-    const roomName = getPairingRoomName(session.sessionId)
-    signalingClientRef.current.publish(roomName, {
-      type: MESSAGE_TYPES.CONFIRMED,
-      role: role,
-    })
-
-    if (role === 'initiator') {
-      setPairingState(STATES.TRANSFERRING)
-      await transferLEK()
-    } else {
-      setPairingState(STATES.IMPORTING)
-    }
-  }
-
-  const handleWordsDontMatch = () => {
-    console.log("[Pairing] User reported words don't match")
-
-    const roomName = getPairingRoomName(session.sessionId)
-    signalingClientRef.current.publish(roomName, {
-      type: MESSAGE_TYPES.ERROR,
-      message: 'Verification words did not match',
-    })
-
-    cleanupPairingState()
-    setError("Verification failed: words don't match. This could indicate a network attack.")
-    setPairingState(STATES.ERROR)
   }
 
   const startAsInitiator = async () => {
     try {
       setRole('initiator')
+      roleRef.current = 'initiator'
       setPairingState(STATES.GENERATING)
 
       let lek = await retrieveLEK()
@@ -340,93 +346,74 @@ export default function PairingFlow() {
         }
       }
 
+      const { code, room, words } = generatePairingCode()
+      setPairingCode(code)
+      roomRef.current = getRoomName(room)
+
+      const psk = await derivePSK(words)
+      pskRef.current = psk
+
       const keypair = await generateEphemeralKeypair()
       ephemeralKeypairRef.current = keypair
-
-      const sessionId = generateUUID()
-      const sessionData = {
-        sessionId,
-        ephemeralPublicKey: await exportPublicKey(keypair.publicKey),
-        signalingUrl: getSignalingUrl(),
-        deviceName: getDeviceInfo().name,
-        expires: Date.now() + 300000,
-      }
-      setSession(sessionData)
 
       const client = new SignalingClient()
       signalingClientRef.current = client
       await client.connect()
 
-      const roomName = getPairingRoomName(sessionId)
-      client.subscribe(roomName, handleSignalingMessage)
+      client.subscribe(roomRef.current, handleSignalingMessage)
 
-      setTimeout(() => {
-        if (pairingState === STATES.GENERATING || pairingState === STATES.WAITING_FOR_PEER) {
-          setError('Session expired. Please try again.')
-          setPairingState(STATES.ERROR)
-          cleanupPairingState()
+      timeoutRef.current = setTimeout(() => {
+        if (pairingState === STATES.GENERATING) {
+          handleError(new Error('Session expired. Please try again.'))
         }
-      }, 300000)
+      }, SESSION_TIMEOUT_MS)
 
-      console.log('[Pairing] Initiator ready, waiting for responder')
+      console.log('[Pairing] Initiator ready, code:', code)
     } catch (err) {
       console.error('[Pairing] Failed to start as initiator:', err)
-      setError(err.message)
-      setPairingState(STATES.ERROR)
+      handleError(err)
     }
   }
 
   const startAsResponder = () => {
     setRole('responder')
-    setPairingState(STATES.SCANNING)
+    roleRef.current = 'responder'
+    setPairingState(STATES.ENTERING_CODE)
   }
 
-  const handleQRScanned = async (sessionData) => {
+  const handleCodeSubmit = async (e) => {
+    e.preventDefault()
+    
     try {
-      if (!sessionData.sessionId || !sessionData.ephemeralPublicKey) {
-        throw new Error('Invalid QR code')
-      }
-      if (sessionData.expires < Date.now()) {
-        throw new Error('QR code has expired')
-      }
+      const { room, words } = parsePairingCode(codeInput)
+      
+      setPairingState(STATES.CONNECTING)
+      roomRef.current = getRoomName(room)
 
-      console.log('[Pairing] QR scanned, session:', sessionData.sessionId)
-      setSession(sessionData)
-      setPairingState(STATES.WAITING_FOR_PEER)
+      const psk = await derivePSK(words)
+      pskRef.current = psk
 
       const keypair = await generateEphemeralKeypair()
       ephemeralKeypairRef.current = keypair
 
-      const initiatorPublicKey = await importPublicKey(sessionData.ephemeralPublicKey)
-      const sharedSecret = await deriveSharedSecret(keypair.privateKey, initiatorPublicKey)
-      const sk = await deriveSessionKey(sharedSecret, sessionData.sessionId)
-      sessionKeyRef.current = sk
-
-      const words = await deriveVerificationWords(sk, sessionData.sessionId)
-      setVerificationWords(words)
-
-      const signalingUrl = sessionData.signalingUrl || getSignalingUrl()
-      const client = new SignalingClient(signalingUrl)
+      const client = new SignalingClient()
       signalingClientRef.current = client
       await client.connect()
 
-      const roomName = getPairingRoomName(sessionData.sessionId)
-      client.subscribe(roomName, handleSignalingMessage)
+      client.subscribe(roomRef.current, handleSignalingMessage)
 
       const deviceInfo = getDeviceInfo()
-      client.publish(roomName, {
-        type: MESSAGE_TYPES.HANDSHAKE,
-        sessionId: sessionData.sessionId,
+      await sendEncrypted(MESSAGE_TYPES.KEY_EXCHANGE, {
         ephemeralPublicKey: await exportPublicKey(keypair.publicKey),
         deviceId: deviceInfo.id,
         deviceName: deviceInfo.name,
       })
 
-      setPairingState(STATES.VERIFYING)
+      setPairingState(STATES.KEY_EXCHANGE)
+      console.log('[Pairing] Responder connected, sent key exchange')
     } catch (err) {
-      console.error('[Pairing] QR scan failed:', err)
-      setError(`QR scan failed: ${err.message}`)
-      setPairingState(STATES.ERROR)
+      console.error('[Pairing] Code submit failed:', err)
+      handleError(err)
     }
   }
 
@@ -453,8 +440,8 @@ export default function PairingFlow() {
         <SettingSection title="Sync bookmarks securely between devices. No account required.">
           <SettingCard>
             <SettingRow
-              label="Show QR Code"
-              description="Use this device to pair a new one"
+              label="Show Pairing Code"
+              description="Display a code to enter on your other device"
               onClick={startAsInitiator}
             >
               <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
@@ -462,8 +449,8 @@ export default function PairingFlow() {
               </div>
             </SettingRow>
             <SettingRow
-              label="Scan QR Code"
-              description="This is the new device being paired"
+              label="Enter Pairing Code"
+              description="Type the code shown on your other device"
               onClick={startAsResponder}
               isLast
             >
@@ -478,82 +465,73 @@ export default function PairingFlow() {
       {pairingState === STATES.GENERATING && (
         <SettingCard className="p-6">
           <div className="text-center mb-6">
-            <h3 className="font-medium">Scan this code</h3>
+            <h3 className="font-medium">Enter this code on your other device</h3>
             <p className="text-xs text-muted-foreground mt-1">
-              Open Hypermark on your other device and select "Scan QR Code"
+              Go to Settings → Pair Device → Enter Pairing Code
             </p>
           </div>
-          <div className="flex justify-center w-full mb-6">
-            <QRCodeDisplay
-              session={session}
-              verificationWords={verificationWords}
-              onError={handleError}
-            />
+          
+          <div className="flex justify-center mb-6">
+            <div className="bg-accent/30 rounded-xl p-6 border border-border/50">
+              <code className="text-3xl font-bold font-mono tracking-wide text-foreground">
+                {pairingCode || '...'}
+              </code>
+            </div>
           </div>
+          
+          <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground mb-6">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span>Waiting for other device...</span>
+          </div>
+          
+          <p className="text-[10px] text-muted-foreground/60 text-center font-medium uppercase tracking-wider mb-4">
+            Code expires in 5 minutes
+          </p>
+          
           <Button variant="ghost" onClick={reset} className="w-full text-muted-foreground hover:text-foreground">
             Cancel
           </Button>
         </SettingCard>
       )}
 
-      {pairingState === STATES.SCANNING && (
-        <SettingCard className="overflow-hidden">
-          <div className="p-4 border-b border-border/50">
-            <h3 className="font-medium text-center">Scan QR Code</h3>
+      {pairingState === STATES.ENTERING_CODE && (
+        <SettingCard className="p-6">
+          <div className="text-center mb-6">
+            <h3 className="font-medium">Enter Pairing Code</h3>
+            <p className="text-xs text-muted-foreground mt-1">
+              Type the code shown on your other device
+            </p>
           </div>
-          <div className="aspect-square bg-black relative">
-            <QRScanner onScanned={handleQRScanned} onError={handleError} />
-          </div>
-          <div className="p-4">
-            <Button variant="ghost" onClick={reset} className="w-full">
-              Cancel
+          
+          <form onSubmit={handleCodeSubmit} className="space-y-4">
+            <input
+              type="text"
+              value={codeInput}
+              onChange={(e) => setCodeInput(e.target.value)}
+              placeholder="42-apple-river"
+              className="input input-bordered w-full text-center text-lg font-mono"
+              autoFocus
+              autoComplete="off"
+              autoCapitalize="off"
+              spellCheck="false"
+            />
+            
+            <Button type="submit" className="w-full" disabled={!codeInput.trim()}>
+              Connect
             </Button>
-          </div>
+          </form>
+          
+          <Button variant="ghost" onClick={reset} className="w-full mt-3 text-muted-foreground hover:text-foreground">
+            Cancel
+          </Button>
         </SettingCard>
       )}
 
-      {pairingState === STATES.WAITING_FOR_PEER && (
+      {(pairingState === STATES.CONNECTING || pairingState === STATES.KEY_EXCHANGE) && (
         <SettingCard className="p-12 text-center">
           <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-6" />
           <h3 className="font-medium mb-2">Connecting...</h3>
-          <p className="text-sm text-muted-foreground">Waiting for the other device</p>
-        </SettingCard>
-      )}
-
-      {pairingState === STATES.VERIFYING && (
-        <SettingCard className="p-6">
-          <div className="text-center mb-8">
-            <h3 className="font-medium mb-2">Verify Pairing</h3>
-            <p className="text-sm text-muted-foreground">
-              Confirm these words match exactly on both devices
-            </p>
-          </div>
-
-          <div className="flex justify-center items-center gap-3 p-6 bg-accent/30 rounded-lg border border-border/50 mb-8">
-            <span className="text-2xl font-bold font-mono tracking-tight text-foreground">
-              {verificationWords?.[0] || '...'}
-            </span>
-            <span className="text-muted-foreground/30">•</span>
-            <span className="text-2xl font-bold font-mono tracking-tight text-foreground">
-              {verificationWords?.[1] || '...'}
-            </span>
-          </div>
-
-          <div className="space-y-3">
-            <Button
-              onClick={handleWordsMatch}
-              className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-            >
-              They Match
-            </Button>
-            <Button
-              onClick={handleWordsDontMatch}
-              variant="ghost"
-              className="w-full text-destructive hover:bg-destructive/10 hover:text-destructive"
-            >
-              Don't Match
-            </Button>
-          </div>
+          <p className="text-sm text-muted-foreground">Establishing secure connection</p>
         </SettingCard>
       )}
 
@@ -601,9 +579,9 @@ export default function PairingFlow() {
               <div className="mt-6 pt-6 border-t border-border/50 text-left">
                 <p className="text-xs font-medium text-muted-foreground mb-2">Troubleshooting</p>
                 <ul className="text-xs text-muted-foreground/80 space-y-1 list-disc list-inside">
+                  <li>Make sure you entered the code exactly as shown</li>
                   <li>Check internet connection on both devices</li>
-                  <li>Ensure signaling server is running</li>
-                  <li>Try regenerating the QR code</li>
+                  <li>The code expires after 5 minutes - get a new one</li>
                 </ul>
               </div>
             </div>
@@ -613,4 +591,3 @@ export default function PairingFlow() {
     </div>
   )
 }
-

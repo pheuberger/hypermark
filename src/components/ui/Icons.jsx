@@ -1,7 +1,3 @@
-/**
- * Centralized icon library using Lucide Preact
- * Import all icons used throughout the app from here
- */
 export {
   BookOpen,
   Link2,
@@ -22,4 +18,9 @@ export {
   Menu,
   Check,
   ArrowUpDown,
-} from 'lucide-preact'
+  Loader2,
+  Monitor,
+  Smartphone,
+  AlertCircle,
+  Camera,
+} from 'lucide-react'

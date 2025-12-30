@@ -1,20 +1,13 @@
-/**
- * QRCodeDisplay Component
- * Displays QR code for pairing initiator with verification words and manual fallbacks
- * See: docs/plans/2025-12-27-qrcodedisplay-component-design.md
- */
-
-import { useState, useEffect } from 'preact/hooks'
+import { useState, useEffect } from 'react'
 import QRCode from 'qrcode'
 import { encodeShortCode } from '../../utils/qr'
 import { Button } from '../ui/Button'
 
-export default function QRCodeDisplay({ session, verificationWords, onError }) {
+export default function QRCodeDisplay({ session, onError }) {
   const [qrDataUrl, setQrDataUrl] = useState(null)
   const [shortCode, setShortCode] = useState(null)
-  const [copied, setCopied] = useState(false) // 'short' | 'json' | false
+  const [copied, setCopied] = useState(false)
 
-  // Generate QR code when session is available
   useEffect(() => {
     if (!session) return
     generateQR()
@@ -22,14 +15,12 @@ export default function QRCodeDisplay({ session, verificationWords, onError }) {
 
   async function generateQR() {
     try {
-      // Encode session as JSON
       const payload = JSON.stringify(session)
 
-      // Generate QR code as data URL
       const dataUrl = await QRCode.toDataURL(payload, {
-        errorCorrectionLevel: 'M', // Medium error correction (15% damage tolerance)
-        margin: 2, // 2-module quiet zone
-        width: 300, // 300x300 pixels
+        errorCorrectionLevel: 'M',
+        margin: 0,
+        width: 300,
         color: {
           dark: '#000000',
           light: '#FFFFFF',
@@ -38,7 +29,6 @@ export default function QRCodeDisplay({ session, verificationWords, onError }) {
 
       setQrDataUrl(dataUrl)
 
-      // Also generate short code
       const code = encodeShortCode(session)
       setShortCode(code)
     } catch (err) {
@@ -60,7 +50,7 @@ export default function QRCodeDisplay({ session, verificationWords, onError }) {
 
   async function copyFullJSON() {
     try {
-      const json = JSON.stringify(session, null, 2) // Pretty print
+      const json = JSON.stringify(session, null, 2)
       await navigator.clipboard.writeText(json)
       setCopied('json')
       setTimeout(() => setCopied(false), 2000)
@@ -70,104 +60,70 @@ export default function QRCodeDisplay({ session, verificationWords, onError }) {
     }
   }
 
-  // Show loading state if no session
   if (!session) {
     return (
-      <div className="max-w-md mx-auto p-6 text-center">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-base-300 rounded w-3/4 mx-auto"></div>
-          <div className="h-4 bg-base-300 rounded w-1/2 mx-auto mb-8"></div>
-          <div className="w-[300px] h-[300px] bg-base-300 rounded-lg mx-auto"></div>
-        </div>
+      <div className="animate-pulse space-y-4 w-full">
+        <div className="w-[200px] h-[200px] bg-muted/20 rounded-lg mx-auto"></div>
       </div>
     )
   }
 
   return (
-    <div className="max-w-md mx-auto p-6 text-center">
-      {/* Header */}
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold mb-2">Scan to Pair</h2>
-        <p className="text-base-content/60 text-sm">
-          Scan this QR code with your other device
-        </p>
-      </div>
-
-      {/* QR Code */}
+    <div className="text-center w-full">
       {qrDataUrl && (
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-base-300 inline-block mb-8">
+        <div className="bg-white p-6 rounded-2xl inline-block mb-6 shadow-sm ring-1 ring-black/5">
           <img
             src={qrDataUrl}
             alt="Pairing QR Code"
-            className="w-[280px] h-[280px]"
+            className="w-[200px] h-[200px] sm:w-[240px] sm:h-[240px]"
           />
         </div>
       )}
 
-      {/* Verification Words (progressive disclosure) */}
-      {verificationWords && (
-        <div className="bg-primary/5 border border-primary/20 p-6 rounded-lg mb-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
-          <h3 className="text-sm font-semibold text-base-content/80 mb-4 uppercase tracking-wider">Verification Words</h3>
-          <div className="flex justify-center items-center gap-4 mb-2">
-            <span className="text-3xl font-bold lowercase text-primary">
-              {verificationWords[0]}
-            </span>
-            <span className="text-2xl text-base-content/20">·</span>
-            <span className="text-3xl font-bold lowercase text-primary">
-              {verificationWords[1]}
-            </span>
-          </div>
-          <p className="text-sm text-base-content/60 mt-2">
-            Confirm these match on the other device
-          </p>
-        </div>
-      )}
+      <div className="max-w-xs mx-auto">
+        <details className="group border border-border/50 rounded-lg overflow-hidden bg-card/30">
+          <summary className="cursor-pointer p-3 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent/50 flex items-center justify-between select-none">
+            <span>Can't scan? Enter manually</span>
+            <span className="text-[10px] opacity-50 group-open:rotate-180 transition-transform">▼</span>
+          </summary>
 
-      {/* Manual Pairing Options (collapsed by default) */}
-      <details className="group bg-base-200/50 border border-base-200 rounded-lg overflow-hidden transition-all duration-200">
-        <summary className="cursor-pointer p-4 text-sm font-medium text-base-content/80 hover:text-base-content hover:bg-base-200 flex items-center justify-between">
-          <span>Can't scan? Enter manually</span>
-          <span className="text-xs opacity-50 group-open:rotate-180 transition-transform">▼</span>
-        </summary>
+          <div className="p-3 pt-0 border-t border-border/50 bg-background/50">
+            <div className="pt-3 mb-3">
+              <label className="block text-[10px] font-medium text-muted-foreground mb-1.5 text-left uppercase tracking-wider">
+                Short Code
+              </label>
+              <div className="flex gap-2">
+                <code className="flex-1 px-2 py-1.5 bg-muted/20 border border-border/50 rounded text-xs font-mono break-all text-left text-foreground">
+                  {shortCode}
+                </code>
+                <Button
+                  onClick={copyShortCode}
+                  size="small"
+                  variant="ghost"
+                  className="h-full border border-border/50"
+                >
+                  {copied === 'short' ? 'Copied' : 'Copy'}
+                </Button>
+              </div>
+            </div>
 
-        <div className="p-4 pt-0 space-y-4 border-t border-base-200/50">
-          {/* Short Code */}
-          <div className="pt-4">
-            <label className="block text-xs font-medium text-base-content/70 mb-2 text-left">
-              Short Code
-            </label>
-            <div className="flex gap-2">
-              <code className="flex-1 px-3 py-2 bg-base-100 border border-base-300 rounded-md text-sm font-mono break-all text-left">
-                {shortCode}
-              </code>
+            <div>
               <Button
-                onClick={copyShortCode}
+                onClick={copyFullJSON}
+                variant="ghost"
                 size="small"
-                variant="secondary"
+                className="w-full justify-center text-xs h-8 border border-border/50"
               >
-                {copied === 'short' ? 'Copied' : 'Copy'}
+                {copied === 'json' ? 'Copied JSON' : 'Copy Full Payload'}
               </Button>
             </div>
           </div>
-
-          {/* Full JSON */}
-          <div>
-            <label className="block text-xs font-medium text-base-content/70 mb-2 text-left">
-              Or copy full payload
-            </label>
-            <Button
-              onClick={copyFullJSON}
-              variant="secondary"
-              className="w-full justify-center"
-            >
-              {copied === 'json' ? 'Copied JSON' : 'Copy JSON'}
-            </Button>
-          </div>
-        </div>
-      </details>
-
-      {/* Expiry Warning */}
-      <p className="text-xs text-base-content/40 mt-6 font-medium">⏱ Session expires in 5 minutes</p>
+        </details>
+        
+        <p className="text-[10px] text-muted-foreground/60 mt-4 font-medium uppercase tracking-wider">
+          Session expires in 5 minutes
+        </p>
+      </div>
     </div>
   )
 }

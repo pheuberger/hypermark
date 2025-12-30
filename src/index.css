@@ -3,7 +3,7 @@
 }
 
 html {
-  background-color: #0f172a; /* Fallback dark color */
+  background-color: hsl(222.2 84% 4.9%);
 }
 
 body {

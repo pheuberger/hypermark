@@ -1,8 +1,6 @@
 import { X, ChevronDown, Menu, Search, Plus } from '../ui/Icons'
+import { cn } from '@/lib/utils'
 
-/**
- * Simplified FilterBar with Search, Sort, and Add button
- */
 export function FilterBar({
   searchQuery,
   onSearchChange,
@@ -12,31 +10,31 @@ export function FilterBar({
   onAddNew,
 }) {
   return (
-    <div className="sticky top-0 z-10 bg-base-100/95 backdrop-blur supports-[backdrop-filter]:bg-base-100/60 px-4 py-3 border-b border-base-200/50">
+    <div className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 py-3">
       <div className="flex items-center gap-3">
         <button
           onClick={onToggleSidebar}
-          className="lg:hidden btn btn-ghost btn-square btn-sm -ml-2"
+          className="lg:hidden p-2 -ml-2 hover:bg-accent rounded-md transition-colors"
           aria-label="Open sidebar"
         >
           <Menu className="w-5 h-5" strokeWidth={1.5} />
         </button>
 
-        <div className="flex-1 relative max-w-md">
-          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/40 pointer-events-none">
+        <div className="flex-1 relative">
+          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
             <Search className="w-4 h-4" strokeWidth={1.5} />
           </div>
           <input
             type="search"
             placeholder="Search bookmarks..."
             value={searchQuery}
-            onInput={(e) => onSearchChange(e.target.value)}
-            className="w-full pl-9 pr-8 h-10 bg-transparent text-sm rounded-md border border-base-content/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-base-content/20 focus-visible:ring-offset-2 focus-visible:ring-offset-base-100 transition-colors placeholder:text-base-content/50"
+            onChange={(e) => onSearchChange(e.target.value)}
+            className="w-full pl-9 pr-8 h-10 bg-transparent text-sm rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background transition-colors placeholder:text-muted-foreground"
           />
           {searchQuery && (
             <button
               onClick={() => onSearchChange('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-base-content/40 hover:text-base-content hover:bg-base-200 rounded-full transition-colors"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground hover:bg-accent rounded-full transition-colors"
               aria-label="Clear search"
             >
               <X className="w-3 h-3" strokeWidth={2} />
@@ -48,22 +46,22 @@ export function FilterBar({
           <select
             value={sortBy}
             onChange={(e) => onSortChange(e.target.value)}
-            className="appearance-none h-10 pl-3 pr-8 bg-transparent text-sm font-medium text-base-content/70 cursor-pointer rounded-md border border-base-content/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-base-content/20 focus-visible:ring-offset-2 focus-visible:ring-offset-base-100 transition-colors hover:border-base-content/30"
+            className="appearance-none h-10 pl-3 pr-8 bg-transparent text-sm font-medium text-muted-foreground cursor-pointer rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background transition-colors"
           >
             <option value="recent">Recent</option>
             <option value="oldest">Oldest</option>
             <option value="title">A-Z</option>
             <option value="updated">Updated</option>
           </select>
-          <ChevronDown className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-base-content/40" strokeWidth={1.5} />
+          <ChevronDown className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" strokeWidth={1.5} />
         </div>
 
         <button
           onClick={onAddNew}
-          className="ml-auto btn btn-sm h-9 px-4 rounded-md bg-base-content text-base-100 hover:bg-base-content/90 border-none shadow-sm font-medium"
+          className="ml-auto h-9 px-4 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm font-medium text-sm inline-flex items-center gap-1.5 transition-colors"
           aria-label="Add bookmark"
         >
-          <Plus className="w-4 h-4 mr-1.5" strokeWidth={2} />
+          <Plus className="w-4 h-4" strokeWidth={2} />
           <span className="hidden sm:inline">Add</span>
         </button>
       </div>

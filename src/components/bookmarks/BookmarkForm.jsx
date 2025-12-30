@@ -1,17 +1,14 @@
-import { useState, useEffect } from 'preact/hooks'
+import { useState, useEffect } from 'react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { Input, TextArea } from '../ui/Input'
 import { Tag } from '../ui/Tag'
 import { Plus } from '../ui/Icons'
+import { cn } from '@/lib/utils'
 
-/**
- * Bookmark add/edit form in modal
- */
 export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
   const isEditing = Boolean(initialData)
 
-  // Form state
   const [formData, setFormData] = useState({
     url: '',
     title: '',
@@ -20,16 +17,10 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
     readLater: false,
   })
 
-  // Tag input state
   const [tagInput, setTagInput] = useState('')
-
-  // Error state
   const [errors, setErrors] = useState({})
-
-  // Loading state
   const [loading, setLoading] = useState(false)
 
-  // Initialize form with existing data when editing
   useEffect(() => {
     if (initialData) {
       setFormData({
@@ -40,7 +31,6 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
         readLater: initialData.readLater || false,
       })
     } else {
-      // Reset form when opening for new bookmark
       setFormData({
         url: '',
         title: '',
@@ -53,10 +43,8 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
     setTagInput('')
   }, [initialData, isOpen])
 
-  // Update field
   const updateField = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
-    // Clear error for this field
     if (errors[field]) {
       setErrors((prev) => {
         const newErrors = { ...prev }
@@ -66,7 +54,6 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
     }
   }
 
-  // Add tag
   const addTag = () => {
     const tag = tagInput.trim().toLowerCase()
     if (!tag) return
@@ -88,7 +75,6 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
     })
   }
 
-  // Remove tag
   const removeTag = (tagToRemove) => {
     setFormData((prev) => ({
       ...prev,
@@ -96,7 +82,6 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
     }))
   }
 
-  // Handle tag input key press
   const handleTagKeyPress = (e) => {
     if (e.key === 'Enter') {
       e.preventDefault()
@@ -104,7 +89,6 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
     }
   }
 
-  // Validate form
   const validate = () => {
     const newErrors = {}
 
@@ -120,7 +104,6 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
     return Object.keys(newErrors).length === 0
   }
 
-  // Submit form
   const handleSubmit = async (e) => {
     e.preventDefault()
 
@@ -151,7 +134,6 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
       title={isEditing ? 'Edit Bookmark' : 'Add Bookmark'}
     >
       <form onSubmit={handleSubmit}>
-        {/* URL field */}
         <Input
           label="URL"
           type="url"
@@ -163,7 +145,6 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
           disabled={loading}
         />
 
-        {/* Title field */}
         <Input
           label="Title"
           type="text"
@@ -175,7 +156,6 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
           disabled={loading}
         />
 
-        {/* Description field */}
         <TextArea
           label="Description"
           value={formData.description}
@@ -185,13 +165,11 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
           disabled={loading}
         />
 
-        {/* Tags field */}
         <div className="mb-4">
-          <label className="block text-sm font-medium text-base-content/70 mb-1">
+          <label className="block text-sm font-medium text-muted-foreground mb-1">
             Tags
           </label>
 
-          {/* Tag input */}
           <div className="flex gap-2 mb-2">
             <input
               type="text"
@@ -200,20 +178,19 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
               onKeyPress={handleTagKeyPress}
               placeholder="Add a tag..."
               disabled={loading}
-              className="flex-1 h-10 rounded-md border bg-transparent px-3 py-2 text-sm border-base-content/20 placeholder:text-base-content/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-base-content/20 focus-visible:ring-offset-2 focus-visible:ring-offset-base-100 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
+              className="flex-1 h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
             />
             <button
               type="button"
               onClick={addTag}
               disabled={loading || !tagInput.trim()}
-              className="btn btn-square bg-base-300 hover:bg-base-content/20 text-base-content border-none"
+              className="h-10 w-10 inline-flex items-center justify-center rounded-md bg-secondary hover:bg-accent text-foreground border-none transition-colors disabled:opacity-50"
               aria-label="Add tag"
             >
               <Plus className="w-5 h-5" />
             </button>
           </div>
 
-          {/* Display tags */}
           {formData.tags.length > 0 && (
             <div className="flex flex-wrap gap-1">
               {formData.tags.map((tag) => (
@@ -225,13 +202,12 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
           )}
 
           {errors.tags && (
-          <p className="mt-1 text-sm text-error">
+          <p className="mt-1 text-sm text-destructive">
             {errors.tags}
           </p>
           )}
         </div>
 
-        {/* Read later checkbox */}
         <div className="mb-4">
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -239,20 +215,18 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
               checked={formData.readLater}
               onChange={(e) => updateField('readLater', e.target.checked)}
               disabled={loading}
-              className="checkbox checkbox-neutral"
+              className="h-4 w-4 rounded border-input bg-background"
             />
             <span className="text-sm">Mark as read later</span>
           </label>
         </div>
 
-        {/* Submit error */}
         {errors.submit && (
-          <div className="alert alert-error mb-4">
-            <span>{errors.submit}</span>
+          <div className="p-3 mb-4 rounded-md bg-destructive/10 text-destructive text-sm">
+            {errors.submit}
           </div>
         )}
 
-        {/* Actions */}
         <div className="flex justify-end gap-2 pt-4">
           <Button
             type="button"

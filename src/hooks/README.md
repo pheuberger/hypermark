@@ -1,1 +1,1 @@
-# Custom Preact hooks
+# Custom React hooks

@@ -1,12 +1,12 @@
-import { useState, useMemo, useEffect } from 'preact/hooks'
+import { useState, useMemo, useEffect } from 'react'
 import { useYjs } from '../../hooks/useYjs'
 import { useSearch, useDebounce } from '../../hooks/useSearch'
 import { BookmarkItem } from './BookmarkItem'
 import { BookmarkForm } from './BookmarkForm'
 import { TagSidebar } from './TagSidebar'
 import { FilterBar } from './FilterBar'
-import { Button } from '../ui/Button'
-import { PackageOpen, Plus } from '../ui/Icons'
+import { SettingsView } from '../ui/SettingsView'
+import { PackageOpen } from '../ui/Icons'
 import {
   getAllBookmarks,
   createBookmark,
@@ -14,17 +14,14 @@ import {
   deleteBookmark,
   toggleReadLater,
 } from '../../services/bookmarks'
+import { cn } from '@/lib/utils'
 
-/**
- * Main bookmark list view with filters and sorting
- */
 export function BookmarkList() {
   const { bookmarks: bookmarksMap, synced } = useYjs()
   const [bookmarks, setBookmarks] = useState([])
+  const [currentView, setCurrentView] = useState('bookmarks') // 'bookmarks' | 'settings'
 
-  // Load and observe bookmarks
   useEffect(() => {
-    // Initial load
     const loadBookmarks = () => {
       const loaded = getAllBookmarks()
       setBookmarks(loaded)
@@ -32,39 +29,31 @@ export function BookmarkList() {
 
     loadBookmarks()
 
-    // Observe changes to bookmarks map
     const observer = () => {
       loadBookmarks()
     }
 
-    bookmarksMap.observe(observer)
+    bookmarksMap.observeDeep(observer)
 
     return () => {
-      bookmarksMap.unobserve(observer)
+      bookmarksMap.unobserveDeep(observer)
     }
   }, [bookmarksMap])
 
-  // UI state
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingBookmark, setEditingBookmark] = useState(null)
-  const [filterView, setFilterView] = useState('all') // 'all', 'read-later', 'tag'
+  const [filterView, setFilterView] = useState('all')
   const [selectedTag, setSelectedTag] = useState(null)
-  const [sortBy, setSortBy] = useState('recent') // 'recent', 'oldest', 'title', 'updated'
+  const [sortBy, setSortBy] = useState('recent')
   const [searchQuery, setSearchQuery] = useState('')
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false) // Mobile sidebar toggle
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
 
-  // Debounce search query
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
-
-  // Apply search filter
   const searchedBookmarks = useSearch(bookmarks, debouncedSearchQuery)
 
-  // Filter bookmarks
   const filteredBookmarks = useMemo(() => {
-    // Start with search results (or all bookmarks if no search)
     let filtered = [...searchedBookmarks]
 
-    // Apply view filter
     if (filterView === 'read-later') {
       filtered = filtered.filter((b) => b.readLater)
     } else if (filterView === 'tag' && selectedTag) {
@@ -73,7 +62,6 @@ export function BookmarkList() {
       )
     }
 
-    // Apply sorting
     filtered.sort((a, b) => {
       if (sortBy === 'recent') {
         return b.createdAt - a.createdAt
@@ -90,19 +78,16 @@ export function BookmarkList() {
     return filtered
   }, [searchedBookmarks, filterView, selectedTag, sortBy])
 
-  // Open form for new bookmark
   const handleAddNew = () => {
     setEditingBookmark(null)
     setIsFormOpen(true)
   }
 
-  // Open form for editing
   const handleEdit = (bookmark) => {
     setEditingBookmark(bookmark)
     setIsFormOpen(true)
   }
 
-  // Save bookmark (create or update)
   const handleSave = (bookmarkData) => {
     try {
       if (bookmarkData._id) {
@@ -116,7 +101,6 @@ export function BookmarkList() {
     }
   }
 
-  // Delete bookmark
   const handleDelete = (bookmarkId) => {
     try {
       deleteBookmark(bookmarkId)
@@ -126,7 +110,6 @@ export function BookmarkList() {
     }
   }
 
-  // Toggle read later
   const handleToggleReadLater = (bookmarkId) => {
     try {
       toggleReadLater(bookmarkId)
@@ -144,25 +127,33 @@ export function BookmarkList() {
   const handleFilterChange = (view) => {
     setFilterView(view)
     setSelectedTag(null)
+    setCurrentView('bookmarks')
+  }
+
+  const handleHomeClick = () => {
+    setFilterView('all')
+    setSelectedTag(null)
+    setSearchQuery('')
+    setCurrentView('bookmarks')
+    setIsSidebarOpen(false)
   }
 
   const handleTagSelect = (tag) => {
     setFilterView('tag')
     setSelectedTag(tag)
+    setCurrentView('bookmarks')
   }
 
-  // Loading state
   if (!synced) {
     return (
-      <div className="flex h-screen items-center justify-center bg-base-100">
-        <span className="loading loading-spinner loading-lg opacity-50"></span>
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full opacity-50"></div>
       </div>
     )
   }
 
   return (
-    <div className="flex h-screen overflow-hidden relative bg-base-100 text-base-content">
-      {/* Left Sidebar */}
+    <div className="flex h-screen overflow-hidden relative bg-background text-foreground">
       <TagSidebar
         bookmarks={bookmarks}
         selectedFilter={filterView}
@@ -171,47 +162,64 @@ export function BookmarkList() {
         onTagSelect={handleTagSelect}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
+        onOpenSettings={() => {
+          setCurrentView('settings')
+          setIsSidebarOpen(false)
+        }}
+        isSettingsActive={currentView === 'settings'}
+        onHomeClick={handleHomeClick}
       />
 
-      {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden relative">
-        {/* Filter Bar */}
-        <FilterBar
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          sortBy={sortBy}
-          onSortChange={setSortBy}
-          onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
-          onAddNew={handleAddNew}
-        />
+        {currentView === 'bookmarks' && (
+          <>
+            <FilterBar
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              sortBy={sortBy}
+              onSortChange={setSortBy}
+              onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+              onAddNew={handleAddNew}
+            />
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto bg-base-100">
-          <div className="px-4 pb-12 pt-1 max-w-5xl mx-auto space-y-1">
-             {filteredBookmarks.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-20 opacity-50">
-                  <PackageOpen className="w-12 h-12 mb-4 stroke-1" />
-                  <p className="text-sm font-medium">No bookmarks found</p>
-                  {filterView !== 'all' && (
-                     <button onClick={() => handleFilterChange('all')} className="btn btn-link btn-sm mt-2 text-primary no-underline hover:underline">Clear filters</button>
-                  )}
-                </div>
-             ) : (
-                filteredBookmarks.map((bookmark) => (
-                  <BookmarkItem
-                    key={bookmark._id}
-                    bookmark={bookmark}
-                    onEdit={handleEdit}
-                    onDelete={handleDelete}
-                    onTagClick={handleTagClick}
-                  />
-                ))
-             )}
+            <div className="flex-1 overflow-y-auto bg-background">
+              <div className="px-4 pb-12 pt-1 space-y-1">
+                 {filteredBookmarks.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-20 opacity-50">
+                      <PackageOpen className="w-12 h-12 mb-4 stroke-1" />
+                      <p className="text-sm font-medium">No bookmarks found</p>
+                      {filterView !== 'all' && (
+                         <button 
+                           onClick={() => handleFilterChange('all')} 
+                           className="mt-2 text-sm text-primary hover:underline"
+                         >
+                           Clear filters
+                         </button>
+                      )}
+                    </div>
+                 ) : (
+                    filteredBookmarks.map((bookmark) => (
+                      <BookmarkItem
+                        key={bookmark._id}
+                        bookmark={bookmark}
+                        onEdit={handleEdit}
+                        onDelete={handleDelete}
+                        onTagClick={handleTagClick}
+                      />
+                    ))
+                 )}
+              </div>
+            </div>
+          </>
+        )}
+
+        {currentView === 'settings' && (
+          <div className="flex-1 overflow-y-auto bg-background">
+            <SettingsView />
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Add/Edit form modal */}
       <BookmarkForm
         isOpen={isFormOpen}
         onClose={() => {

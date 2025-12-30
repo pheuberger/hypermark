@@ -1,29 +1,23 @@
-/**
- * QRScanner Component
- * Handles camera access, QR code scanning, and manual input fallback for pairing responder
- * See: docs/plans/2025-12-27-qrscanner-component-design.md
- */
-
-import { useState, useEffect, useRef } from 'preact/hooks'
+import { useState, useEffect, useRef } from 'react'
 import QrScanner from 'qr-scanner'
 import { decodeShortCode } from '../../utils/qr'
 import { Button } from '../ui/Button'
 import { TextArea } from '../ui/Input'
+import { cn } from '@/lib/utils'
+import { Camera, AlertCircle } from '../ui/Icons'
 
 export default function QRScanner({ onScanned, onError }) {
-  const [cameraStatus, setCameraStatus] = useState('requesting') // 'requesting' | 'granted' | 'denied'
+  const [cameraStatus, setCameraStatus] = useState('requesting')
   const [scanning, setScanning] = useState(false)
   const [showManual, setShowManual] = useState(false)
   const [manualInput, setManualInput] = useState('')
   const videoRef = useRef(null)
   const scannerRef = useRef(null)
 
-  // Request camera permission on mount
   useEffect(() => {
     requestCameraPermission()
 
     return () => {
-      // Cleanup on unmount
       if (scannerRef.current) {
         scannerRef.current.stop()
         scannerRef.current.destroy()
@@ -34,10 +28,8 @@ export default function QRScanner({ onScanned, onError }) {
   async function requestCameraPermission() {
     setCameraStatus('requesting')
 
-    // Skip the test stream on iOS - let qr-scanner handle everything
     try {
       setCameraStatus('granted')
-      // Give the DOM a moment to render the video element
       setTimeout(() => {
         initializeScanner()
       }, 100)
@@ -72,7 +64,6 @@ export default function QRScanner({ onScanned, onError }) {
     } catch (err) {
       console.error('Scanner initialization error:', err)
 
-      // Check if it's a permission error
       if (err.name === 'NotAllowedError' || err.message.includes('permission')) {
         setCameraStatus('denied')
         setShowManual(true)
@@ -86,7 +77,6 @@ export default function QRScanner({ onScanned, onError }) {
 
   async function handleQRDetected(result) {
     try {
-      // Parse JSON from QR code
       const sessionData = JSON.parse(result.data)
 
       if (
@@ -98,29 +88,22 @@ export default function QRScanner({ onScanned, onError }) {
         throw new Error('Invalid QR code format')
       }
 
-      // Check expiry (5 minute window)
       if (Date.now() > sessionData.expires) {
         throw new Error('QR code has expired. Generate a new one.')
       }
 
-      // Stop scanning (success!)
       if (scannerRef.current) {
         scannerRef.current.stop()
       }
       setScanning(false)
 
-      // Fire callback with validated session
       onScanned(sessionData)
     } catch (err) {
       if (err instanceof SyntaxError) {
-        // JSON parse error - not a valid pairing QR
         console.warn('Invalid QR code:', err)
-        // Don't stop scanning, wait for valid QR
       } else {
-        // Validation error - show to user
         console.error('QR validation error:', err)
         onError(err)
-        // Stop scanning on validation failure
         if (scannerRef.current) {
           scannerRef.current.stop()
         }
@@ -141,12 +124,9 @@ export default function QRScanner({ onScanned, onError }) {
 
       let sessionData
 
-      // Auto-detect format: short code vs JSON
       if (input.startsWith('HYPER-')) {
-        // Decode short code
         sessionData = decodeShortCode(input)
       } else {
-        // Parse as JSON
         sessionData = JSON.parse(input)
       }
 
@@ -159,12 +139,10 @@ export default function QRScanner({ onScanned, onError }) {
         throw new Error('Invalid pairing data')
       }
 
-      // Check expiry
       if (Date.now() > sessionData.expires) {
         throw new Error('Pairing session has expired')
       }
 
-      // Success!
       onScanned(sessionData)
     } catch (err) {
       console.error('Manual input error:', err)
@@ -177,100 +155,85 @@ export default function QRScanner({ onScanned, onError }) {
   }
 
   return (
-    <div className="max-w-md mx-auto p-6">
-      {/* Header */}
-      <div className="mb-8 text-center">
-        <h2 className="text-2xl font-bold mb-2">Scan QR Code</h2>
-        <p className="text-base-content/60 text-sm">Point your camera at the QR code</p>
-      </div>
-
-      {/* Camera Status: Requesting */}
+    <div className="w-full">
       {cameraStatus === 'requesting' && (
-        <div className="text-center py-12 bg-base-200/50 rounded-lg border border-base-200 border-dashed">
-          <div className="text-4xl mb-4 animate-pulse">📷</div>
-          <p className="text-base-content/60">Requesting camera permission...</p>
+        <div className="text-center py-20 bg-muted/5">
+          <Camera className="w-12 h-12 mx-auto mb-4 text-muted-foreground animate-pulse" />
+          <p className="text-sm text-muted-foreground">Requesting camera permission...</p>
         </div>
       )}
 
-      {/* Camera Status: Granted */}
-      {cameraStatus === 'granted' && (
-        <div className="relative">
+      {cameraStatus === 'granted' && !showManual && (
+        <div className="relative bg-black h-[300px] w-full flex items-center justify-center overflow-hidden">
           <video
             ref={videoRef}
-            className="w-full rounded-xl shadow-lg bg-black border border-base-300"
+            className="w-full h-full object-cover"
             autoPlay
             muted
             playsInline
           />
           {scanning && (
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-              <div className="w-64 h-64 border-2 border-primary/50 rounded-lg animate-pulse shadow-[0_0_0_100vh_rgba(0,0,0,0.5)]"></div>
+              <div className="w-48 h-48 border-2 border-primary/70 rounded-lg animate-pulse shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]"></div>
             </div>
           )}
-          {scanning && (
-             <p className="text-center text-xs text-base-content/60 mt-4 font-medium">
-               Position QR code within frame
-             </p>
-          )}
+          
+          <button
+            onClick={() => setShowManual(true)}
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 hover:bg-black/70 text-white text-xs px-3 py-1.5 rounded-full backdrop-blur-sm transition-colors border border-white/10"
+          >
+            Enter code manually
+          </button>
         </div>
       )}
 
-      {/* Camera Status: Denied */}
       {cameraStatus === 'denied' && (
-        <div className="alert alert-warning mb-6">
-           <span className="text-xl">📷</span>
-           <div>
-            <h3 className="font-bold text-sm">Camera access denied</h3>
-            <div className="text-xs">
-              Enable camera permission in browser settings or use manual entry below
-            </div>
-           </div>
+        <div className="p-6 text-center bg-destructive/5 rounded-lg border border-destructive/20 mb-6">
+           <AlertCircle className="w-8 h-8 mx-auto text-destructive mb-2" />
+           <h3 className="font-medium text-destructive mb-1">Camera access denied</h3>
+           <p className="text-xs text-muted-foreground">
+             Enable camera permission in browser settings or use manual entry below
+           </p>
         </div>
       )}
 
-      {/* Manual Pairing Toggle */}
-      {!showManual && cameraStatus === 'granted' && (
-        <button
-          onClick={() => setShowManual(true)}
-          className="w-full mt-6 text-sm text-base-content/60 hover:text-primary underline transition-colors"
-        >
-          Can't scan? Enter manually
-        </button>
-      )}
-
-      {/* Manual Pairing Form */}
       {showManual && (
-        <div className="mt-8 pt-6 border-t border-base-200">
-          <h3 className="text-lg font-semibold mb-4">Manual Pairing</h3>
+        <div className="p-6">
+          <div className="text-center mb-6">
+            <h3 className="font-medium">Manual Pairing</h3>
+            <p className="text-xs text-muted-foreground mt-1">
+              Enter the short code shown on the other device
+            </p>
+          </div>
 
-          <form onSubmit={handleManualSubmit}>
+          <form onSubmit={handleManualSubmit} className="space-y-4">
             <TextArea
-              label="Enter short code or paste JSON"
               value={manualInput}
-              onChange={(value) => setManualInput(value)}
+              onChange={(e) => setManualInput(e.target.value)}
               placeholder="HYPER-XXX-XXX-XXX or paste full JSON"
-              className="font-mono text-sm h-24"
+              className="font-mono text-sm min-h-[100px] resize-none"
             />
 
-            <Button
-              type="submit"
-              variant="primary"
-              className="w-full"
-            >
-              Connect
-            </Button>
+            <div className="flex gap-3">
+              {cameraStatus === 'granted' && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setShowManual(false)}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+              )}
+              <Button
+                type="submit"
+                variant="primary"
+                className={cn("flex-1", cameraStatus !== 'granted' && "w-full")}
+              >
+                Connect
+              </Button>
+            </div>
           </form>
-
-          {cameraStatus === 'granted' && (
-            <Button
-              variant="ghost"
-              onClick={() => setShowManual(false)}
-              className="w-full mt-2"
-              size="small"
-            >
-              Back to camera
-            </Button>
-          )}
         </div>
       )}
     </div>

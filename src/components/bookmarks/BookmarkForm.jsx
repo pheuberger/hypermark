@@ -4,7 +4,6 @@ import { Button } from '../ui/Button'
 import { Input, TextArea } from '../ui/Input'
 import { Tag } from '../ui/Tag'
 import { Plus } from '../ui/Icons'
-import { cn } from '@/lib/utils'
 
 export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
   const isEditing = Boolean(initialData)

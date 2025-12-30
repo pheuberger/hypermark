@@ -1,6 +1,6 @@
 import { useMemo, useEffect, useState } from 'react'
 import { Tag as TagIcon, Hash, BookmarkCheck, PackageOpen, X, Settings } from '../ui/Icons'
-import { subscribeToWebrtcProvider, getWebrtcProvider } from '../../hooks/useYjs'
+import { subscribeToWebrtcProvider } from '../../hooks/useYjs'
 import { cn } from '@/lib/utils'
 
 export function TagSidebar({

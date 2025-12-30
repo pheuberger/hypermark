@@ -1,5 +1,4 @@
 import { X, ChevronDown, Menu, Search, Plus } from '../ui/Icons'
-import { cn } from '@/lib/utils'
 
 export function FilterBar({
   searchQuery,

@@ -1,5 +1,4 @@
 import { Pencil, Trash } from '../ui/Icons'
-import { cn } from '@/lib/utils'
 
 export function BookmarkItem({ bookmark, onEdit, onDelete, onTagClick }) {
   const { title, url, tags } = bookmark

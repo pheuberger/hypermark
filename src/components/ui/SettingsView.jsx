@@ -1,8 +1,5 @@
 import { useState, useEffect } from 'react'
 import PairingFlow from '../pairing/PairingFlow'
-import { Card } from './card'
-import { Switch } from './switch'
-import { Select, SelectOption } from './select'
 import { cn } from '@/lib/utils'
 import { subscribeToWebrtcProvider } from '../../hooks/useYjs'
 import { ChevronLeft } from 'lucide-react'

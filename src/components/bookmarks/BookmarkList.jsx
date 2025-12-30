@@ -12,9 +12,7 @@ import {
   createBookmark,
   updateBookmark,
   deleteBookmark,
-  toggleReadLater,
 } from '../../services/bookmarks'
-import { cn } from '@/lib/utils'
 
 export function BookmarkList() {
   const { bookmarks: bookmarksMap, synced } = useYjs()

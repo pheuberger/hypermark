@@ -8,6 +8,7 @@ import { signal } from '@preact/signals'
 import { useEffect } from 'preact/hooks'
 import QRCodeDisplay from './QRCodeDisplay'
 import QRScanner from './QRScanner'
+import { Button } from '../ui/Button'
 import {
   generateEphemeralKeypair,
   generateDeviceKeypair,
@@ -76,13 +77,13 @@ export default function PairingFlow() {
 
   if (!isWebCryptoAvailable()) {
     return (
-      <div class="pairing-error p-6">
-        <div class="text-red-600 text-4xl mb-4">✗</div>
-        <h2 class="text-xl font-bold mb-2">Unsupported Browser</h2>
-        <p class="text-red-600">
+      <div className="p-6 text-center">
+        <div className="text-error text-4xl mb-4">✗</div>
+        <h2 className="text-xl font-bold mb-2">Unsupported Browser</h2>
+        <p className="text-error">
           This browser does not support required encryption features.
         </p>
-        <p class="text-sm text-gray-600 mt-2">
+        <p className="text-sm text-base-content/60 mt-2">
           Please use Chrome, Firefox, Safari, or Edge.
         </p>
       </div>
@@ -90,7 +91,7 @@ export default function PairingFlow() {
   }
 
   return (
-    <div class="pairing-flow max-w-2xl mx-auto p-6">
+    <div className="max-w-xl mx-auto p-6 min-h-[500px] flex flex-col justify-center">
       {pairingState.value === STATES.INITIAL && <InitialView />}
       {pairingState.value === STATES.GENERATING && <GeneratingView />}
       {pairingState.value === STATES.SCANNING && <ScanningView />}
@@ -106,27 +107,27 @@ export default function PairingFlow() {
 
 function InitialView() {
   return (
-    <div class="role-selection text-center">
-      <h2 class="text-3xl font-bold mb-4">Pair New Device</h2>
-      <p class="text-gray-600 mb-8">Choose how to pair:</p>
+    <div className="text-center">
+      <h2 className="text-3xl font-bold mb-4 tracking-tight">Pair Device</h2>
+      <p className="text-base-content/60 mb-10 text-lg">Choose how to pair this device:</p>
 
-      <div class="space-y-4">
+      <div className="space-y-4 max-w-sm mx-auto">
         <button
-          class="w-full py-4 px-6 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors"
+          className="w-full text-left p-6 bg-base-100 border border-base-200 rounded-xl hover:border-primary/50 hover:shadow-md transition-all group"
           onClick={startAsInitiator}
         >
-          <div class="text-3xl mb-2">📱</div>
-          <div class="font-semibold">Show QR Code</div>
-          <div class="text-sm opacity-90">Use this device to pair a new one</div>
+          <div className="text-3xl mb-3 group-hover:scale-110 transition-transform origin-left">📱</div>
+          <div className="font-semibold text-lg">Show QR Code</div>
+          <div className="text-sm text-base-content/60 mt-1">Use this device to pair a new one</div>
         </button>
 
         <button
-          class="w-full py-4 px-6 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors"
+          className="w-full text-left p-6 bg-base-100 border border-base-200 rounded-xl hover:border-primary/50 hover:shadow-md transition-all group"
           onClick={startAsResponder}
         >
-          <div class="text-3xl mb-2">📷</div>
-          <div class="font-semibold">Scan QR Code</div>
-          <div class="text-sm opacity-90">This is the new device being paired</div>
+          <div className="text-3xl mb-3 group-hover:scale-110 transition-transform origin-left">📷</div>
+          <div className="font-semibold text-lg">Scan QR Code</div>
+          <div className="text-sm text-base-content/60 mt-1">This is the new device being paired</div>
         </button>
       </div>
     </div>
@@ -149,122 +150,137 @@ function ScanningView() {
 
 function WaitingView() {
   return (
-    <div class="text-center py-12">
-      <div class="spinner mx-auto mb-6 w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-      <h2 class="text-xl font-bold mb-2">Connecting...</h2>
-      <p class="text-gray-600">Waiting for the other device</p>
+    <div className="text-center py-12">
+      <div className="loading loading-spinner loading-lg text-primary mb-6"></div>
+      <h2 className="text-xl font-bold mb-2">Connecting...</h2>
+      <p className="text-base-content/60">Waiting for the other device</p>
     </div>
   )
 }
 
 function VerifyingView() {
   return (
-    <div class="verification-screen text-center">
-      <h2 class="text-2xl font-bold mb-4">Verify Pairing</h2>
+    <div className="text-center">
+      <h2 className="text-2xl font-bold mb-4">Verify Pairing</h2>
 
-      <p class="text-gray-600 mb-6">
+      <p className="text-base-content/60 mb-8">
         Confirm these words match on both devices:
       </p>
 
-      <div class="verification-words flex justify-center items-center gap-4 p-8 bg-gray-100 rounded-lg mb-6">
-        <span class="text-4xl font-bold lowercase text-gray-900">
+      <div className="flex justify-center items-center gap-4 p-8 bg-base-200/50 rounded-xl border border-base-200 mb-8">
+        <span className="text-4xl font-bold lowercase text-primary">
           {verificationWords.value?.[0] || '...'}
         </span>
-        <span class="text-2xl text-gray-400">·</span>
-        <span class="text-4xl font-bold lowercase text-gray-900">
+        <span className="text-2xl text-base-content/20">·</span>
+        <span className="text-4xl font-bold lowercase text-primary">
           {verificationWords.value?.[1] || '...'}
         </span>
       </div>
 
-      <div class="space-y-3 mb-6">
-        <button
-          class="w-full py-3 px-6 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold"
+      <div className="space-y-3 mb-6 max-w-sm mx-auto">
+        <Button
           onClick={handleWordsMatch}
+          variant="primary"
+          size="large"
+          className="w-full bg-green-600 hover:bg-green-700 text-white border-none"
         >
           ✓ They Match
-        </button>
-        <button
-          class="w-full py-3 px-6 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-semibold"
+        </Button>
+        <Button
           onClick={handleWordsDontMatch}
+          variant="ghost"
+          size="large"
+          className="w-full text-error hover:bg-error/10"
         >
           ✗ Don't Match
-        </button>
+        </Button>
       </div>
 
-      <p class="text-sm text-gray-500">This protects against network attacks</p>
+      <p className="text-xs text-base-content/40">This protects against network attacks</p>
     </div>
   )
 }
 
 function ProgressView() {
   return (
-    <div class="pairing-progress text-center py-12">
-      <div class="spinner mx-auto mb-6 w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-      <h2 class="text-xl font-bold mb-2">
+    <div className="text-center py-12">
+      <div className="loading loading-spinner loading-lg text-primary mb-6"></div>
+      <h2 className="text-xl font-bold mb-2">
         {role.value === 'initiator'
           ? 'Sending encryption key...'
           : 'Receiving encryption key...'}
       </h2>
-      <p class="text-gray-600">This will only take a moment.</p>
+      <p className="text-base-content/60">This will only take a moment.</p>
     </div>
   )
 }
 
 function CompleteView() {
   return (
-    <div class="pairing-success text-center py-12">
-      <div class="text-green-600 text-6xl mb-4">✓</div>
-      <h2 class="text-2xl font-bold mb-2">Pairing Complete!</h2>
-      <p class="text-gray-600 mb-8">
+    <div className="text-center py-12 animate-in zoom-in-95 duration-300">
+      <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
+        <span className="text-4xl">✓</span>
+      </div>
+      <h2 className="text-3xl font-bold mb-4 tracking-tight">Pairing Complete!</h2>
+      <p className="text-base-content/60 mb-10 text-lg">
         Your devices are now paired and ready to sync.
       </p>
-      <button
-        class="py-3 px-8 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors font-semibold"
+      <Button
         onClick={handleDone}
+        variant="primary"
+        size="large"
+        className="px-12"
       >
         Done
-      </button>
+      </Button>
     </div>
   )
 }
 
 function ErrorView() {
   return (
-    <div class="pairing-error text-center">
-      <div class="text-red-600 text-6xl mb-4">✗</div>
-      <h2 class="text-xl font-bold mb-2">Pairing Failed</h2>
-      <p class="text-red-600 mb-6">{error.value}</p>
+    <div className="text-center">
+      <div className="w-20 h-20 bg-error/10 text-error rounded-full flex items-center justify-center mx-auto mb-6">
+        <span className="text-4xl">✗</span>
+      </div>
+      <h2 className="text-xl font-bold mb-2">Pairing Failed</h2>
+      <p className="text-error mb-8 max-w-md mx-auto">{error.value}</p>
 
-      <div class="space-y-3 mb-6">
-        <button
-          class="w-full py-3 px-6 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors font-semibold"
+      <div className="space-y-3 mb-8 max-w-sm mx-auto">
+        <Button
           onClick={reset}
+          variant="primary"
+          className="w-full"
         >
           Try Again
-        </button>
-        <button
-          class="w-full py-3 px-6 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors"
+        </Button>
+        <Button
           onClick={handleDone}
+          variant="ghost"
+          className="w-full"
         >
           Cancel
-        </button>
+        </Button>
       </div>
 
-      <details class="mt-4 text-left">
-        <summary class="text-sm text-gray-500 cursor-pointer hover:text-gray-700">
+      <details className="mt-4 text-left border rounded-lg border-base-200">
+        <summary className="p-4 text-sm text-base-content/60 cursor-pointer hover:text-base-content hover:bg-base-200/50">
           Troubleshooting tips
         </summary>
-        <ul class="text-sm text-gray-600 mt-2 space-y-1 list-disc list-inside">
-          <li>Check that the signaling server is running</li>
-          <li>Ensure both devices have internet access</li>
-          <li>Try generating a new QR code</li>
-          <li>Restart the app if issues persist</li>
-        </ul>
+        <div className="p-4 pt-0">
+          <ul className="text-sm text-base-content/60 space-y-2 list-disc list-inside">
+            <li>Check that the signaling server is running</li>
+            <li>Ensure both devices have internet access</li>
+            <li>Try generating a new QR code</li>
+            <li>Restart the app if issues persist</li>
+          </ul>
+        </div>
       </details>
     </div>
   )
 }
 
+// ... Rest of the file (logic helpers) unchanged ...
 // === INITIATOR FLOW ===
 
 async function startAsInitiator() {

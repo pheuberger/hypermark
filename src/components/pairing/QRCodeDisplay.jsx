@@ -7,6 +7,7 @@
 import { useState, useEffect } from 'preact/hooks'
 import QRCode from 'qrcode'
 import { encodeShortCode } from '../../utils/qr'
+import { Button } from '../ui/Button'
 
 export default function QRCodeDisplay({ session, verificationWords, onError }) {
   const [qrDataUrl, setQrDataUrl] = useState(null)
@@ -50,8 +51,6 @@ export default function QRCodeDisplay({ session, verificationWords, onError }) {
     try {
       await navigator.clipboard.writeText(shortCode)
       setCopied('short')
-
-      // Reset after 2 seconds
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {
       console.error('Failed to copy short code:', err)
@@ -64,8 +63,6 @@ export default function QRCodeDisplay({ session, verificationWords, onError }) {
       const json = JSON.stringify(session, null, 2) // Pretty print
       await navigator.clipboard.writeText(json)
       setCopied('json')
-
-      // Reset after 2 seconds
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {
       console.error('Failed to copy JSON:', err)
@@ -76,98 +73,101 @@ export default function QRCodeDisplay({ session, verificationWords, onError }) {
   // Show loading state if no session
   if (!session) {
     return (
-      <div class="qr-code-display max-w-md mx-auto p-6 text-center">
-        <div class="animate-pulse">
-          <div class="h-8 bg-gray-200 rounded w-3/4 mx-auto mb-4"></div>
-          <div class="h-4 bg-gray-200 rounded w-1/2 mx-auto mb-8"></div>
-          <div class="w-[300px] h-[300px] bg-gray-200 rounded-lg mx-auto"></div>
+      <div className="max-w-md mx-auto p-6 text-center">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-base-300 rounded w-3/4 mx-auto"></div>
+          <div className="h-4 bg-base-300 rounded w-1/2 mx-auto mb-8"></div>
+          <div className="w-[300px] h-[300px] bg-base-300 rounded-lg mx-auto"></div>
         </div>
       </div>
     )
   }
 
   return (
-    <div class="qr-code-display max-w-md mx-auto p-6 text-center">
+    <div className="max-w-md mx-auto p-6 text-center">
       {/* Header */}
-      <div class="header mb-6">
-        <h2 class="text-2xl font-bold mb-2">Scan to Pair</h2>
-        <p class="text-gray-600 text-sm">
+      <div className="mb-8">
+        <h2 className="text-2xl font-bold mb-2">Scan to Pair</h2>
+        <p className="text-base-content/60 text-sm">
           Scan this QR code with your other device
         </p>
       </div>
 
       {/* QR Code */}
       {qrDataUrl && (
-        <div class="qr-container bg-white p-4 rounded-lg shadow-lg inline-block mb-6">
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-base-300 inline-block mb-8">
           <img
             src={qrDataUrl}
             alt="Pairing QR Code"
-            class="w-[300px] h-[300px]"
+            className="w-[280px] h-[280px]"
           />
         </div>
       )}
 
       {/* Verification Words (progressive disclosure) */}
       {verificationWords && (
-        <div class="verification-section bg-blue-50 p-4 rounded-lg mb-6">
-          <h3 class="text-lg font-semibold text-gray-900 mb-3">Verification Words</h3>
-          <div class="words-display flex justify-center items-center gap-3 mb-2">
-            <span class="word text-3xl font-bold lowercase text-gray-900">
+        <div className="bg-primary/5 border border-primary/20 p-6 rounded-lg mb-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <h3 className="text-sm font-semibold text-base-content/80 mb-4 uppercase tracking-wider">Verification Words</h3>
+          <div className="flex justify-center items-center gap-4 mb-2">
+            <span className="text-3xl font-bold lowercase text-primary">
               {verificationWords[0]}
             </span>
-            <span class="separator text-2xl text-gray-400">·</span>
-            <span class="word text-3xl font-bold lowercase text-gray-900">
+            <span className="text-2xl text-base-content/20">·</span>
+            <span className="text-3xl font-bold lowercase text-primary">
               {verificationWords[1]}
             </span>
           </div>
-          <p class="text-sm text-gray-600">
+          <p className="text-sm text-base-content/60 mt-2">
             Confirm these match on the other device
           </p>
         </div>
       )}
 
       {/* Manual Pairing Options (collapsed by default) */}
-      <details class="manual-pairing text-left bg-gray-50 p-4 rounded-lg mb-4">
-        <summary class="cursor-pointer text-sm font-medium text-gray-700 hover:text-gray-900">
-          Can't scan? Enter manually
+      <details className="group bg-base-200/50 border border-base-200 rounded-lg overflow-hidden transition-all duration-200">
+        <summary className="cursor-pointer p-4 text-sm font-medium text-base-content/80 hover:text-base-content hover:bg-base-200 flex items-center justify-between">
+          <span>Can't scan? Enter manually</span>
+          <span className="text-xs opacity-50 group-open:rotate-180 transition-transform">▼</span>
         </summary>
 
-        <div class="mt-4 space-y-4">
+        <div className="p-4 pt-0 space-y-4 border-t border-base-200/50">
           {/* Short Code */}
-          <div class="short-code-section">
-            <label class="block text-xs font-medium text-gray-700 mb-1">
-              Short Code:
+          <div className="pt-4">
+            <label className="block text-xs font-medium text-base-content/70 mb-2 text-left">
+              Short Code
             </label>
-            <div class="flex gap-2">
-              <code class="flex-1 px-3 py-2 bg-white border rounded text-sm font-mono break-all">
+            <div className="flex gap-2">
+              <code className="flex-1 px-3 py-2 bg-base-100 border border-base-300 rounded-md text-sm font-mono break-all text-left">
                 {shortCode}
               </code>
-              <button
+              <Button
                 onClick={copyShortCode}
-                class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded text-sm font-medium transition-colors whitespace-nowrap"
+                size="small"
+                variant="secondary"
               >
-                {copied === 'short' ? '✓ Copied' : 'Copy'}
-              </button>
+                {copied === 'short' ? 'Copied' : 'Copy'}
+              </Button>
             </div>
           </div>
 
           {/* Full JSON */}
-          <div class="full-json-section">
-            <label class="block text-xs font-medium text-gray-700 mb-1">
-              Or copy full payload:
+          <div>
+            <label className="block text-xs font-medium text-base-content/70 mb-2 text-left">
+              Or copy full payload
             </label>
-            <button
+            <Button
               onClick={copyFullJSON}
-              class="w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded text-sm font-medium transition-colors"
+              variant="secondary"
+              className="w-full justify-center"
             >
-              {copied === 'json' ? '✓ Copied JSON' : 'Copy JSON'}
-            </button>
+              {copied === 'json' ? 'Copied JSON' : 'Copy JSON'}
+            </Button>
           </div>
         </div>
       </details>
 
       {/* Expiry Warning */}
-      <p class="text-sm text-gray-500">⏱ Session expires in 5 minutes</p>
+      <p className="text-xs text-base-content/40 mt-6 font-medium">⏱ Session expires in 5 minutes</p>
     </div>
   )
 }

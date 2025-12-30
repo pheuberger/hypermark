@@ -20,10 +20,10 @@ export function Input({
       {label && (
         <label
           htmlFor={id}
-          className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+          className="block text-sm font-medium text-base-content/80 mb-1.5"
         >
           {label}
-          {required && <span className="text-red-500 ml-1">*</span>}
+          {required && <span className="text-error ml-1">*</span>}
         </label>
       )}
       <input
@@ -34,11 +34,20 @@ export function Input({
         placeholder={placeholder}
         required={required}
         disabled={disabled}
-        className={`input input-bordered w-full ${error ? 'input-error' : ''}`}
+        className={`
+          flex h-10 w-full rounded-md border bg-transparent px-3 py-2 text-sm
+          border-base-content/20 
+          file:border-0 file:bg-transparent file:text-sm file:font-medium
+          placeholder:text-base-content/50
+          focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-base-content/20 focus-visible:ring-offset-2 focus-visible:ring-offset-base-100
+          disabled:cursor-not-allowed disabled:opacity-50
+          transition-colors
+          ${error ? 'border-error focus-visible:ring-error/30' : ''}
+        `}
         {...props}
       />
       {error && (
-        <p className="mt-1 text-sm text-red-600 dark:text-red-400">{error}</p>
+        <p className="mt-1.5 text-xs text-error font-medium">{error}</p>
       )}
     </div>
   )
@@ -66,10 +75,10 @@ export function TextArea({
       {label && (
         <label
           htmlFor={id}
-          className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+          className="block text-sm font-medium text-base-content/80 mb-1.5"
         >
           {label}
-          {required && <span className="text-red-500 ml-1">*</span>}
+          {required && <span className="text-error ml-1">*</span>}
         </label>
       )}
       <textarea
@@ -80,11 +89,19 @@ export function TextArea({
         required={required}
         disabled={disabled}
         rows={rows}
-        className={`textarea textarea-bordered w-full ${error ? 'textarea-error' : ''}`}
+        className={`
+          flex min-h-[80px] w-full rounded-md border bg-transparent px-3 py-2 text-sm
+          border-base-content/20
+          placeholder:text-base-content/50
+          focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-base-content/20 focus-visible:ring-offset-2 focus-visible:ring-offset-base-100
+          disabled:cursor-not-allowed disabled:opacity-50
+          transition-colors resize-none
+          ${error ? 'border-error focus-visible:ring-error/30' : ''}
+        `}
         {...props}
       />
       {error && (
-        <p className="mt-1 text-sm text-red-600 dark:text-red-400">{error}</p>
+        <p className="mt-1.5 text-xs text-error font-medium">{error}</p>
       )}
     </div>
   )

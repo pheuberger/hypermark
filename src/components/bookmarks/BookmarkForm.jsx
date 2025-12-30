@@ -187,7 +187,7 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
 
         {/* Tags field */}
         <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          <label className="block text-sm font-medium text-base-content/70 mb-1">
             Tags
           </label>
 
@@ -200,13 +200,13 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
               onKeyPress={handleTagKeyPress}
               placeholder="Add a tag..."
               disabled={loading}
-              className="input input-bordered flex-1"
+              className="flex-1 h-10 rounded-md border bg-transparent px-3 py-2 text-sm border-base-content/20 placeholder:text-base-content/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-base-content/20 focus-visible:ring-offset-2 focus-visible:ring-offset-base-100 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
             />
             <button
               type="button"
               onClick={addTag}
               disabled={loading || !tagInput.trim()}
-              className="btn btn-secondary btn-square"
+              className="btn btn-square bg-base-300 hover:bg-base-content/20 text-base-content border-none"
               aria-label="Add tag"
             >
               <Plus className="w-5 h-5" />
@@ -225,9 +225,9 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
           )}
 
           {errors.tags && (
-            <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-              {errors.tags}
-            </p>
+          <p className="mt-1 text-sm text-error">
+            {errors.tags}
+          </p>
           )}
         </div>
 
@@ -239,7 +239,7 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
               checked={formData.readLater}
               onChange={(e) => updateField('readLater', e.target.checked)}
               disabled={loading}
-              className="checkbox checkbox-primary"
+              className="checkbox checkbox-neutral"
             />
             <span className="text-sm">Mark as read later</span>
           </label>
@@ -256,14 +256,14 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
         <div className="flex justify-end gap-2 pt-4">
           <Button
             type="button"
-            variant="secondary"
+            variant="ghost"
             onClick={onClose}
             disabled={loading}
           >
             Cancel
           </Button>
           <Button type="submit" variant="primary" disabled={loading}>
-            {loading ? 'Saving...' : isEditing ? 'Update' : 'Add Bookmark'}
+            {loading ? 'Saving...' : isEditing ? 'Save' : 'Add'}
           </Button>
         </div>
       </form>

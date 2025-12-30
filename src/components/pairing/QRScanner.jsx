@@ -7,6 +7,8 @@
 import { useState, useEffect, useRef } from 'preact/hooks'
 import QrScanner from 'qr-scanner'
 import { decodeShortCode } from '../../utils/qr'
+import { Button } from '../ui/Button'
+import { TextArea } from '../ui/Input'
 
 export default function QRScanner({ onScanned, onError }) {
   const [cameraStatus, setCameraStatus] = useState('requesting') // 'requesting' | 'granted' | 'denied'
@@ -175,49 +177,54 @@ export default function QRScanner({ onScanned, onError }) {
   }
 
   return (
-    <div class="qr-scanner max-w-md mx-auto p-6">
+    <div className="max-w-md mx-auto p-6">
       {/* Header */}
-      <div class="header mb-6 text-center">
-        <h2 class="text-2xl font-bold mb-2">Scan QR Code</h2>
-        <p class="text-gray-600 text-sm">Point your camera at the QR code</p>
+      <div className="mb-8 text-center">
+        <h2 className="text-2xl font-bold mb-2">Scan QR Code</h2>
+        <p className="text-base-content/60 text-sm">Point your camera at the QR code</p>
       </div>
 
       {/* Camera Status: Requesting */}
       {cameraStatus === 'requesting' && (
-        <div class="text-center py-12">
-          <div class="text-4xl mb-4 animate-pulse">📷</div>
-          <p class="text-gray-600">Requesting camera permission...</p>
+        <div className="text-center py-12 bg-base-200/50 rounded-lg border border-base-200 border-dashed">
+          <div className="text-4xl mb-4 animate-pulse">📷</div>
+          <p className="text-base-content/60">Requesting camera permission...</p>
         </div>
       )}
 
       {/* Camera Status: Granted */}
       {cameraStatus === 'granted' && (
-        <div class="scanner-container">
+        <div className="relative">
           <video
             ref={videoRef}
-            class="w-full rounded-lg shadow-lg bg-black"
-            autoplay
+            className="w-full rounded-xl shadow-lg bg-black border border-base-300"
+            autoPlay
             muted
             playsInline
           />
           {scanning && (
-            <p class="text-center text-sm text-gray-600 mt-2">
-              Position QR code within frame
-            </p>
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+              <div className="w-64 h-64 border-2 border-primary/50 rounded-lg animate-pulse shadow-[0_0_0_100vh_rgba(0,0,0,0.5)]"></div>
+            </div>
+          )}
+          {scanning && (
+             <p className="text-center text-xs text-base-content/60 mt-4 font-medium">
+               Position QR code within frame
+             </p>
           )}
         </div>
       )}
 
       {/* Camera Status: Denied */}
       {cameraStatus === 'denied' && (
-        <div class="camera-denied bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
-          <p class="text-sm font-medium text-yellow-800 mb-2">
-            📷 Camera access denied
-          </p>
-          <p class="text-xs text-yellow-700">
-            Enable camera permission in browser settings or use manual entry
-            below
-          </p>
+        <div className="alert alert-warning mb-6">
+           <span className="text-xl">📷</span>
+           <div>
+            <h3 className="font-bold text-sm">Camera access denied</h3>
+            <div className="text-xs">
+              Enable camera permission in browser settings or use manual entry below
+            </div>
+           </div>
         </div>
       )}
 
@@ -225,7 +232,7 @@ export default function QRScanner({ onScanned, onError }) {
       {!showManual && cameraStatus === 'granted' && (
         <button
           onClick={() => setShowManual(true)}
-          class="w-full mt-4 text-sm text-gray-600 hover:text-gray-800 underline"
+          className="w-full mt-6 text-sm text-base-content/60 hover:text-primary underline transition-colors"
         >
           Can't scan? Enter manually
         </button>
@@ -233,35 +240,36 @@ export default function QRScanner({ onScanned, onError }) {
 
       {/* Manual Pairing Form */}
       {showManual && (
-        <div class="manual-pairing mt-6 p-4 bg-gray-50 rounded-lg">
-          <h3 class="text-lg font-semibold mb-3">Manual Pairing</h3>
+        <div className="mt-8 pt-6 border-t border-base-200">
+          <h3 className="text-lg font-semibold mb-4">Manual Pairing</h3>
 
           <form onSubmit={handleManualSubmit}>
-            <label class="block text-sm font-medium text-gray-700 mb-2">
-              Enter short code or paste JSON:
-            </label>
-            <textarea
+            <TextArea
+              label="Enter short code or paste JSON"
               value={manualInput}
-              onInput={(e) => setManualInput(e.target.value)}
+              onChange={(value) => setManualInput(value)}
               placeholder="HYPER-XXX-XXX-XXX or paste full JSON"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono h-24 resize-none focus:ring-2 focus:ring-primary focus:border-transparent"
+              className="font-mono text-sm h-24"
             />
 
-            <button
+            <Button
               type="submit"
-              class="w-full mt-3 py-2 px-4 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors font-medium"
+              variant="primary"
+              className="w-full"
             >
               Connect
-            </button>
+            </Button>
           </form>
 
           {cameraStatus === 'granted' && (
-            <button
+            <Button
+              variant="ghost"
               onClick={() => setShowManual(false)}
-              class="w-full mt-2 text-sm text-gray-600 hover:text-gray-800"
+              className="w-full mt-2"
+              size="small"
             >
               Back to camera
-            </button>
+            </Button>
           )}
         </div>
       )}

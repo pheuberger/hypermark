@@ -1,10 +1,5 @@
 export {
-  BookOpen,
-  Link2,
   Settings,
-  Bookmark,
-  BookmarkPlus,
-  BookOpenCheck,
   BookmarkCheck,
   Plus,
   Pencil,
@@ -17,10 +12,8 @@ export {
   ChevronDown,
   Menu,
   Check,
-  ArrowUpDown,
   Loader2,
   Monitor,
   Smartphone,
   AlertCircle,
-  Camera,
 } from 'lucide-react'

@@ -87,11 +87,9 @@ export default function QRScanner({ onScanned, onError }) {
       // Parse JSON from QR code
       const sessionData = JSON.parse(result.data)
 
-      // Validate structure
       if (
         !sessionData.sessionId ||
         !sessionData.ephemeralPublicKey ||
-        !sessionData.peerID ||
         !sessionData.deviceName ||
         !sessionData.expires
       ) {
@@ -150,11 +148,9 @@ export default function QRScanner({ onScanned, onError }) {
         sessionData = JSON.parse(input)
       }
 
-      // Same validation as QR scanning
       if (
         !sessionData.sessionId ||
         !sessionData.ephemeralPublicKey ||
-        !sessionData.peerID ||
         !sessionData.deviceName ||
         !sessionData.expires
       ) {

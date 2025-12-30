@@ -130,31 +130,3 @@ export function initializeDevice(deviceId, deviceName) {
   setDeviceId(deviceId)
   setDeviceName(deviceName)
 }
-
-/**
- * Get PeerJS ID for this device
- * PeerJS IDs should be stable and deterministic based on device ID
- * @returns {string}
- */
-export function getPeerJSId() {
-  const deviceId = getDeviceId()
-  // Create a stable PeerJS ID from device ID
-  // Format: hypermark-{first 16 chars of device UUID}
-  return `hypermark-${deviceId.substring(0, 16)}`
-}
-
-/**
- * Store PeerJS ID (if using server-assigned IDs)
- * @param {string} peerId - PeerJS ID
- */
-export function storePeerJSId(peerId) {
-  localStorage.setItem('hypermark:peerjs-id', peerId)
-}
-
-/**
- * Retrieve stored PeerJS ID
- * @returns {string|null}
- */
-export function getStoredPeerJSId() {
-  return localStorage.getItem('hypermark:peerjs-id')
-}

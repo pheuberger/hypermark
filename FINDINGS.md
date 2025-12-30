@@ -13,7 +13,9 @@ We successfully built and tested two prototypes demonstrating:
 1. Raw WebRTC data channels can sync Fireproof databases between browser tabs
 2. PeerJS provides persistent pairing and auto-reconnect functionality
 
-**Recommendation:** Proceed with implementation using PeerJS + Fireproof + QR pairing protocol.
+**Recommendation:** Proceed with implementation using y-webrtc signaling + Yjs CRDTs + QR pairing protocol.
+
+> **Update (Dec 2025):** We migrated from PeerJS to y-webrtc signaling server for a single-server architecture. The same signaling server now handles both pairing and ongoing sync.
 
 ---
 
@@ -115,16 +117,20 @@ We successfully built and tested two prototypes demonstrating:
 
 ---
 
-### Decision 2: Use PeerJS for WebRTC Signaling
+### Decision 2: Use y-webrtc Signaling Server
+
+**Update (Dec 2025):** We migrated from PeerJS to y-webrtc signaling.
 
 **Rationale:**
-- Eliminates need for custom signaling server in MVP
-- Provides persistent peer IDs (critical for auto-reconnect)
-- Handles connection management complexity
-- Can be replaced with self-hosted relay later
+- Single server for both pairing and Yjs sync (reduced infrastructure)
+- y-webrtc provides persistent room-based communication
+- Handles WebRTC signaling complexity
+- Self-hostable via `y-webrtc/bin/server.js`
 
-**Alternative considered:** Raw WebRTC with manual signaling
-- Rejected: Terrible UX, no persistence
+**Original PeerJS approach (deprecated):**
+- Required separate PeerJS server for pairing
+- Two servers to maintain (PeerJS + y-webrtc)
+- Migrated to unified architecture
 
 ---
 
@@ -209,10 +215,10 @@ See `security.md` for full specification.
 ### Phase 1: MVP (Based on Prototypes)
 
 **Tech stack:**
-- **Frontend:** Preact + Tailwind CSS
-- **Storage:** Fireproof (`@fireproof/core`)
-- **Networking:** PeerJS (hosted signaling)
-- **Pairing:** QR codes + verification codes
+- **Frontend:** Preact + Tailwind CSS + DaisyUI
+- **Storage:** Yjs CRDTs + IndexedDB (y-indexeddb)
+- **Networking:** y-webrtc (WebRTC via signaling server)
+- **Pairing:** QR codes + verification codes via y-webrtc signaling
 
 **Features:**
 - Add/edit/delete bookmarks
@@ -246,9 +252,9 @@ See `security.md` for full specification.
 - Zero reliance on third-party infrastructure
 
 **Implementation:**
-- Replace PeerJS client with custom WebSocket signaling
-- Deploy lightweight Node.js server on Pi
+- Deploy y-webrtc signaling server on Pi (`npx y-webrtc`)
 - Same pairing protocol (already designed for this)
+- Single server for both pairing and sync
 
 ---
 

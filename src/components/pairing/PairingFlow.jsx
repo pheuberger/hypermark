@@ -430,6 +430,13 @@ async function handleHandshake(data) {
 async function handleConfirmed(data) {
   console.log('[Pairing] Peer confirmed verification')
 
+  // Only act if we're still in VERIFYING state
+  // This prevents double-triggering if both confirmations race
+  if (pairingState.value !== STATES.VERIFYING) {
+    console.log('[Pairing] Already past verification, ignoring duplicate CONFIRMED')
+    return
+  }
+
   if (role.value === 'initiator') {
     pairingState.value = STATES.TRANSFERRING
     await transferLEK()

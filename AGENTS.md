@@ -467,8 +467,8 @@ try {
 
 When onboarding to this codebase, read in order:
 
-1. `todo.md` - Full project spec and requirements
-2. `security.md` - Detailed security architecture
+1. `docs/specification.md` - Full project spec and requirements
+2. `docs/security.md` - Detailed security architecture
 3. `src/hooks/useYjs.js` - Core sync mechanism
 4. `src/services/crypto.js` - Crypto primitives
 5. `src/services/bookmarks.js` - Data operations

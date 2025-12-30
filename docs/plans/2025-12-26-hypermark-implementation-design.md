@@ -2,7 +2,7 @@
 
 **Date:** 2025-12-26
 **Status:** Ready for Implementation
-**Based on:** todo.md, FINDINGS.md, security.md
+**Based on:** docs/specification.md, docs/security.md (historical references)
 
 ---
 

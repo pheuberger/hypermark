@@ -25,7 +25,7 @@ export function FilterBar({
             <Search className="w-4 h-4" strokeWidth={1.5} />
           </div>
           <input
-            type="search"
+            type="text"
             placeholder="Search bookmarks..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}

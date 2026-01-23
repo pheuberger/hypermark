@@ -15,6 +15,58 @@
 import { isWebCryptoAvailable, arrayBufferToBase64 } from "./crypto.js";
 import * as secp256k1 from '@noble/secp256k1';
 
+// Configure @noble/secp256k1 with Web Crypto SHA-256
+// Required for Schnorr signatures in v3.x
+// The library needs both sha256 and hmacSha256 configured
+if (typeof crypto !== 'undefined' && crypto.subtle) {
+  // Configure SHA-256
+  secp256k1.hashes.sha256 = (message) => {
+    // Sync version - not supported with Web Crypto, will throw
+    throw new Error('Use sha256Async instead');
+  };
+
+  secp256k1.hashes.sha256Async = async (message) => {
+    const hashBuffer = await crypto.subtle.digest('SHA-256', message);
+    return new Uint8Array(hashBuffer);
+  };
+
+  // Configure HMAC-SHA256
+  secp256k1.hashes.hmacSha256 = (key, ...messages) => {
+    // Sync version - not supported with Web Crypto, will throw
+    throw new Error('Use hmacSha256Async instead');
+  };
+
+  secp256k1.hashes.hmacSha256Async = async (key, ...messages) => {
+    const cKey = await crypto.subtle.importKey(
+      'raw',
+      key,
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+    const combined = new Uint8Array(messages.reduce((acc, m) => acc + m.length, 0));
+    let offset = 0;
+    for (const msg of messages) {
+      combined.set(msg, offset);
+      offset += msg.length;
+    }
+    const sig = await crypto.subtle.sign('HMAC', cKey, combined);
+    return new Uint8Array(sig);
+  };
+}
+
+/**
+ * SHA-256 hash function using Web Crypto API
+ * Used for Nostr event ID computation and Schnorr signatures
+ */
+async function sha256(message) {
+  const msgBuffer = typeof message === 'string'
+    ? new TextEncoder().encode(message)
+    : message;
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  return new Uint8Array(hashBuffer);
+}
+
 /**
  * HKDF salt for Nostr keypair derivation
  * This provides domain separation from other LEK-derived keys
@@ -535,4 +587,187 @@ export function getNostrCacheStats() {
     expiredEntries,
     ttlMs: CACHE_TTL_MS,
   };
+}
+
+// ============================================================================
+// Nostr Event Signing and Verification
+// ============================================================================
+
+/**
+ * Compute the event ID (SHA-256 hash of serialized event)
+ *
+ * According to NIP-01, the event ID is the SHA-256 hash of the serialized event:
+ * [0, pubkey, created_at, kind, tags, content]
+ *
+ * @param {Object} event - Nostr event object (without id and sig)
+ * @returns {Promise<string>} - Event ID as 64-character hex string
+ */
+export async function computeEventId(event) {
+  const { pubkey, created_at, kind, tags, content } = event;
+
+  // Serialize event as per NIP-01
+  const serialized = JSON.stringify([
+    0,
+    pubkey,
+    created_at,
+    kind,
+    tags,
+    content,
+  ]);
+
+  // Hash using SHA-256
+  const encoder = new TextEncoder();
+  const data = encoder.encode(serialized);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+
+  return uint8ArrayToHex(new Uint8Array(hashBuffer));
+}
+
+/**
+ * Sign a Nostr event using secp256k1 Schnorr signature (BIP-340)
+ *
+ * Nostr uses Schnorr signatures as specified in BIP-340.
+ * The message to sign is the 32-byte event ID.
+ *
+ * @param {Object} event - Event object with pubkey, created_at, kind, tags, content
+ * @param {Uint8Array|string} privateKey - Private key as bytes or hex
+ * @returns {Promise<Object>} - Complete signed event with id and sig fields
+ */
+export async function signNostrEvent(event, privateKey) {
+  let privateKeyBytes;
+
+  if (typeof privateKey === "string") {
+    privateKeyBytes = hexToUint8Array(privateKey);
+  } else {
+    privateKeyBytes = privateKey;
+  }
+
+  if (!isValidSecp256k1Seed(privateKeyBytes)) {
+    throw new Error("Invalid private key for signing");
+  }
+
+  // Compute event ID
+  const eventId = await computeEventId(event);
+  const eventIdBytes = hexToUint8Array(eventId);
+
+  // Sign using Schnorr signature (BIP-340)
+  // Use async version since Web Crypto is async
+  const signature = await secp256k1.schnorr.signAsync(eventIdBytes, privateKeyBytes);
+
+  // Return complete event with id and signature
+  return {
+    id: eventId,
+    pubkey: event.pubkey,
+    created_at: event.created_at,
+    kind: event.kind,
+    tags: event.tags,
+    content: event.content,
+    sig: uint8ArrayToHex(signature),
+  };
+}
+
+/**
+ * Verify a Nostr event signature
+ *
+ * Verifies that the event signature is valid for the given event data
+ * and that it was signed by the public key specified in the event.
+ *
+ * @param {Object} event - Complete Nostr event with id, pubkey, sig, etc.
+ * @returns {Promise<boolean>} - True if signature is valid
+ */
+export async function verifyNostrEventSignature(event) {
+  try {
+    const { id, pubkey, sig, created_at, kind, tags, content } = event;
+
+    // Validate required fields exist
+    if (!id || !pubkey || !sig || created_at === undefined || kind === undefined) {
+      return false;
+    }
+
+    // Recompute the event ID to verify it matches
+    const computedId = await computeEventId({
+      pubkey,
+      created_at,
+      kind,
+      tags: tags || [],
+      content: content || "",
+    });
+
+    if (computedId !== id) {
+      console.warn("[NostrCrypto] Event ID mismatch:", { computed: computedId, provided: id });
+      return false;
+    }
+
+    // Verify Schnorr signature
+    // Note: pubkey in Nostr events is the 32-byte x-coordinate (x-only pubkey)
+    const sigBytes = hexToUint8Array(sig);
+    const idBytes = hexToUint8Array(id);
+    const pubkeyBytes = hexToUint8Array(pubkey);
+
+    // Use async version since Web Crypto is async
+    const isValid = await secp256k1.schnorr.verifyAsync(sigBytes, idBytes, pubkeyBytes);
+
+    return isValid;
+  } catch (error) {
+    console.error("[NostrCrypto] Signature verification failed:", error);
+    return false;
+  }
+}
+
+/**
+ * Create and sign a complete Nostr event
+ *
+ * Convenience function that creates a complete signed event from
+ * event parameters and a keypair.
+ *
+ * @param {Object} params - Event parameters
+ * @param {number} params.kind - Event kind (e.g., 30053 for replaceable bookmark event)
+ * @param {string} params.content - Event content (usually encrypted)
+ * @param {Array} params.tags - Event tags array
+ * @param {number} [params.created_at] - Optional timestamp (defaults to now)
+ * @param {NostrKeypair} keypair - Keypair with publicKeyHex and privateKeyBytes
+ * @returns {Promise<Object>} - Complete signed event ready for publishing
+ */
+export async function createSignedNostrEvent(params, keypair) {
+  const { kind, content, tags = [], created_at } = params;
+
+  // Extract x-only public key (first 32 bytes of compressed pubkey, skip the prefix)
+  // Compressed pubkey is 33 bytes: 1 byte prefix (02 or 03) + 32 bytes x-coordinate
+  // Nostr uses x-only pubkey (32 bytes, just the x-coordinate)
+  const xOnlyPubkey = uint8ArrayToHex(keypair.publicKeyBytes.slice(1));
+
+  const event = {
+    pubkey: xOnlyPubkey,
+    created_at: created_at || Math.floor(Date.now() / 1000),
+    kind,
+    tags,
+    content: content || "",
+  };
+
+  return signNostrEvent(event, keypair.privateKeyBytes);
+}
+
+/**
+ * Get x-only public key from compressed public key
+ *
+ * Nostr uses x-only public keys (32 bytes) while secp256k1 typically
+ * produces compressed public keys (33 bytes with prefix).
+ *
+ * @param {Uint8Array|string} compressedPubkey - 33-byte compressed public key
+ * @returns {string} - 32-byte x-only public key as hex
+ */
+export function getXOnlyPubkey(compressedPubkey) {
+  let bytes;
+  if (typeof compressedPubkey === "string") {
+    bytes = hexToUint8Array(compressedPubkey);
+  } else {
+    bytes = compressedPubkey;
+  }
+
+  if (bytes.length !== 33) {
+    throw new Error("Expected 33-byte compressed public key");
+  }
+
+  // Skip the first byte (prefix) and return the x-coordinate
+  return uint8ArrayToHex(bytes.slice(1));
 }

@@ -31,6 +31,11 @@ import {
   uint8ArrayToHex,
   hexToUint8Array,
   isValidSecp256k1Seed,
+  computeEventId,
+  signNostrEvent,
+  verifyNostrEventSignature,
+  createSignedNostrEvent,
+  getXOnlyPubkey,
 } from "./nostr-crypto.js";
 
 import { generateLEK, importLEK, exportLEK } from "./crypto.js";
@@ -427,6 +432,189 @@ describe("nostr-crypto", () => {
       const stats = getNostrCacheStats();
       expect(stats.totalEntries).toBe(1);
       expect(stats.validEntries).toBe(1);
+    });
+  });
+
+  describe("Nostr event signing and verification", () => {
+    let testKeypair;
+
+    beforeAll(async () => {
+      testKeypair = await deriveNostrKeypair(testLEK);
+    });
+
+    describe("computeEventId", () => {
+      it("computes deterministic event ID", async () => {
+        const event = {
+          pubkey: "abcd1234",
+          created_at: 1234567890,
+          kind: 1,
+          tags: [],
+          content: "test content",
+        };
+
+        const id1 = await computeEventId(event);
+        const id2 = await computeEventId(event);
+
+        expect(id1).toBe(id2);
+        expect(id1).toHaveLength(64); // 32 bytes as hex
+      });
+
+      it("produces different IDs for different content", async () => {
+        const event1 = {
+          pubkey: "abcd1234",
+          created_at: 1234567890,
+          kind: 1,
+          tags: [],
+          content: "content 1",
+        };
+
+        const event2 = {
+          pubkey: "abcd1234",
+          created_at: 1234567890,
+          kind: 1,
+          tags: [],
+          content: "content 2",
+        };
+
+        const id1 = await computeEventId(event1);
+        const id2 = await computeEventId(event2);
+
+        expect(id1).not.toBe(id2);
+      });
+    });
+
+    describe("signNostrEvent", () => {
+      it("signs event with valid keypair", async () => {
+        const xOnlyPubkey = getXOnlyPubkey(testKeypair.publicKeyBytes);
+
+        const event = {
+          pubkey: xOnlyPubkey,
+          created_at: Math.floor(Date.now() / 1000),
+          kind: 1,
+          tags: [],
+          content: "test content",
+        };
+
+        const signedEvent = await signNostrEvent(event, testKeypair.privateKeyBytes);
+
+        expect(signedEvent.id).toHaveLength(64);
+        expect(signedEvent.sig).toHaveLength(128); // Schnorr signature is 64 bytes
+        expect(signedEvent.pubkey).toBe(xOnlyPubkey);
+      });
+
+      it("throws error for invalid private key", async () => {
+        const invalidKey = new Uint8Array(32).fill(0);
+        const event = {
+          pubkey: "test",
+          created_at: 1234567890,
+          kind: 1,
+          tags: [],
+          content: "test",
+        };
+
+        await expect(signNostrEvent(event, invalidKey)).rejects.toThrow("Invalid private key");
+      });
+    });
+
+    describe("verifyNostrEventSignature", () => {
+      it("verifies valid signed event", async () => {
+        const xOnlyPubkey = getXOnlyPubkey(testKeypair.publicKeyBytes);
+
+        const event = {
+          pubkey: xOnlyPubkey,
+          created_at: Math.floor(Date.now() / 1000),
+          kind: 1,
+          tags: [["t", "test"]],
+          content: "hello nostr",
+        };
+
+        const signedEvent = await signNostrEvent(event, testKeypair.privateKeyBytes);
+        const isValid = await verifyNostrEventSignature(signedEvent);
+
+        expect(isValid).toBe(true);
+      });
+
+      it("rejects event with tampered content", async () => {
+        const xOnlyPubkey = getXOnlyPubkey(testKeypair.publicKeyBytes);
+
+        const event = {
+          pubkey: xOnlyPubkey,
+          created_at: Math.floor(Date.now() / 1000),
+          kind: 1,
+          tags: [],
+          content: "original content",
+        };
+
+        const signedEvent = await signNostrEvent(event, testKeypair.privateKeyBytes);
+
+        // Tamper with the content
+        const tamperedEvent = { ...signedEvent, content: "tampered content" };
+        const isValid = await verifyNostrEventSignature(tamperedEvent);
+
+        expect(isValid).toBe(false);
+      });
+
+      it("rejects event with missing required fields", async () => {
+        const incompleteEvent = {
+          id: "test-id",
+          // missing pubkey, sig, etc.
+        };
+
+        const isValid = await verifyNostrEventSignature(incompleteEvent);
+        expect(isValid).toBe(false);
+      });
+    });
+
+    describe("createSignedNostrEvent", () => {
+      it("creates complete signed event from parameters", async () => {
+        const signedEvent = await createSignedNostrEvent(
+          {
+            kind: 30053,
+            content: "encrypted bookmark data",
+            tags: [["d", "bookmark-123"], ["app", "hypermark"]],
+          },
+          testKeypair
+        );
+
+        expect(signedEvent.kind).toBe(30053);
+        expect(signedEvent.content).toBe("encrypted bookmark data");
+        expect(signedEvent.tags).toContainEqual(["d", "bookmark-123"]);
+        expect(signedEvent.id).toHaveLength(64);
+        expect(signedEvent.sig).toHaveLength(128);
+
+        // Verify the signature is valid
+        const isValid = await verifyNostrEventSignature(signedEvent);
+        expect(isValid).toBe(true);
+      });
+
+      it("uses x-only pubkey (32 bytes)", async () => {
+        const signedEvent = await createSignedNostrEvent(
+          { kind: 1, content: "test" },
+          testKeypair
+        );
+
+        expect(signedEvent.pubkey).toHaveLength(64); // 32 bytes as hex
+      });
+    });
+
+    describe("getXOnlyPubkey", () => {
+      it("extracts x-only pubkey from compressed pubkey", () => {
+        const compressed = testKeypair.publicKeyBytes;
+        const xOnly = getXOnlyPubkey(compressed);
+
+        expect(xOnly).toHaveLength(64); // 32 bytes as hex
+        // x-only should be the compressed key without the prefix
+        expect(xOnly).toBe(uint8ArrayToHex(compressed.slice(1)));
+      });
+
+      it("accepts hex string input", () => {
+        const xOnly = getXOnlyPubkey(testKeypair.publicKeyHex);
+        expect(xOnly).toHaveLength(64);
+      });
+
+      it("throws for invalid length", () => {
+        expect(() => getXOnlyPubkey(new Uint8Array(32))).toThrow("33-byte");
+      });
     });
   });
 });

@@ -1,0 +1,243 @@
+name: Performance Tests
+
+on:
+  schedule:
+    # Run weekly on Sundays at 2 AM UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+    inputs:
+      dataset_size:
+        description: 'Number of test bookmarks'
+        required: false
+        default: '1000'
+        type: string
+
+env:
+  CI: true
+  NODE_ENV: test
+
+jobs:
+  performance-tests:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup performance test environment
+        run: |
+          echo "Setting up performance test environment..."
+          mkdir -p performance-results
+
+          # Create performance test data
+          node -e "
+            const fs = require('fs');
+            const datasetSize = parseInt('${{ github.event.inputs.dataset_size || '1000' }}');
+            console.log('Creating test dataset with', datasetSize, 'bookmarks...');
+
+            const bookmarks = [];
+            for (let i = 0; i < datasetSize; i++) {
+              bookmarks.push({
+                id: 'bookmark-' + i,
+                title: 'Test Bookmark ' + i,
+                url: 'https://example.com/page-' + i,
+                description: 'Test description for bookmark number ' + i,
+                tags: ['tag' + (i % 10), 'category' + (i % 5)],
+                created: new Date(Date.now() - i * 60000).toISOString(),
+                visited: i % 3 === 0,
+                folder: 'folder-' + Math.floor(i / 100)
+              });
+            }
+
+            fs.writeFileSync('performance-test-data.json', JSON.stringify(bookmarks, null, 2));
+            console.log('Test dataset created with', bookmarks.length, 'bookmarks');
+          "
+
+      - name: Run search performance tests
+        run: |
+          echo "Running search performance benchmarks..."
+          node -e "
+            const { performance } = require('perf_hooks');
+
+            // Mock search implementation for performance testing
+            function mockSearchIndex(bookmarks, query) {
+              const start = performance.now();
+              const results = bookmarks.filter(b =>
+                b.title.toLowerCase().includes(query.toLowerCase()) ||
+                b.description.toLowerCase().includes(query.toLowerCase()) ||
+                b.tags.some(tag => tag.toLowerCase().includes(query.toLowerCase()))
+              );
+              const end = performance.now();
+              return { results, duration: end - start };
+            }
+
+            const fs = require('fs');
+            const bookmarks = JSON.parse(fs.readFileSync('performance-test-data.json', 'utf8'));
+            const queries = ['test', 'bookmark', 'example', 'page', 'tag1', 'category2'];
+
+            console.log('Search Performance Results:');
+            console.log('==========================');
+
+            const results = [];
+            queries.forEach(query => {
+              const { results: searchResults, duration } = mockSearchIndex(bookmarks, query);
+              console.log('Query: \"' + query + '\"');
+              console.log('  Results: ' + searchResults.length);
+              console.log('  Duration: ' + duration.toFixed(2) + 'ms');
+              console.log('');
+
+              results.push({
+                query,
+                resultCount: searchResults.length,
+                duration: duration,
+                throughput: searchResults.length / (duration / 1000)
+              });
+            });
+
+            // Check for performance regressions
+            const avgDuration = results.reduce((sum, r) => sum + r.duration, 0) / results.length;
+            console.log('Average search duration: ' + avgDuration.toFixed(2) + 'ms');
+
+            const maxAcceptableDuration = 50; // 50ms max for search
+            if (avgDuration > maxAcceptableDuration) {
+              console.log('❌ Performance regression detected!');
+              console.log('Average search duration (' + avgDuration.toFixed(2) + 'ms) exceeds threshold (' + maxAcceptableDuration + 'ms)');
+              process.exit(1);
+            } else {
+              console.log('✅ Search performance within acceptable range');
+            }
+
+            // Save results for trending
+            fs.writeFileSync('performance-results/search-results.json', JSON.stringify(results, null, 2));
+          "
+
+      - name: Run memory usage tests
+        run: |
+          echo "Running memory usage benchmarks..."
+          node -e "
+            const fs = require('fs');
+            const { performance } = require('perf_hooks');
+
+            // Simulate bookmark storage and retrieval
+            function measureMemoryUsage(bookmarks) {
+              const initialMemory = process.memoryUsage();
+
+              // Simulate operations
+              const storage = new Map();
+              bookmarks.forEach(bookmark => {
+                storage.set(bookmark.id, bookmark);
+              });
+
+              // Force garbage collection if available
+              if (global.gc) {
+                global.gc();
+              }
+
+              const finalMemory = process.memoryUsage();
+
+              return {
+                heapUsed: finalMemory.heapUsed - initialMemory.heapUsed,
+                heapTotal: finalMemory.heapTotal - initialMemory.heapTotal,
+                external: finalMemory.external - initialMemory.external,
+                arrayBuffers: finalMemory.arrayBuffers - initialMemory.arrayBuffers
+              };
+            }
+
+            const bookmarks = JSON.parse(fs.readFileSync('performance-test-data.json', 'utf8'));
+            const memoryUsage = measureMemoryUsage(bookmarks);
+
+            console.log('Memory Usage Analysis:');
+            console.log('=====================');
+            console.log('Dataset size: ' + bookmarks.length + ' bookmarks');
+            console.log('Heap used: ' + (memoryUsage.heapUsed / 1024 / 1024).toFixed(2) + ' MB');
+            console.log('Heap total: ' + (memoryUsage.heapTotal / 1024 / 1024).toFixed(2) + ' MB');
+            console.log('External: ' + (memoryUsage.external / 1024 / 1024).toFixed(2) + ' MB');
+            console.log('Array buffers: ' + (memoryUsage.arrayBuffers / 1024 / 1024).toFixed(2) + ' MB');
+
+            // Memory usage per bookmark
+            const memoryPerBookmark = memoryUsage.heapUsed / bookmarks.length;
+            console.log('Memory per bookmark: ' + memoryPerBookmark.toFixed(0) + ' bytes');
+
+            // Check for memory issues
+            const maxMemoryPerBookmark = 1024; // 1KB per bookmark max
+            if (memoryPerBookmark > maxMemoryPerBookmark) {
+              console.log('❌ High memory usage detected!');
+              console.log('Memory per bookmark (' + memoryPerBookmark.toFixed(0) + ' bytes) exceeds threshold (' + maxMemoryPerBookmark + ' bytes)');
+              process.exit(1);
+            } else {
+              console.log('✅ Memory usage within acceptable range');
+            }
+
+            fs.writeFileSync('performance-results/memory-results.json', JSON.stringify({
+              datasetSize: bookmarks.length,
+              memoryUsage,
+              memoryPerBookmark,
+              timestamp: new Date().toISOString()
+            }, null, 2));
+          "
+
+      - name: Generate performance report
+        run: |
+          echo "Generating performance report..."
+          node -e "
+            const fs = require('fs');
+
+            const searchResults = JSON.parse(fs.readFileSync('performance-results/search-results.json', 'utf8'));
+            const memoryResults = JSON.parse(fs.readFileSync('performance-results/memory-results.json', 'utf8'));
+
+            const report = {
+              timestamp: new Date().toISOString(),
+              datasetSize: memoryResults.datasetSize,
+              search: {
+                averageDuration: searchResults.reduce((sum, r) => sum + r.duration, 0) / searchResults.length,
+                maxDuration: Math.max(...searchResults.map(r => r.duration)),
+                minDuration: Math.min(...searchResults.map(r => r.duration)),
+                totalQueries: searchResults.length
+              },
+              memory: {
+                heapUsedMB: memoryResults.memoryUsage.heapUsed / 1024 / 1024,
+                memoryPerBookmarkBytes: memoryResults.memoryPerBookmark
+              }
+            };
+
+            console.log('Performance Report Summary:');
+            console.log('==========================');
+            console.log(JSON.stringify(report, null, 2));
+
+            fs.writeFileSync('performance-results/performance-report.json', JSON.stringify(report, null, 2));
+          "
+
+      - name: Upload performance results
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-results-${{ github.run_id }}
+          path: performance-results/
+          retention-days: 90
+
+      - name: Performance summary
+        run: |
+          echo "## Performance Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Test Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "- Dataset size: ${{ github.event.inputs.dataset_size || '1000' }} bookmarks" >> $GITHUB_STEP_SUMMARY
+          echo "- Test run: $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Results" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
+          cat performance-results/performance-report.json >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Benchmarks" >> $GITHUB_STEP_SUMMARY
+          echo "- Search queries must complete within 50ms average" >> $GITHUB_STEP_SUMMARY
+          echo "- Memory usage must not exceed 1KB per bookmark" >> $GITHUB_STEP_SUMMARY

@@ -16,5 +16,8 @@ export default defineConfig({
       "happily-eccentrical-venus.ngrok-free.dev",
       "fubbedibubbbb.ngrok.app",
     ],
+    watch: {
+      ignored: ["**/.beads/**"],
+    },
   },
 });

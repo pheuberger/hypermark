@@ -3,13 +3,15 @@ import PairingFlow from '../pairing/PairingFlow'
 import { cn } from '@/utils/cn'
 import { subscribeToWebrtcProvider } from '../../hooks/useYjs'
 import { useNostrSync } from '../../hooks/useNostrSync'
-import { ChevronLeft, Cloud, CloudOff, RefreshCw, Settings2, ChevronRight } from 'lucide-react'
+import { ChevronLeft, Cloud, CloudOff, RefreshCw, Settings2, ChevronRight, Activity } from 'lucide-react'
 import { SettingSection, SettingRow, SettingCard, SettingsContainer } from './SettingsLayout'
 import { RelayConfigurationView } from './RelayConfigurationView'
+import { DiagnosticsView } from './DiagnosticsView'
 
 export function SettingsView() {
   const [showPairing, setShowPairing] = useState(false)
   const [showRelayConfig, setShowRelayConfig] = useState(false)
+  const [showDiagnostics, setShowDiagnostics] = useState(false)
   const [connected, setConnected] = useState(false)
   const [peerCount, setPeerCount] = useState(0)
 
@@ -76,6 +78,10 @@ export function SettingsView() {
 
   if (showRelayConfig) {
     return <RelayConfigurationView onBack={() => setShowRelayConfig(false)} />
+  }
+
+  if (showDiagnostics) {
+    return <DiagnosticsView onBack={() => setShowDiagnostics(false)} />
   }
 
   if (showPairing) {
@@ -174,12 +180,23 @@ export function SettingsView() {
           <SettingRow
             label="Configure relays"
             description="Add, remove, and test Nostr relays"
-            isLast
             onClick={() => setShowRelayConfig(true)}
             className="cursor-pointer hover:bg-muted/50"
           >
             <div className="flex items-center gap-1 text-muted-foreground">
               <Settings2 className="w-4 h-4" />
+              <ChevronRight className="w-4 h-4" />
+            </div>
+          </SettingRow>
+          <SettingRow
+            label="Sync diagnostics"
+            description="Troubleshoot sync issues and view history"
+            isLast
+            onClick={() => setShowDiagnostics(true)}
+            className="cursor-pointer hover:bg-muted/50"
+          >
+            <div className="flex items-center gap-1 text-muted-foreground">
+              <Activity className="w-4 h-4" />
               <ChevronRight className="w-4 h-4" />
             </div>
           </SettingRow>

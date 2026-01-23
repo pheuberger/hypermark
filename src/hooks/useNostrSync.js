@@ -17,6 +17,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { NostrSyncService, CONNECTION_STATES } from '../services/nostr-sync'
 import { retrieveLEK } from '../services/key-storage'
 import { getYdocInstance } from './useYjs'
+import { getNostrDiagnostics } from '../services/nostr-diagnostics'
 
 // Global service instance (singleton pattern like useYjs)
 let nostrSyncService = null
@@ -225,6 +226,13 @@ export function useNostrSync(options = {}) {
             console.log('[useNostrSync] Received bookmark update:', bookmarkId)
             setLastSyncTime(Date.now())
 
+            // Record in diagnostics
+            try {
+              getNostrDiagnostics().recordReceive(event?.id, 'bookmark', bookmarkId)
+            } catch (e) {
+              // Diagnostics recording should not break sync
+            }
+
             // Apply to Yjs document
             const ydoc = getYdocInstance()
             if (ydoc) {
@@ -240,6 +248,13 @@ export function useNostrSync(options = {}) {
             // Handle bookmark deletions
             console.log('[useNostrSync] Received bookmark deletion:', bookmarkId)
             setLastSyncTime(Date.now())
+
+            // Record in diagnostics
+            try {
+              getNostrDiagnostics().recordReceive(event?.id, 'delete', bookmarkId)
+            } catch (e) {
+              // Diagnostics recording should not break sync
+            }
 
             const ydoc = getYdocInstance()
             if (ydoc) {
@@ -265,9 +280,24 @@ export function useNostrSync(options = {}) {
                   }
                 } else if (change.action === 'delete') {
                   // Publish deletion immediately (no debounce for deletions)
-                  nostrSyncService.publishBookmarkDeletion(key).catch(err => {
-                    console.error('[useNostrSync] Failed to publish deletion:', err)
-                  })
+                  nostrSyncService.publishBookmarkDeletion(key)
+                    .then((event) => {
+                      if (event) {
+                        try {
+                          getNostrDiagnostics().recordPublish(event.id, key)
+                        } catch (e) {
+                          // Diagnostics recording should not break sync
+                        }
+                      }
+                    })
+                    .catch(err => {
+                      console.error('[useNostrSync] Failed to publish deletion:', err)
+                      try {
+                        getNostrDiagnostics().recordError(err, { eventType: 'delete', bookmarkId: key })
+                      } catch (e) {
+                        // Diagnostics recording should not break sync
+                      }
+                    })
                 }
               }
             })
@@ -284,6 +314,13 @@ export function useNostrSync(options = {}) {
       console.error('[useNostrSync] Initialization failed:', err)
       setError(err.message || 'Failed to initialize Nostr sync')
       setIsConnecting(false)
+
+      // Record initialization error in diagnostics
+      try {
+        getNostrDiagnostics().recordError(err, { eventType: 'init' })
+      } catch (e) {
+        // Diagnostics recording should not break initialization
+      }
     }
   }, [debug, updateStatus])
 

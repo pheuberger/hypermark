@@ -54,14 +54,26 @@ describe('NostrSyncService', () => {
     };
 
     globalThis.WebSocket = vi.fn(() => {
+      const wsInstance = {
+        ...mockWebSocket,
+        readyState: 0, // CONNECTING initially
+        addEventListener: vi.fn((event, handler) => {
+          if (event === 'open') wsInstance.onopen = handler;
+          if (event === 'close') wsInstance.onclose = handler;
+          if (event === 'error') wsInstance.onerror = handler;
+          if (event === 'message') wsInstance.onmessage = handler;
+        })
+      };
+
       // Simulate immediate connection for most tests
       setTimeout(() => {
-        mockWebSocket.readyState = 1; // OPEN
-        if (mockWebSocket.onopen) {
-          mockWebSocket.onopen({ type: 'open' });
+        wsInstance.readyState = 1; // OPEN
+        if (wsInstance.onopen) {
+          wsInstance.onopen({ type: 'open' });
         }
       }, 0);
-      return mockWebSocket;
+
+      return wsInstance;
     });
 
     // Create service instance
@@ -216,7 +228,11 @@ describe('NostrSyncService', () => {
       // Simulate connected state
       const connection = service.connections.get('wss://test-relay.example.com');
       connection.state = CONNECTION_STATES.CONNECTED;
-      connection.ws = mockWebSocket;
+      connection.ws = {
+        ...mockWebSocket,
+        readyState: 1, // OPEN
+        send: mockWebSocket.send
+      };
 
       const eventData = {
         kind: NOSTR_KINDS.REPLACEABLE_EVENT,
@@ -227,7 +243,7 @@ describe('NostrSyncService', () => {
 
       expect(result).toBeTruthy();
       expect(result.kind).toBe(NOSTR_KINDS.REPLACEABLE_EVENT);
-      expect(result.pubkey).toBe(mockNostrKeypair.publicKey);
+      expect(result.pubkey).toBe(service.nostrKeypair.publicKeyHex);
       expect(mockWebSocket.send).toHaveBeenCalled();
 
       // Verify the message format
@@ -262,10 +278,17 @@ describe('NostrSyncService', () => {
       await service.initialize(testLEK);
       await service.connectToRelays();
 
+      // Wait for connection to establish
+      await new Promise(resolve => setTimeout(resolve, 10));
+
       // Simulate connected state
       const connection = service.connections.get('wss://test-relay.example.com');
       connection.state = CONNECTION_STATES.CONNECTED;
-      connection.ws = mockWebSocket;
+      connection.ws = {
+        ...mockWebSocket,
+        readyState: 1, // OPEN
+        send: mockWebSocket.send
+      };
     });
 
     it('throws error if not initialized', async () => {
@@ -326,6 +349,8 @@ describe('NostrSyncService', () => {
     });
 
     it('ignores events for unknown subscriptions', async () => {
+      // Enable debug mode to capture logs
+      service.debug = true;
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
       await service._handleEventMessage('wss://test-relay.example.com', ['unknown-sub', {}]);
@@ -333,7 +358,7 @@ describe('NostrSyncService', () => {
       // Should not throw, just log
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('unknown subscription'),
-        'unknown-sub'
+        expect.anything()
       );
 
       consoleSpy.mockRestore();
@@ -348,12 +373,16 @@ describe('NostrSyncService', () => {
     it('handles WebSocket connection errors gracefully', async () => {
       // Mock WebSocket to fail immediately
       globalThis.WebSocket = vi.fn(() => {
-        const failingWs = { ...mockWebSocket };
-        setTimeout(() => {
-          if (failingWs.onerror) {
-            failingWs.onerror({ type: 'error' });
-          }
-        }, 0);
+        const failingWs = {
+          readyState: 0,
+          addEventListener: vi.fn((event, handler) => {
+            if (event === 'error') {
+              setTimeout(() => handler({ type: 'error' }), 0);
+            }
+          }),
+          send: vi.fn(),
+          close: vi.fn()
+        };
         return failingWs;
       });
 

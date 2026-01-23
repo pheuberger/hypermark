@@ -617,7 +617,7 @@ export class NostrSyncService {
   _verifyEventSignature(event) {
     // TODO: Implement actual signature verification
     // For now, just check required fields exist
-    return event.id && event.pubkey && event.created_at && event.kind !== undefined && event.sig
+    return !!(event.id && event.pubkey && event.created_at && event.kind !== undefined && event.sig)
   }
 
   _generateEventId() {

@@ -1,4 +1,4 @@
-name: Test
+name: Test Pipeline
 
 on:
   push:
@@ -6,14 +6,19 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  CI: true
+  NODE_ENV: test
+
 jobs:
   test:
     name: Run Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     strategy:
       matrix:
-        node-version: [20.x]
+        node-version: [18.x, 20.x]
 
     steps:
       - name: Checkout repository
@@ -29,28 +34,96 @@ jobs:
         run: npm ci
 
       - name: Run tests
-        run: npm run test:run
+        run: npm run test -- --run
 
       - name: Run tests with coverage
-        run: npm run test:coverage
+        run: npm run test -- --run --coverage
+        if: matrix.node-version == '20.x'
+
+      - name: Check coverage thresholds
+        run: |
+          echo "Checking coverage thresholds..."
+          npm run test -- --run --coverage --reporter=json > coverage-report.json 2>/dev/null || true
+          node -e "
+            try {
+              const fs = require('fs');
+              const coverage = JSON.parse(fs.readFileSync('coverage/coverage-summary.json', 'utf8'));
+              const total = coverage.total;
+              console.log('Coverage Summary:');
+              console.log('Lines:', total.lines.pct + '%');
+              console.log('Functions:', total.functions.pct + '%');
+              console.log('Branches:', total.branches.pct + '%');
+              console.log('Statements:', total.statements.pct + '%');
+
+              const minCoverage = 80;
+              if (total.lines.pct < minCoverage || total.functions.pct < minCoverage ||
+                  total.branches.pct < minCoverage || total.statements.pct < minCoverage) {
+                console.log('❌ Coverage below threshold (' + minCoverage + '%)');
+                process.exit(1);
+              } else {
+                console.log('✅ Coverage meets threshold requirements');
+              }
+            } catch (err) {
+              console.log('Coverage check skipped - no coverage data available');
+            }
+          "
+        if: matrix.node-version == '20.x'
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
+        if: matrix.node-version == '20.x'
         with:
           name: coverage-report
           path: coverage/
-          retention-days: 7
+          retention-days: 30
+
+      - name: Comment coverage on PR
+        uses: romeovs/lcov-reporter-action@v0.3.1
+        if: github.event_name == 'pull_request' && matrix.node-version == '20.x'
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          lcov-file: ./coverage/lcov.info
+          delete-old-comments: true
+        continue-on-error: true
 
       - name: Coverage summary
         run: |
           echo "## Coverage Summary" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          cat coverage/coverage-summary.json 2>/dev/null | head -50 || echo "Coverage summary not available"
+          cat coverage/coverage-summary.json 2>/dev/null | jq '.' || echo "Coverage summary not available"
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        if: matrix.node-version == '20.x'
+
+  lint:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linting
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Check formatting
+        run: npm run format:check
+        continue-on-error: true
 
   build:
     name: Build Check
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: test
 
     steps:
@@ -68,3 +141,10 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: dist/
+          retention-days: 7

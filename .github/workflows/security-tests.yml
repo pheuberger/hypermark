@@ -44,15 +44,85 @@ jobs:
         run: npm ci
 
       - name: Run security tests
-        run: npm run test:security
-
-      - name: Run security tests with coverage
         run: |
-          npx vitest run \
+          echo "Running security-critical tests..."
+          npm run test -- --run \
             src/services/crypto.test.js \
             src/services/pairing-code.test.js \
             src/services/key-storage.test.js \
-            --coverage
+            src/components/pairing/PairingFlow.test.jsx
+
+      - name: Run security tests with coverage
+        run: |
+          echo "Generating coverage for security-critical files..."
+          npm run test -- --run --coverage \
+            src/services/crypto.test.js \
+            src/services/pairing-code.test.js \
+            src/services/key-storage.test.js \
+            src/components/pairing/PairingFlow.test.jsx
+
+      - name: Check security coverage requirements
+        run: |
+          echo "Checking security file coverage requirements (95% minimum)..."
+          node -e "
+            try {
+              const fs = require('fs');
+              const coverage = JSON.parse(fs.readFileSync('coverage/coverage-summary.json', 'utf8'));
+
+              const securityFiles = [
+                'src/services/crypto.js',
+                'src/services/pairing-code.js',
+                'src/services/key-storage.js',
+                'src/components/pairing/PairingFlow.jsx'
+              ];
+
+              let allPassed = true;
+              const minSecurityCoverage = 95;
+
+              console.log('Security File Coverage Report:');
+              console.log('=====================================');
+
+              securityFiles.forEach(file => {
+                const fileKey = file.replace(/\\\\/g, '/');
+                const fileCoverage = coverage[fileKey];
+
+                if (fileCoverage) {
+                  const lineCoverage = fileCoverage.lines.pct;
+                  const funcCoverage = fileCoverage.functions.pct;
+                  const branchCoverage = fileCoverage.branches.pct;
+                  const stmtCoverage = fileCoverage.statements.pct;
+
+                  console.log(file + ':');
+                  console.log('  Lines: ' + lineCoverage + '%');
+                  console.log('  Functions: ' + funcCoverage + '%');
+                  console.log('  Branches: ' + branchCoverage + '%');
+                  console.log('  Statements: ' + stmtCoverage + '%');
+
+                  if (lineCoverage < minSecurityCoverage || funcCoverage < minSecurityCoverage ||
+                      branchCoverage < minSecurityCoverage || stmtCoverage < minSecurityCoverage) {
+                    console.log('  ❌ BELOW SECURITY THRESHOLD (' + minSecurityCoverage + '%)');
+                    allPassed = false;
+                  } else {
+                    console.log('  ✅ Meets security requirements');
+                  }
+                  console.log('');
+                } else {
+                  console.log(file + ': No coverage data found');
+                }
+              });
+
+              if (!allPassed) {
+                console.log('❌ Security coverage requirements not met!');
+                console.log('Security-critical files must have >= ' + minSecurityCoverage + '% coverage');
+                process.exit(1);
+              } else {
+                console.log('✅ All security files meet coverage requirements');
+              }
+            } catch (err) {
+              console.log('Security coverage check failed:', err.message);
+              process.exit(1);
+            }
+          "
 
       - name: Upload security coverage report
         uses: actions/upload-artifact@v4

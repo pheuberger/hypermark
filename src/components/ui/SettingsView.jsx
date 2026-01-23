@@ -2,13 +2,27 @@ import { useState, useEffect } from 'react'
 import PairingFlow from '../pairing/PairingFlow'
 import { cn } from '@/utils/cn'
 import { subscribeToWebrtcProvider } from '../../hooks/useYjs'
-import { ChevronLeft } from 'lucide-react'
+import { useNostrSync } from '../../hooks/useNostrSync'
+import { ChevronLeft, Cloud, CloudOff, RefreshCw } from 'lucide-react'
 import { SettingSection, SettingRow, SettingCard, SettingsContainer } from './SettingsLayout'
 
 export function SettingsView() {
   const [showPairing, setShowPairing] = useState(false)
   const [connected, setConnected] = useState(false)
   const [peerCount, setPeerCount] = useState(0)
+
+  // Nostr sync hook
+  const {
+    isInitialized: nostrInitialized,
+    isConnecting: nostrConnecting,
+    isConnected: nostrConnected,
+    connectedRelays,
+    totalRelays,
+    pendingUpdates,
+    error: nostrError,
+    lastSyncTime,
+    syncNow,
+  } = useNostrSync({ autoInitialize: true })
 
   useEffect(() => {
     const unsubscribe = subscribeToWebrtcProvider((provider) => {
@@ -40,6 +54,22 @@ export function SettingsView() {
     if (!connected) return 'Not connected'
     if (peerCount === 0) return 'No devices online'
     return `${peerCount} device${peerCount === 1 ? '' : 's'} connected`
+  }
+
+  const getNostrSyncStatus = () => {
+    if (!nostrInitialized) return 'Not initialized'
+    if (nostrConnecting) return 'Connecting...'
+    if (nostrError) return nostrError
+    if (connectedRelays === 0) return 'No relays connected'
+    return `${connectedRelays}/${totalRelays} relays connected`
+  }
+
+  const getLastSyncText = () => {
+    if (!lastSyncTime) return 'Never'
+    const seconds = Math.floor((Date.now() - lastSyncTime) / 1000)
+    if (seconds < 60) return 'Just now'
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
+    return `${Math.floor(seconds / 3600)}h ago`
   }
 
   if (showPairing) {
@@ -76,7 +106,7 @@ export function SettingsView() {
             </button>
           </SettingRow>
           <SettingRow
-            label="Sync status"
+            label="P2P sync status"
             description={getSyncStatus()}
             isLast
           >
@@ -86,6 +116,61 @@ export function SettingsView() {
             )} />
           </SettingRow>
         </SettingCard>
+      </SettingSection>
+
+      <SettingSection title="Cloud Sync (Nostr)">
+        <SettingCard>
+          <SettingRow
+            label="Relay connection"
+            description={getNostrSyncStatus()}
+          >
+            <div className="flex items-center gap-2">
+              {nostrConnected ? (
+                <Cloud className="w-4 h-4 text-green-500" />
+              ) : nostrConnecting ? (
+                <RefreshCw className="w-4 h-4 text-yellow-500 animate-spin" />
+              ) : (
+                <CloudOff className="w-4 h-4 text-muted-foreground/50" />
+              )}
+              <div className={cn(
+                "w-2 h-2 rounded-full",
+                nostrConnected ? "bg-green-500" : nostrConnecting ? "bg-yellow-500" : "bg-muted-foreground/30"
+              )} />
+            </div>
+          </SettingRow>
+          <SettingRow
+            label="Last sync"
+            description={`Last activity: ${getLastSyncText()}`}
+          >
+            {pendingUpdates > 0 && (
+              <span className="text-xs text-muted-foreground">
+                {pendingUpdates} pending
+              </span>
+            )}
+          </SettingRow>
+          <SettingRow
+            label="Sync now"
+            description="Force sync pending changes immediately"
+            isLast
+          >
+            <button
+              onClick={syncNow}
+              disabled={!nostrInitialized || pendingUpdates === 0}
+              className={cn(
+                "text-sm font-medium transition-colors",
+                nostrInitialized && pendingUpdates > 0
+                  ? "text-muted-foreground hover:text-foreground"
+                  : "text-muted-foreground/50 cursor-not-allowed"
+              )}
+            >
+              Sync
+            </button>
+          </SettingRow>
+        </SettingCard>
+        <p className="text-xs text-muted-foreground mt-2 px-1">
+          Nostr sync enables bookmark synchronization even when devices aren't online simultaneously.
+          Your bookmarks are encrypted before being stored on relays.
+        </p>
       </SettingSection>
 
       <SettingSection title="Data">

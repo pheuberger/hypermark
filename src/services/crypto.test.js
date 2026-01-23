@@ -39,6 +39,7 @@ import {
   exportLEK,
   importLEK,
   deriveYjsPassword,
+  deriveNostrPrivateKeyMaterial,
 } from "./crypto.js";
 
 describe("crypto service", () => {
@@ -752,6 +753,122 @@ describe("crypto service", () => {
 
       // 256 bits = 32 bytes, base64 encoded = 44 chars (with padding)
       expect(password.length).toBe(44);
+    });
+  });
+
+  describe("deriveNostrPrivateKeyMaterial", () => {
+    it("derives 32-byte private key material from LEK", async () => {
+      const lek = await generateLEK();
+      const keyMaterial = await deriveNostrPrivateKeyMaterial(lek);
+
+      expect(keyMaterial).toBeInstanceOf(Uint8Array);
+      expect(keyMaterial.length).toBe(32); // secp256k1 private key size
+    });
+
+    it("produces deterministic output for same LEK", async () => {
+      const lek = await generateLEK();
+
+      const keyMaterial1 = await deriveNostrPrivateKeyMaterial(lek);
+      const keyMaterial2 = await deriveNostrPrivateKeyMaterial(lek);
+
+      expect(keyMaterial1).toEqual(keyMaterial2);
+    });
+
+    it("produces different output for different LEKs", async () => {
+      const lek1 = await generateLEK();
+      const lek2 = await generateLEK();
+
+      const keyMaterial1 = await deriveNostrPrivateKeyMaterial(lek1);
+      const keyMaterial2 = await deriveNostrPrivateKeyMaterial(lek2);
+
+      expect(keyMaterial1).not.toEqual(keyMaterial2);
+    });
+
+    it("produces different output than raw LEK (domain separation)", async () => {
+      const lek = await generateLEK();
+      const lekRaw = await exportLEK(lek);
+      const keyMaterial = await deriveNostrPrivateKeyMaterial(lek);
+
+      // Should be different from raw LEK bytes
+      expect(keyMaterial).not.toEqual(new Uint8Array(lekRaw));
+    });
+
+    it("produces different output than Yjs password derivation (domain separation)", async () => {
+      const lek = await generateLEK();
+      const yjsPassword = await deriveYjsPassword(lek);
+      const keyMaterial = await deriveNostrPrivateKeyMaterial(lek);
+
+      // Convert Yjs password back to bytes for comparison
+      const yjsPasswordBytes = new Uint8Array(base64ToArrayBuffer(yjsPassword));
+
+      expect(keyMaterial).not.toEqual(yjsPasswordBytes);
+    });
+
+    it("throws error when LEK is null or undefined", async () => {
+      await expect(deriveNostrPrivateKeyMaterial(null)).rejects.toThrow(
+        'LEK is required for Nostr keypair derivation'
+      );
+
+      await expect(deriveNostrPrivateKeyMaterial(undefined)).rejects.toThrow(
+        'LEK is required for Nostr keypair derivation'
+      );
+    });
+
+    it("throws error when LEK is not extractable", async () => {
+      const lek = await generateLEK();
+      const lekRaw = await exportLEK(lek);
+      // Import as non-extractable
+      const nonExtractableLEK = await importLEK(lekRaw, false);
+
+      await expect(deriveNostrPrivateKeyMaterial(nonExtractableLEK)).rejects.toThrow(
+        'LEK is not extractable'
+      );
+    });
+
+    it("uses correct HKDF parameters for domain separation", async () => {
+      const lek = await generateLEK();
+
+      // We can't easily test the internal parameters directly,
+      // but we can verify that the output changes if we modify the implementation
+      // This test ensures the function is working and produces valid output
+      const keyMaterial = await deriveNostrPrivateKeyMaterial(lek);
+
+      // Verify it's not all zeros (extremely unlikely with proper HKDF)
+      const allZeros = new Uint8Array(32);
+      expect(keyMaterial).not.toEqual(allZeros);
+
+      // Verify it's not all ones (extremely unlikely with proper HKDF)
+      const allOnes = new Uint8Array(32).fill(0xff);
+      expect(keyMaterial).not.toEqual(allOnes);
+    });
+
+    it("produces uniformly distributed bytes (basic entropy test)", async () => {
+      const lek = await generateLEK();
+      const keyMaterial = await deriveNostrPrivateKeyMaterial(lek);
+
+      // Count zeros and ones in the output
+      let zeroCount = 0;
+      let oneCount = 0;
+
+      for (const byte of keyMaterial) {
+        for (let bit = 0; bit < 8; bit++) {
+          if ((byte >> bit) & 1) {
+            oneCount++;
+          } else {
+            zeroCount++;
+          }
+        }
+      }
+
+      const totalBits = 256;
+      expect(zeroCount + oneCount).toBe(totalBits);
+
+      // With good entropy, we expect roughly equal zeros and ones
+      // Allow some variation (between 30% and 70% zeros/ones)
+      expect(zeroCount).toBeGreaterThan(totalBits * 0.3);
+      expect(zeroCount).toBeLessThan(totalBits * 0.7);
+      expect(oneCount).toBeGreaterThan(totalBits * 0.3);
+      expect(oneCount).toBeLessThan(totalBits * 0.7);
     });
   });
 

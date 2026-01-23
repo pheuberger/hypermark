@@ -435,3 +435,63 @@ export async function deriveYjsPassword(lek) {
     throw new Error('Failed to derive Yjs password: ' + error.message)
   }
 }
+
+/**
+ * Derive deterministic Nostr private key material from LEK using HKDF
+ * Creates a 32-byte private key suitable for secp256k1 curve used by Nostr protocol
+ * Uses proper domain separation to prevent key reuse vulnerabilities
+ * @param {CryptoKey} lek - LEK to derive from (must be extractable for key export)
+ * @returns {Promise<Uint8Array>} - 32-byte private key material for secp256k1
+ * @throws {Error} - If LEK is unavailable, not extractable, or derivation fails
+ */
+export async function deriveNostrPrivateKeyMaterial(lek) {
+  if (!isWebCryptoAvailable()) {
+    throw new Error('Web Crypto API is not available')
+  }
+
+  if (!lek) {
+    throw new Error('LEK is required for Nostr keypair derivation')
+  }
+
+  try {
+    // Export LEK to raw bytes (requires extractable=true)
+    // This will throw if LEK is not extractable
+    const lekRaw = await crypto.subtle.exportKey('raw', lek)
+
+    // Import raw LEK bytes as HKDF key material
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw',
+      lekRaw,
+      'HKDF',
+      false, // not extractable (only used for this derivation)
+      ['deriveBits']
+    )
+
+    // Derive private key bytes using HKDF with domain-specific parameters
+    // Salt and info provide cryptographic domain separation from other uses
+    const salt = new TextEncoder().encode('nostr-keypair')
+    const info = new TextEncoder().encode('hypermark-v1')
+
+    const derivedBits = await crypto.subtle.deriveBits(
+      {
+        name: 'HKDF',
+        hash: 'SHA-256',
+        salt: salt, // Domain separator: "nostr-keypair"
+        info: info, // Version/context separator: "hypermark-v1"
+      },
+      keyMaterial,
+      256 // 256 bits = 32 bytes (secp256k1 private key size)
+    )
+
+    // Return as Uint8Array for compatibility with secp256k1 libraries
+    return new Uint8Array(derivedBits)
+  } catch (error) {
+    // Provide specific error messages for common failure cases
+    if (error.name === 'InvalidAccessError') {
+      throw new Error('LEK is not extractable - cannot derive Nostr keypair')
+    }
+
+    console.error('Failed to derive Nostr private key material:', error)
+    throw new Error('Failed to derive Nostr private key material: ' + error.message)
+  }
+}

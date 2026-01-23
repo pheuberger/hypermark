@@ -1422,6 +1422,94 @@ export class NostrSyncService {
   }
 
   /**
+   * Add a new relay to the connection pool
+   * @param {string} relayUrl - Relay URL to add
+   * @returns {Promise<boolean>} - True if successfully added and connected
+   */
+  async addRelay(relayUrl) {
+    if (this.relays.includes(relayUrl)) {
+      this._log('Relay already exists', { relayUrl })
+      return false
+    }
+
+    this.relays.push(relayUrl)
+    this._log('Added relay', { relayUrl, totalRelays: this.relays.length })
+
+    if (this.isInitialized) {
+      try {
+        await this._connectToRelay(relayUrl)
+        return true
+      } catch (error) {
+        this._logError(`Failed to connect to new relay: ${relayUrl}`, error)
+        return false
+      }
+    }
+
+    return true
+  }
+
+  /**
+   * Remove a relay from the connection pool
+   * @param {string} relayUrl - Relay URL to remove
+   * @returns {Promise<boolean>} - True if successfully removed
+   */
+  async removeRelay(relayUrl) {
+    const index = this.relays.indexOf(relayUrl)
+    if (index === -1) {
+      this._log('Relay not found', { relayUrl })
+      return false
+    }
+
+    // Disconnect from the relay first
+    await this._disconnectFromRelay(relayUrl)
+
+    // Remove from relay list
+    this.relays.splice(index, 1)
+    this._log('Removed relay', { relayUrl, totalRelays: this.relays.length })
+
+    return true
+  }
+
+  /**
+   * Update the relay list with new relays
+   * @param {string[]} newRelays - New list of relay URLs
+   * @returns {Promise<void>}
+   */
+  async updateRelays(newRelays) {
+    const currentSet = new Set(this.relays)
+    const newSet = new Set(newRelays)
+
+    // Find relays to remove
+    const toRemove = this.relays.filter(r => !newSet.has(r))
+    // Find relays to add
+    const toAdd = newRelays.filter(r => !currentSet.has(r))
+
+    // Remove old relays
+    for (const relay of toRemove) {
+      await this.removeRelay(relay)
+    }
+
+    // Add new relays
+    for (const relay of toAdd) {
+      await this.addRelay(relay)
+    }
+
+    this._log('Updated relay list', {
+      removed: toRemove.length,
+      added: toAdd.length,
+      total: this.relays.length
+    })
+  }
+
+  /**
+   * Get the list of configured relays
+   * @returns {string[]} - List of relay URLs
+   */
+  getRelays() {
+    return [...this.relays]
+  }
+
+  /**
    * Add event handler for specific event types
    * @param {String} eventType - Event type to handle
    * @param {Function} handler - Handler function

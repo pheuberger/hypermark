@@ -96,6 +96,46 @@ export async function disconnectNostrSync() {
 }
 
 /**
+ * Add a custom relay to the service
+ * @param {string} relayUrl - Relay URL to add
+ * @returns {Promise<boolean>} - True if successfully added
+ */
+export async function addNostrRelay(relayUrl) {
+  if (nostrSyncService?.isInitialized) {
+    const result = await nostrSyncService.addRelay(relayUrl)
+    notifyNostrSyncListeners()
+    return result
+  }
+  return false
+}
+
+/**
+ * Remove a relay from the service
+ * @param {string} relayUrl - Relay URL to remove
+ * @returns {Promise<boolean>} - True if successfully removed
+ */
+export async function removeNostrRelay(relayUrl) {
+  if (nostrSyncService?.isInitialized) {
+    const result = await nostrSyncService.removeRelay(relayUrl)
+    notifyNostrSyncListeners()
+    return result
+  }
+  return false
+}
+
+/**
+ * Update the relay list
+ * @param {string[]} relays - New list of relay URLs
+ * @returns {Promise<void>}
+ */
+export async function updateNostrRelays(relays) {
+  if (nostrSyncService?.isInitialized) {
+    await nostrSyncService.updateRelays(relays)
+    notifyNostrSyncListeners()
+  }
+}
+
+/**
  * useNostrSync React Hook
  *
  * Manages Nostr sync lifecycle and provides reactive status.

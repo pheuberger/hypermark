@@ -3,11 +3,13 @@ import PairingFlow from '../pairing/PairingFlow'
 import { cn } from '@/utils/cn'
 import { subscribeToWebrtcProvider } from '../../hooks/useYjs'
 import { useNostrSync } from '../../hooks/useNostrSync'
-import { ChevronLeft, Cloud, CloudOff, RefreshCw } from 'lucide-react'
+import { ChevronLeft, Cloud, CloudOff, RefreshCw, Settings2, ChevronRight } from 'lucide-react'
 import { SettingSection, SettingRow, SettingCard, SettingsContainer } from './SettingsLayout'
+import { RelayConfigurationView } from './RelayConfigurationView'
 
 export function SettingsView() {
   const [showPairing, setShowPairing] = useState(false)
+  const [showRelayConfig, setShowRelayConfig] = useState(false)
   const [connected, setConnected] = useState(false)
   const [peerCount, setPeerCount] = useState(0)
 
@@ -70,6 +72,10 @@ export function SettingsView() {
     if (seconds < 60) return 'Just now'
     if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
     return `${Math.floor(seconds / 3600)}h ago`
+  }
+
+  if (showRelayConfig) {
+    return <RelayConfigurationView onBack={() => setShowRelayConfig(false)} />
   }
 
   if (showPairing) {
@@ -151,7 +157,6 @@ export function SettingsView() {
           <SettingRow
             label="Sync now"
             description="Force sync pending changes immediately"
-            isLast
           >
             <button
               onClick={syncNow}
@@ -165,6 +170,18 @@ export function SettingsView() {
             >
               Sync
             </button>
+          </SettingRow>
+          <SettingRow
+            label="Configure relays"
+            description="Add, remove, and test Nostr relays"
+            isLast
+            onClick={() => setShowRelayConfig(true)}
+            className="cursor-pointer hover:bg-muted/50"
+          >
+            <div className="flex items-center gap-1 text-muted-foreground">
+              <Settings2 className="w-4 h-4" />
+              <ChevronRight className="w-4 h-4" />
+            </div>
           </SettingRow>
         </SettingCard>
         <p className="text-xs text-muted-foreground mt-2 px-1">

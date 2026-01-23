@@ -24,6 +24,7 @@ export function SettingsView() {
     totalRelays,
     pendingUpdates,
     error: nostrError,
+    relayErrors,
     lastSyncTime,
     syncNow,
   } = useNostrSync({ autoInitialize: true })
@@ -63,6 +64,26 @@ export function SettingsView() {
   const getNostrSyncStatus = () => {
     if (!nostrInitialized) return 'Not initialized'
     if (nostrConnecting) return 'Connecting...'
+
+    // Show detailed error info when relays are failing
+    const errorRelayUrls = relayErrors ? Object.keys(relayErrors) : []
+    if (errorRelayUrls.length > 0) {
+      // Extract hostnames for cleaner display
+      const errorHosts = errorRelayUrls.map(url => {
+        try {
+          return new URL(url).hostname
+        } catch {
+          return url
+        }
+      })
+      if (connectedRelays > 0) {
+        // Some connected, some failing
+        return `${connectedRelays}/${totalRelays} connected (${errorHosts.join(', ')} failing)`
+      }
+      // All failing
+      return `Connection errors: ${errorHosts.join(', ')}`
+    }
+
     if (nostrError) return nostrError
     if (connectedRelays === 0) return 'No relays connected'
     return `${connectedRelays}/${totalRelays} relays connected`

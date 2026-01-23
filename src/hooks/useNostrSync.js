@@ -186,7 +186,8 @@ export function useNostrSync(options = {}) {
   const [connectedRelays, setConnectedRelays] = useState(0)
   const [totalRelays, setTotalRelays] = useState(0)
   const [pendingUpdates, setPendingUpdates] = useState(0)
-  const [error, setError] = useState(null)
+  const [relayErrors, setRelayErrors] = useState({}) // Track errors per relay
+  const [initError, setInitError] = useState(null) // General initialization error
   const [lastSyncTime, setLastSyncTime] = useState(null)
 
   // Performance state
@@ -228,7 +229,7 @@ export function useNostrSync(options = {}) {
     }
 
     setIsConnecting(true)
-    setError(null)
+    setRelayErrors({})
     setSyncProgress(null)
 
     try {
@@ -273,10 +274,16 @@ export function useNostrSync(options = {}) {
             performanceManager.recordNetworkLatency(500) // Default estimate
           }
 
+          // Track errors per relay - don't overwrite other relay errors
           if (newState === CONNECTION_STATES.ERROR) {
-            setError(`Connection error with ${relayUrl}`)
-          } else if (newState === CONNECTION_STATES.CONNECTED) {
-            setError(null)
+            setRelayErrors(prev => ({ ...prev, [relayUrl]: true }))
+          } else if (newState === CONNECTION_STATES.CONNECTED || newState === CONNECTION_STATES.CONNECTING) {
+            // Only clear error for THIS relay when it connects/reconnects
+            setRelayErrors(prev => {
+              const next = { ...prev }
+              delete next[relayUrl]
+              return next
+            })
           }
         })
 
@@ -399,7 +406,7 @@ export function useNostrSync(options = {}) {
 
     } catch (err) {
       console.error('[useNostrSync] Initialization failed:', err)
-      setError(err.message || 'Failed to initialize Nostr sync')
+      setInitError(err.message || 'Failed to initialize Nostr sync')
       setIsConnecting(false)
 
       // Record initialization error in diagnostics
@@ -449,7 +456,8 @@ export function useNostrSync(options = {}) {
 
     await disconnectNostrSync()
     updateStatus()
-    setError(null)
+    setRelayErrors({})
+    setInitError(null)
     setSyncProgress(null)
     setIsBackgroundSyncing(false)
     setPerformanceStats(null)
@@ -511,6 +519,17 @@ export function useNostrSync(options = {}) {
     return unsubscribe
   }, [updateStatus])
 
+  // Compute error message for display
+  const errorRelayUrls = Object.keys(relayErrors)
+  const hasRelayErrors = errorRelayUrls.length > 0
+  const error = initError
+    ? initError
+    : hasRelayErrors
+      ? errorRelayUrls.length === 1
+        ? `Connection error with ${errorRelayUrls[0]}`
+        : `Connection errors with ${errorRelayUrls.length} relays`
+      : null
+
   return {
     // Status
     isInitialized,
@@ -520,6 +539,7 @@ export function useNostrSync(options = {}) {
     totalRelays,
     pendingUpdates,
     error,
+    relayErrors, // Expose per-relay errors for detailed UI
     lastSyncTime,
 
     // Performance status

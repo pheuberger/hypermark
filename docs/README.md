@@ -9,6 +9,12 @@
 | [Security](security.md) | Threat model, pairing protocol, attack scenarios |
 | [Specification](specification.md) | Project requirements, data model, acceptance criteria |
 
+## User Guides
+
+| Document | Description |
+|----------|-------------|
+| [Sync Guide](sync-guide.md) | Device pairing, Nostr sync, relay configuration, troubleshooting |
+
 ## Implementation Plans
 
 Active design documents in [plans/](plans/):

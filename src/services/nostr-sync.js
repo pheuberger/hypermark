@@ -19,7 +19,18 @@
  * - Maintains zero-trust architecture
  */
 
-import { deriveNostrKeypair } from './nostr-crypto'
+import {
+  deriveNostrKeypair,
+  createSignedNostrEvent,
+  verifyNostrEventSignature,
+  getXOnlyPubkey,
+} from './nostr-crypto'
+import {
+  encryptData,
+  decryptData,
+  arrayBufferToBase64,
+  base64ToArrayBuffer,
+} from './crypto.js'
 
 // Nostr event kinds
 export const NOSTR_KINDS = {
@@ -74,6 +85,13 @@ export class NostrSyncService {
     this.eventQueue = [] // Queued events for when connections are restored
     this.isInitialized = false
     this.nostrKeypair = null
+    this.lek = null // Store LEK for content encryption/decryption
+
+    // Debounced publishing infrastructure
+    this.pendingUpdates = new Map() // bookmarkId -> { data, timestamp }
+    this.debounceTimeoutId = null
+    this.debounceDelay = options.debounceDelay || 1500 // 1.5 second default
+    this.isShuttingDown = false
 
     // Event handlers
     this.eventHandlers = new Map() // event type -> handler function
@@ -84,6 +102,7 @@ export class NostrSyncService {
     this._handleWebSocketClose = this._handleWebSocketClose.bind(this)
     this._handleWebSocketError = this._handleWebSocketError.bind(this)
     this._handleWebSocketMessage = this._handleWebSocketMessage.bind(this)
+    this._flushPendingUpdates = this._flushPendingUpdates.bind(this)
 
     this._log('NostrSyncService initialized', { relayCount: this.relays.length })
   }
@@ -98,6 +117,9 @@ export class NostrSyncService {
     }
 
     try {
+      // Store LEK for content encryption/decryption
+      this.lek = lek
+
       // Derive deterministic Nostr keypair from LEK
       this.nostrKeypair = await deriveNostrKeypair(lek)
       this.isInitialized = true
@@ -156,9 +178,26 @@ export class NostrSyncService {
 
   /**
    * Disconnect from all relays
+   *
+   * Flushes any pending bookmark updates before disconnecting to prevent data loss.
    */
   async disconnect() {
     this._log('Disconnecting from all relays')
+
+    // Mark as shutting down to prevent re-queueing of failed updates
+    this.isShuttingDown = true
+
+    // Flush any pending bookmark updates
+    if (this.pendingUpdates.size > 0) {
+      this._log('Flushing pending updates before disconnect')
+      await this.flushNow()
+    }
+
+    // Cancel any remaining debounce timer
+    if (this.debounceTimeoutId) {
+      clearTimeout(this.debounceTimeoutId)
+      this.debounceTimeoutId = null
+    }
 
     const disconnectPromises = Array.from(this.connections.keys()).map(relayUrl =>
       this._disconnectFromRelay(relayUrl)
@@ -168,6 +207,7 @@ export class NostrSyncService {
     this.connections.clear()
     this.subscriptions.clear()
 
+    this.isShuttingDown = false
     this._log('Disconnected from all relays')
   }
 
@@ -291,6 +331,311 @@ export class NostrSyncService {
     this._log('Unsubscribed', { subscriptionId })
   }
 
+  // ========================================================================
+  // Content Encryption/Decryption for Bookmark Data
+  // ========================================================================
+
+  /**
+   * Encrypt bookmark data for publishing to Nostr relays
+   *
+   * Uses AES-GCM encryption with the LEK to protect bookmark content.
+   * The encrypted content can only be decrypted by devices with the same LEK.
+   *
+   * @param {Object} bookmarkData - Plain bookmark data object
+   * @returns {Promise<string>} - Base64 encoded encrypted content (iv:ciphertext)
+   */
+  async encryptBookmarkContent(bookmarkData) {
+    if (!this.lek) {
+      throw new Error('LEK not available for encryption')
+    }
+
+    const plaintext = JSON.stringify(bookmarkData)
+    const { ciphertext, iv } = await encryptData(this.lek, plaintext)
+
+    // Combine IV and ciphertext for storage
+    // Format: base64(iv):base64(ciphertext)
+    const ivBase64 = arrayBufferToBase64(iv)
+    const ciphertextBase64 = arrayBufferToBase64(ciphertext)
+
+    return `${ivBase64}:${ciphertextBase64}`
+  }
+
+  /**
+   * Decrypt bookmark content from Nostr event
+   *
+   * @param {string} encryptedContent - Base64 encoded encrypted content (iv:ciphertext)
+   * @returns {Promise<Object>} - Decrypted bookmark data object
+   */
+  async decryptBookmarkContent(encryptedContent) {
+    if (!this.lek) {
+      throw new Error('LEK not available for decryption')
+    }
+
+    // Parse IV and ciphertext
+    const [ivBase64, ciphertextBase64] = encryptedContent.split(':')
+    if (!ivBase64 || !ciphertextBase64) {
+      throw new Error('Invalid encrypted content format')
+    }
+
+    const iv = new Uint8Array(base64ToArrayBuffer(ivBase64))
+    const ciphertext = new Uint8Array(base64ToArrayBuffer(ciphertextBase64))
+
+    const plaintext = await decryptData(this.lek, ciphertext, iv)
+    return JSON.parse(plaintext)
+  }
+
+  /**
+   * Publish an encrypted bookmark state to Nostr relays
+   *
+   * Creates a parameterized replaceable event (kind 30053) with:
+   * - 'd' tag: bookmark ID for replacement
+   * - 'app' tag: hypermark identifier
+   * - 'v' tag: version for future compatibility
+   * - Encrypted content: LEK-encrypted bookmark data
+   *
+   * @param {string} bookmarkId - Unique bookmark identifier
+   * @param {Object} bookmarkData - Full bookmark data object
+   * @returns {Promise<Object|null>} - Published event or null if queued
+   */
+  async publishBookmarkState(bookmarkId, bookmarkData) {
+    if (!this.isInitialized) {
+      throw new Error('Service must be initialized before publishing')
+    }
+
+    // Encrypt the bookmark content
+    const encryptedContent = await this.encryptBookmarkContent(bookmarkData)
+
+    // Build event with proper tags
+    const eventData = {
+      kind: NOSTR_KINDS.REPLACEABLE_EVENT,
+      content: encryptedContent,
+      tags: [
+        ['d', bookmarkId],           // Parameterized replaceable identifier
+        ['app', 'hypermark'],         // Application identifier
+        ['v', '1'],                    // Protocol version
+        ['t', 'bookmark'],             // Type tag
+      ],
+    }
+
+    // Add bookmark-specific tags for filtering
+    if (bookmarkData.tags && Array.isArray(bookmarkData.tags)) {
+      for (const tag of bookmarkData.tags) {
+        eventData.tags.push(['tag', tag])
+      }
+    }
+
+    return this.publishEvent(eventData)
+  }
+
+  /**
+   * Publish a bookmark deletion event
+   *
+   * Creates a deletion event (kind 5) referencing the bookmark's replaceable event.
+   *
+   * @param {string} bookmarkId - ID of bookmark to delete
+   * @returns {Promise<Object|null>} - Published delete event or null if queued
+   */
+  async publishBookmarkDeletion(bookmarkId) {
+    if (!this.isInitialized) {
+      throw new Error('Service must be initialized before publishing')
+    }
+
+    const eventData = {
+      kind: NOSTR_KINDS.DELETE,
+      content: 'Bookmark deleted',
+      tags: [
+        ['a', `${NOSTR_KINDS.REPLACEABLE_EVENT}:${getXOnlyPubkey(this.nostrKeypair.publicKeyBytes)}:${bookmarkId}`],
+        ['app', 'hypermark'],
+      ],
+    }
+
+    return this.publishEvent(eventData)
+  }
+
+  /**
+   * Subscribe to bookmark updates for this user
+   *
+   * @param {Function} onBookmarkUpdate - Callback for bookmark updates (bookmarkId, bookmarkData)
+   * @param {Function} onBookmarkDelete - Callback for bookmark deletions (bookmarkId)
+   * @returns {Promise<string>} - Subscription ID
+   */
+  async subscribeToBookmarks(onBookmarkUpdate, onBookmarkDelete) {
+    if (!this.isInitialized) {
+      throw new Error('Service must be initialized before subscribing')
+    }
+
+    const xOnlyPubkey = getXOnlyPubkey(this.nostrKeypair.publicKeyBytes)
+
+    const filters = [
+      {
+        kinds: [NOSTR_KINDS.REPLACEABLE_EVENT],
+        authors: [xOnlyPubkey],
+        '#app': ['hypermark'],
+      },
+      {
+        kinds: [NOSTR_KINDS.DELETE],
+        authors: [xOnlyPubkey],
+        '#app': ['hypermark'],
+      },
+    ]
+
+    return this.subscribe(filters, async (event, relayUrl) => {
+      try {
+        if (event.kind === NOSTR_KINDS.REPLACEABLE_EVENT) {
+          // Extract bookmark ID from 'd' tag
+          const dTag = event.tags.find(t => t[0] === 'd')
+          if (!dTag) {
+            this._log('Bookmark event missing d tag', { eventId: event.id })
+            return
+          }
+
+          const bookmarkId = dTag[1]
+
+          // Decrypt content
+          const bookmarkData = await this.decryptBookmarkContent(event.content)
+
+          // Call update handler
+          if (onBookmarkUpdate) {
+            await onBookmarkUpdate(bookmarkId, bookmarkData, event)
+          }
+
+        } else if (event.kind === NOSTR_KINDS.DELETE) {
+          // Extract bookmark ID from 'a' tag
+          const aTag = event.tags.find(t => t[0] === 'a')
+          if (!aTag) return
+
+          // Parse addressable event reference (kind:pubkey:d-tag)
+          const parts = aTag[1].split(':')
+          if (parts.length >= 3) {
+            const bookmarkId = parts[2]
+            if (onBookmarkDelete) {
+              await onBookmarkDelete(bookmarkId, event)
+            }
+          }
+        }
+      } catch (error) {
+        this._logError('Error processing bookmark event', error)
+      }
+    })
+  }
+
+  // ========================================================================
+  // Debounced Publishing Infrastructure (BEAD 2.2)
+  // ========================================================================
+
+  /**
+   * Queue a bookmark update for debounced publishing
+   *
+   * Multiple rapid changes to the same bookmark will be deduplicated,
+   * with only the final state being published after the debounce period.
+   *
+   * @param {string} bookmarkId - Bookmark identifier
+   * @param {Object} bookmarkData - Current bookmark state
+   */
+  queueBookmarkUpdate(bookmarkId, bookmarkData) {
+    // Update pending updates map (overwrites previous pending state)
+    this.pendingUpdates.set(bookmarkId, {
+      data: bookmarkData,
+      timestamp: Date.now(),
+    })
+
+    this._log('Queued bookmark update', {
+      bookmarkId,
+      pendingCount: this.pendingUpdates.size,
+    })
+
+    // Reset debounce timer
+    this._scheduleFlush()
+  }
+
+  /**
+   * Schedule a flush of pending updates
+   * @private
+   */
+  _scheduleFlush() {
+    // Clear existing timeout
+    if (this.debounceTimeoutId) {
+      clearTimeout(this.debounceTimeoutId)
+    }
+
+    // Schedule new flush
+    this.debounceTimeoutId = setTimeout(
+      this._flushPendingUpdates,
+      this.debounceDelay
+    )
+  }
+
+  /**
+   * Flush all pending bookmark updates to Nostr relays
+   *
+   * Called automatically after debounce period, or manually during shutdown.
+   *
+   * @returns {Promise<Object>} - Results of flush operation
+   */
+  async _flushPendingUpdates() {
+    if (this.pendingUpdates.size === 0) {
+      return { published: 0, failed: 0 }
+    }
+
+    const updates = Array.from(this.pendingUpdates.entries())
+    this.pendingUpdates.clear()
+    this.debounceTimeoutId = null
+
+    this._log('Flushing pending updates', { count: updates.length })
+
+    let published = 0
+    let failed = 0
+
+    for (const [bookmarkId, { data }] of updates) {
+      try {
+        await this.publishBookmarkState(bookmarkId, data)
+        published++
+      } catch (error) {
+        failed++
+        this._logError(`Failed to publish bookmark ${bookmarkId}`, error)
+
+        // Re-queue failed updates if not shutting down
+        if (!this.isShuttingDown) {
+          this.pendingUpdates.set(bookmarkId, { data, timestamp: Date.now() })
+        }
+      }
+    }
+
+    this._log('Flush complete', { published, failed })
+
+    // If there are re-queued failures and not shutting down, schedule another flush
+    if (this.pendingUpdates.size > 0 && !this.isShuttingDown) {
+      this._scheduleFlush()
+    }
+
+    return { published, failed }
+  }
+
+  /**
+   * Force immediate flush of all pending updates
+   *
+   * Call this when the service is shutting down to ensure no data is lost.
+   *
+   * @returns {Promise<Object>} - Results of flush operation
+   */
+  async flushNow() {
+    // Cancel any pending debounce
+    if (this.debounceTimeoutId) {
+      clearTimeout(this.debounceTimeoutId)
+      this.debounceTimeoutId = null
+    }
+
+    return this._flushPendingUpdates()
+  }
+
+  /**
+   * Get pending update count
+   * @returns {number} - Number of pending bookmark updates
+   */
+  getPendingUpdateCount() {
+    return this.pendingUpdates.size
+  }
+
   /**
    * Get current connection status
    * @returns {Object} Status information
@@ -322,7 +667,8 @@ export class NostrSyncService {
           createdAt: sub.createdAt
         }))
       },
-      queuedEvents: this.eventQueue.length
+      queuedEvents: this.eventQueue.length,
+      pendingUpdates: this.pendingUpdates.size,
     }
   }
 
@@ -495,8 +841,9 @@ export class NostrSyncService {
     }
 
     try {
-      // Verify event signature (basic validation)
-      if (!this._verifyEventSignature(event)) {
+      // Verify event signature (async Schnorr verification)
+      const isValid = await this._verifyEventSignature(event)
+      if (!isValid) {
         this._log(`Invalid event signature from ${relayUrl}`, { eventId: event.id })
         return
       }
@@ -596,34 +943,23 @@ export class NostrSyncService {
   }
 
   async _signEvent(eventData) {
-    // This would integrate with the nostr-crypto service to sign events
-    // For now, return a placeholder structure
-    const event = {
-      id: this._generateEventId(),
-      pubkey: this.nostrKeypair.publicKeyHex,
-      created_at: Math.floor(Date.now() / 1000),
-      kind: eventData.kind,
-      tags: eventData.tags || [],
-      content: eventData.content || '',
-      sig: null // Would be filled by actual signing
-    }
+    // Create and sign event using proper Nostr cryptography
+    const signedEvent = await createSignedNostrEvent(
+      {
+        kind: eventData.kind,
+        content: eventData.content || '',
+        tags: eventData.tags || [],
+        created_at: eventData.created_at,
+      },
+      this.nostrKeypair
+    )
 
-    // TODO: Implement actual event signing using nostr-crypto service
-    event.sig = 'placeholder_signature'
-
-    return event
+    return signedEvent
   }
 
-  _verifyEventSignature(event) {
-    // TODO: Implement actual signature verification
-    // For now, just check required fields exist
-    return !!(event.id && event.pubkey && event.created_at && event.kind !== undefined && event.sig)
-  }
-
-  _generateEventId() {
-    return Array.from(crypto.getRandomValues(new Uint8Array(32)))
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('')
+  async _verifyEventSignature(event) {
+    // Use real Schnorr signature verification
+    return verifyNostrEventSignature(event)
   }
 
   _generateSubscriptionId() {

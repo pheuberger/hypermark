@@ -75,9 +75,14 @@ export default function PairingFlow() {
   const peerDeviceInfoRef = useRef(null)
   const roomRef = useRef(null)
   const timeoutRef = useRef(null)
+  const mountedRef = useRef(true)
 
   useEffect(() => {
-    return () => cleanupPairingState()
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      cleanupPairingState()
+    }
   }, [])
 
   const cleanupPairingState = useCallback(() => {
@@ -111,6 +116,7 @@ export default function PairingFlow() {
 
   const handleError = useCallback((err) => {
     console.error('[Pairing] Error:', err)
+    if (!mountedRef.current) return
     setError(err.message || String(err))
     setPairingState(STATES.ERROR)
   }, [])
@@ -172,22 +178,22 @@ export default function PairingFlow() {
 
   const handleKeyExchange = async (message) => {
     if (roleRef.current !== 'initiator') return
-    
+
     const { ephemeralPublicKey, deviceName, deviceId } = message
     console.log('[Pairing] Key exchange from:', deviceName)
-    
+
     peerDeviceInfoRef.current = { deviceId, deviceName }
-    
+
     const responderPublicKey = await importPublicKey(ephemeralPublicKey)
     const sharedSecret = await deriveSharedSecret(
       ephemeralKeypairRef.current.privateKey,
       responderPublicKey
     )
-    
+
     const sessionId = `${roomRef.current}-${Date.now()}`
     const sk = await deriveSessionKey(sharedSecret, sessionId)
     sessionKeyRef.current = sk
-    
+
     const deviceInfo = getDeviceInfo()
     await sendEncrypted(MESSAGE_TYPES.KEY_EXCHANGE_RESPONSE, {
       ephemeralPublicKey: await exportPublicKey(ephemeralKeypairRef.current.publicKey),
@@ -195,28 +201,30 @@ export default function PairingFlow() {
       deviceName: deviceInfo.name,
       sessionId,
     })
-    
+
+    if (!mountedRef.current) return
     setPairingState(STATES.TRANSFERRING)
     await transferLEK(sessionId)
   }
 
   const handleKeyExchangeResponse = async (message) => {
     if (roleRef.current !== 'responder') return
-    
+
     const { ephemeralPublicKey, deviceName, deviceId, sessionId } = message
     console.log('[Pairing] Key exchange response from:', deviceName)
-    
+
     peerDeviceInfoRef.current = { deviceId, deviceName }
-    
+
     const initiatorPublicKey = await importPublicKey(ephemeralPublicKey)
     const sharedSecret = await deriveSharedSecret(
       ephemeralKeypairRef.current.privateKey,
       initiatorPublicKey
     )
-    
+
     const sk = await deriveSessionKey(sharedSecret, sessionId)
     sessionKeyRef.current = sk
-    
+
+    if (!mountedRef.current) return
     setPairingState(STATES.IMPORTING)
   }
 
@@ -264,6 +272,7 @@ export default function PairingFlow() {
         identityPublicKey: ourPublicKey,
       })
 
+      if (!mountedRef.current) return
       setPairingState(STATES.COMPLETE)
     } catch (err) {
       console.error('[Pairing] Failed to import LEK:', err)
@@ -287,6 +296,7 @@ export default function PairingFlow() {
     const yjsPassword = await deriveYjsPassword(lek)
     reconnectYjsWebRTC(yjsPassword)
 
+    if (!mountedRef.current) return
     setPairingState(STATES.COMPLETE)
   }
 
@@ -363,6 +373,7 @@ export default function PairingFlow() {
       client.subscribe(roomRef.current, handleSignalingMessage)
 
       timeoutRef.current = setTimeout(() => {
+        if (!mountedRef.current) return
         if (pairingState === STATES.GENERATING) {
           handleError(new Error('Session expired. Please try again.'))
         }
@@ -383,10 +394,11 @@ export default function PairingFlow() {
 
   const handleCodeSubmit = async (e) => {
     e.preventDefault()
-    
+
     try {
       const { room, words } = parsePairingCode(codeInput)
-      
+
+      if (!mountedRef.current) return
       setPairingState(STATES.CONNECTING)
       roomRef.current = getRoomName(room)
 
@@ -400,6 +412,7 @@ export default function PairingFlow() {
       signalingClientRef.current = client
       await client.connect()
 
+      if (!mountedRef.current) return
       client.subscribe(roomRef.current, handleSignalingMessage)
 
       const deviceInfo = getDeviceInfo()
@@ -409,6 +422,7 @@ export default function PairingFlow() {
         deviceName: deviceInfo.name,
       })
 
+      if (!mountedRef.current) return
       setPairingState(STATES.KEY_EXCHANGE)
       console.log('[Pairing] Responder connected, sent key exchange')
     } catch (err) {

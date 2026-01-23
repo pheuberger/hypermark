@@ -1,0 +1,73 @@
+name: Security Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/services/crypto.js"
+      - "src/services/pairing-code.js"
+      - "src/services/key-storage.js"
+      - "src/components/pairing/PairingFlow.jsx"
+      - "src/services/crypto.test.js"
+      - "src/services/pairing-code.test.js"
+      - "src/services/key-storage.test.js"
+      - "src/components/pairing/PairingFlow.test.jsx"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/services/crypto.js"
+      - "src/services/pairing-code.js"
+      - "src/services/key-storage.js"
+      - "src/components/pairing/PairingFlow.jsx"
+      - "src/services/crypto.test.js"
+      - "src/services/pairing-code.test.js"
+      - "src/services/key-storage.test.js"
+      - "src/components/pairing/PairingFlow.test.jsx"
+  workflow_dispatch:
+
+jobs:
+  security-tests:
+    name: Security-Critical Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run security tests
+        run: npm run test:security
+
+      - name: Run security tests with coverage
+        run: |
+          npx vitest run \
+            src/services/crypto.test.js \
+            src/services/pairing-code.test.js \
+            src/services/key-storage.test.js \
+            --coverage
+
+      - name: Upload security coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-coverage-report
+          path: coverage/
+          retention-days: 30
+
+      - name: Security test summary
+        run: |
+          echo "## Security Tests Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Security-critical files tested:" >> $GITHUB_STEP_SUMMARY
+          echo "- \`src/services/crypto.js\` - Cryptographic operations" >> $GITHUB_STEP_SUMMARY
+          echo "- \`src/services/pairing-code.js\` - Pairing code generation/parsing" >> $GITHUB_STEP_SUMMARY
+          echo "- \`src/services/key-storage.js\` - Key persistence" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All security tests passed." >> $GITHUB_STEP_SUMMARY

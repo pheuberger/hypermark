@@ -90,9 +90,7 @@ export const NOSTR_KINDS = {
 export const DEFAULT_RELAYS = [
   'wss://relay.damus.io',
   'wss://nos.lol',
-  'wss://relay.nostr.band',
   'wss://nostr-pub.wellorder.net',
-  'wss://relay.current.fyi',
 ]
 
 // Connection states
@@ -109,8 +107,10 @@ const RETRY_CONFIG = {
   baseDelay: 1000,      // 1 second base delay
   maxDelay: 30000,      // 30 second max delay
   backoffFactor: 2,     // Double delay each retry
-  maxRetries: 6,        // Max 6 retries before giving up
+  maxRetries: 5,        // Max 5 retries before giving up on this connection cycle
   jitterFactor: 0.1,    // 10% jitter to prevent thundering herd
+  maxFailureCycles: 3,  // After 3 complete failure cycles, disable relay temporarily
+  disabledRelayTimeout: 300000, // Re-enable disabled relays after 5 minutes
 }
 
 // ========================================================================
@@ -831,6 +831,7 @@ export class NostrSyncService {
     // State
     this.connections = new Map() // relay URL -> connection info
     this.subscriptions = new Map() // subscription ID -> subscription info
+    this.disabledRelays = new Map() // relay URL -> timestamp when disabled
     this.eventQueue = [] // Queued events for when connections are restored
     this.isInitialized = false
     this.nostrKeypair = null
@@ -1553,28 +1554,50 @@ export class NostrSyncService {
   // Private methods
 
   async _connectToRelay(relayUrl) {
-    if (this.connections.has(relayUrl)) {
-      const conn = this.connections.get(relayUrl)
-      if (conn.state === CONNECTION_STATES.CONNECTED ||
-          conn.state === CONNECTION_STATES.CONNECTING) {
+    // Check if relay is temporarily disabled
+    if (this.disabledRelays && this.disabledRelays.has(relayUrl)) {
+      const disabledAt = this.disabledRelays.get(relayUrl)
+      if (Date.now() - disabledAt < RETRY_CONFIG.disabledRelayTimeout) {
+        this._log(`Relay ${relayUrl} is temporarily disabled, skipping`)
+        return
+      }
+      // Re-enable relay after timeout
+      this.disabledRelays.delete(relayUrl)
+      this._log(`Re-enabling relay ${relayUrl} after timeout`)
+    }
+
+    const existingConn = this.connections.get(relayUrl)
+    if (existingConn) {
+      if (existingConn.state === CONNECTION_STATES.CONNECTED ||
+          existingConn.state === CONNECTION_STATES.CONNECTING) {
         return // Already connected or connecting
       }
     }
 
     this._log(`Connecting to relay: ${relayUrl}`)
 
-    const connection = {
+    // Preserve retryCount and failureCycles if reconnecting, otherwise create new connection
+    const connection = existingConn ? {
+      ...existingConn,
+      ws: null,
+      state: CONNECTION_STATES.CONNECTING,
+      connectedAt: null,
+      lastError: null
+      // retryCount and failureCycles preserved from existingConn
+    } : {
       url: relayUrl,
       ws: null,
       state: CONNECTION_STATES.CONNECTING,
       retryCount: 0,
+      failureCycles: 0,
       retryTimeout: null,
       connectedAt: null,
       lastError: null
     }
 
     this.connections.set(relayUrl, connection)
-    this._notifyConnectionChange(relayUrl, CONNECTION_STATES.DISCONNECTED, CONNECTION_STATES.CONNECTING)
+    const oldState = existingConn ? existingConn.state : CONNECTION_STATES.DISCONNECTED
+    this._notifyConnectionChange(relayUrl, oldState, CONNECTION_STATES.CONNECTING)
 
     try {
       const ws = new WebSocket(relayUrl)
@@ -1623,6 +1646,7 @@ export class NostrSyncService {
     connection.state = CONNECTION_STATES.CONNECTED
     connection.connectedAt = Date.now()
     connection.retryCount = 0 // Reset retry count on successful connection
+    connection.failureCycles = 0 // Reset failure cycles on successful connection
     connection.lastError = null
 
     this._log(`Connected to relay: ${relayUrl}`)
@@ -1745,8 +1769,22 @@ export class NostrSyncService {
     connection.retryCount++
 
     if (connection.retryCount > RETRY_CONFIG.maxRetries) {
-      this._log(`Max retries exceeded for ${relayUrl}, giving up`)
-      return
+      // Completed a full retry cycle without success
+      connection.failureCycles = (connection.failureCycles || 0) + 1
+      connection.retryCount = 0 // Reset for next cycle
+
+      if (connection.failureCycles >= RETRY_CONFIG.maxFailureCycles) {
+        this._log(`Relay ${relayUrl} failed ${connection.failureCycles} cycles, temporarily disabling`)
+        // Initialize disabledRelays map if needed
+        if (!this.disabledRelays) {
+          this.disabledRelays = new Map()
+        }
+        this.disabledRelays.set(relayUrl, Date.now())
+        connection.state = CONNECTION_STATES.DISCONNECTED
+        return
+      }
+
+      this._log(`Max retries exceeded for ${relayUrl}, starting cycle ${connection.failureCycles + 1}`)
     }
 
     // Calculate delay with exponential backoff and jitter
@@ -1758,7 +1796,7 @@ export class NostrSyncService {
     const jitter = baseDelay * RETRY_CONFIG.jitterFactor * (Math.random() - 0.5)
     const delay = Math.max(baseDelay + jitter, 100) // Minimum 100ms delay
 
-    this._log(`Scheduling reconnect to ${relayUrl} in ${Math.round(delay)}ms (attempt ${connection.retryCount})`)
+    this._log(`Scheduling reconnect to ${relayUrl} in ${Math.round(delay)}ms (attempt ${connection.retryCount}, cycle ${(connection.failureCycles || 0) + 1})`)
 
     connection.retryTimeout = setTimeout(async () => {
       connection.state = CONNECTION_STATES.RECONNECTING

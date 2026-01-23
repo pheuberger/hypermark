@@ -9,6 +9,15 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  server: {
+    fs: {
+      strict: false
+    },
+    watch: {
+      usePolling: false,
+      ignored: ['**/node_modules/**', '**/.beads/**']
+    }
+  },
   test: {
     // Use jsdom for DOM APIs and React component testing
     environment: "jsdom",

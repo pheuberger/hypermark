@@ -26,3 +26,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# bv (beads viewer) local config and caches
+.bv/
+
+# Test outputs
+coverage/
+.vitest/
+test-results/

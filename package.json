@@ -7,7 +7,13 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "signaling": "PORT=4444 node node_modules/y-webrtc/bin/server.js"
+    "signaling": "PORT=4444 node node_modules/y-webrtc/bin/server.js",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:ui": "vitest --ui",
+    "test:watch": "vitest --watch",
+    "test:security": "vitest run src/services/crypto.test.js src/services/pairing-code.test.js src/services/key-storage.test.js"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.4",
@@ -27,10 +33,18 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.18",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "@vitest/coverage-v8": "^2.1.9",
+    "@vitest/ui": "^2.1.9",
     "autoprefixer": "^10.4.23",
+    "fake-indexeddb": "^6.2.5",
+    "jsdom": "^25.0.1",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.18",
-    "vite": "^7.2.4"
+    "vite": "^7.2.4",
+    "vitest": "^2.1.9"
   }
 }

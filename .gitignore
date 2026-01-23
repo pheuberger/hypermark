@@ -34,3 +34,4 @@ dist-ssr
 coverage/
 .vitest/
 test-results/
+.ntm

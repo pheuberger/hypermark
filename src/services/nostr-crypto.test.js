@@ -21,6 +21,13 @@ import {
   deriveNostrSeed,
   deriveNostrSeedHex,
   deriveNostrSeedBase64,
+  generateNostrKeypair,
+  deriveNostrKeypair,
+  deriveNostrKeypairCached,
+  verifyNostrKeypair,
+  getNostrPublicKey,
+  clearNostrKeypairCache,
+  getNostrCacheStats,
   uint8ArrayToHex,
   hexToUint8Array,
   isValidSecp256k1Seed,
@@ -283,6 +290,143 @@ describe("nostr-crypto", () => {
       const device2Seed = await deriveNostrSeedHex(device2LEK);
 
       expect(device1Seed).toBe(device2Seed);
+    });
+  });
+
+  describe("generateNostrKeypair", () => {
+    it("generates valid keypair from seed", async () => {
+      const seed = await deriveNostrSeed(testLEK);
+      const keypair = await generateNostrKeypair(seed);
+
+      expect(keypair).toHaveProperty('privateKeyBytes');
+      expect(keypair).toHaveProperty('privateKeyHex');
+      expect(keypair).toHaveProperty('publicKeyBytes');
+      expect(keypair).toHaveProperty('publicKeyHex');
+      expect(keypair).toHaveProperty('npub');
+      expect(keypair).toHaveProperty('nsec');
+
+      // Validate key formats
+      expect(keypair.privateKeyBytes).toHaveLength(32);
+      expect(keypair.privateKeyHex).toHaveLength(64);
+      expect(keypair.publicKeyBytes).toHaveLength(33); // Compressed
+      expect(keypair.publicKeyHex).toHaveLength(66);
+    });
+
+    it("produces deterministic keypairs", async () => {
+      const seed = await deriveNostrSeed(testLEK);
+      const keypair1 = await generateNostrKeypair(seed);
+      const keypair2 = await generateNostrKeypair(seed);
+
+      expect(keypair1.privateKeyHex).toBe(keypair2.privateKeyHex);
+      expect(keypair1.publicKeyHex).toBe(keypair2.publicKeyHex);
+    });
+
+    it("rejects invalid seed", async () => {
+      const invalidSeed = new Uint8Array(32).fill(0);
+      await expect(generateNostrKeypair(invalidSeed)).rejects.toThrow('Invalid seed');
+    });
+  });
+
+  describe("deriveNostrKeypair", () => {
+    it("derives keypair directly from LEK", async () => {
+      const keypair = await deriveNostrKeypair(testLEK);
+
+      expect(verifyNostrKeypair(keypair)).toBe(true);
+      expect(keypair.privateKeyBytes).toHaveLength(32);
+      expect(keypair.publicKeyBytes).toHaveLength(33);
+    });
+
+    it("produces consistent results", async () => {
+      const keypair1 = await deriveNostrKeypair(testLEK);
+      const keypair2 = await deriveNostrKeypair(testLEK);
+
+      expect(keypair1.privateKeyHex).toBe(keypair2.privateKeyHex);
+      expect(keypair1.publicKeyHex).toBe(keypair2.publicKeyHex);
+    });
+  });
+
+  describe("verifyNostrKeypair", () => {
+    it("verifies valid keypair", async () => {
+      const keypair = await deriveNostrKeypair(testLEK);
+      expect(verifyNostrKeypair(keypair)).toBe(true);
+    });
+
+    it("rejects corrupted keypair", async () => {
+      const keypair = await deriveNostrKeypair(testLEK);
+      const corrupted = {
+        ...keypair,
+        publicKeyHex: '03' + '0'.repeat(64),
+      };
+
+      expect(verifyNostrKeypair(corrupted)).toBe(false);
+    });
+  });
+
+  describe("getNostrPublicKey", () => {
+    it("derives public key from private key bytes", async () => {
+      const keypair = await deriveNostrKeypair(testLEK);
+      const publicKey = getNostrPublicKey(keypair.privateKeyBytes);
+
+      expect(publicKey).toBe(keypair.publicKeyHex);
+    });
+
+    it("derives public key from private key hex", async () => {
+      const keypair = await deriveNostrKeypair(testLEK);
+      const publicKey = getNostrPublicKey(keypair.privateKeyHex);
+
+      expect(publicKey).toBe(keypair.publicKeyHex);
+    });
+
+    it("rejects invalid private key", () => {
+      const invalidKey = new Uint8Array(32).fill(0);
+      expect(() => getNostrPublicKey(invalidKey)).toThrow('Invalid private key');
+    });
+  });
+
+  describe("keypair caching", () => {
+    beforeEach(() => {
+      clearNostrKeypairCache();
+    });
+
+    it("caches derived keypairs", async () => {
+      const keypair1 = await deriveNostrKeypairCached(testLEK);
+      const keypair2 = await deriveNostrKeypairCached(testLEK);
+
+      // Should be same reference (cached)
+      expect(keypair1).toBe(keypair2);
+    });
+
+    it("cache miss for different LEKs", async () => {
+      const lek2 = await generateLEK();
+
+      const keypair1 = await deriveNostrKeypairCached(testLEK);
+      const keypair2 = await deriveNostrKeypairCached(lek2);
+
+      expect(keypair1).not.toBe(keypair2);
+      expect(keypair1.publicKeyHex).not.toBe(keypair2.publicKeyHex);
+    });
+
+    it("cache clear invalidates cache", async () => {
+      const keypair1 = await deriveNostrKeypairCached(testLEK);
+
+      clearNostrKeypairCache();
+
+      const keypair2 = await deriveNostrKeypairCached(testLEK);
+
+      // Different references but same content
+      expect(keypair1).not.toBe(keypair2);
+      expect(keypair1.publicKeyHex).toBe(keypair2.publicKeyHex);
+    });
+
+    it("provides cache statistics", async () => {
+      const initialStats = getNostrCacheStats();
+      expect(initialStats.totalEntries).toBe(0);
+
+      await deriveNostrKeypairCached(testLEK);
+
+      const stats = getNostrCacheStats();
+      expect(stats.totalEntries).toBe(1);
+      expect(stats.validEntries).toBe(1);
     });
   });
 });

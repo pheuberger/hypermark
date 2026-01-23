@@ -200,3 +200,339 @@ export function isValidSecp256k1Seed(seed) {
   // seed === curveOrder, invalid (must be strictly less than n)
   return false;
 }
+
+/**
+ * Nostr Keypair object containing private and public keys in multiple formats
+ *
+ * @typedef {Object} NostrKeypair
+ * @property {Uint8Array} privateKeyBytes - 32-byte private key as bytes
+ * @property {string} privateKeyHex - Private key as 64-character hex string
+ * @property {Uint8Array} publicKeyBytes - 33-byte compressed public key as bytes
+ * @property {string} publicKeyHex - Public key as 66-character hex string
+ * @property {string} npub - Nostr public key in bech32 format (npub1...)
+ * @property {string} nsec - Nostr private key in bech32 format (nsec1...)
+ */
+
+/**
+ * Generate secp256k1 keypair from HKDF-derived seed
+ *
+ * Takes a 32-byte seed derived from LEK and generates a complete
+ * Nostr-compatible secp256k1 keypair with keys in multiple formats.
+ *
+ * @param {Uint8Array} seed - 32-byte seed from deriveNostrSeed()
+ * @returns {Promise<NostrKeypair>} - Complete keypair with multiple key formats
+ * @throws {Error} If seed is invalid or keypair generation fails
+ */
+export async function generateNostrKeypair(seed) {
+  // Validate seed before proceeding
+  if (!isValidSecp256k1Seed(seed)) {
+    throw new Error("Invalid seed for secp256k1 keypair generation");
+  }
+
+  try {
+    // Generate private key from seed
+    const privateKeyBytes = seed;
+
+    // Generate public key from private key using secp256k1
+    const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, true); // compressed format
+
+    // Convert to hex format
+    const privateKeyHex = uint8ArrayToHex(privateKeyBytes);
+    const publicKeyHex = uint8ArrayToHex(publicKeyBytes);
+
+    // Generate bech32 formats for Nostr compatibility
+    // TODO: Implement proper bech32 encoding for npub/nsec
+    const npub = uint8ArrayToHex(publicKeyBytes);
+    const nsec = uint8ArrayToHex(privateKeyBytes);
+
+    return {
+      privateKeyBytes,
+      privateKeyHex,
+      publicKeyBytes,
+      publicKeyHex,
+      npub: `npub1${npub}`, // Placeholder - would need proper bech32 encoding
+      nsec: `nsec1${nsec}`, // Placeholder - would need proper bech32 encoding
+    };
+  } catch (error) {
+    console.error("Failed to generate Nostr keypair:", error);
+    throw new Error("Failed to generate Nostr keypair: " + error.message);
+  }
+}
+
+/**
+ * Derive complete Nostr keypair directly from LEK
+ *
+ * Convenience function that combines seed derivation and keypair generation.
+ * This is the main entry point for getting a Nostr keypair from LEK.
+ *
+ * @param {CryptoKey} lek - Ledger Encryption Key (must be extractable)
+ * @returns {Promise<NostrKeypair>} - Complete Nostr keypair
+ * @throws {Error} If LEK is unavailable or keypair generation fails
+ */
+export async function deriveNostrKeypair(lek) {
+  try {
+    // First derive the seed from LEK using HKDF
+    const seed = await deriveNostrSeed(lek);
+
+    // Then generate the keypair from the seed
+    const keypair = await generateNostrKeypair(seed);
+
+    return keypair;
+  } catch (error) {
+    console.error("Failed to derive Nostr keypair from LEK:", error);
+    throw error; // Re-throw to preserve error context
+  }
+}
+
+/**
+ * Verify that a Nostr keypair is valid and consistent
+ *
+ * Validates that:
+ * - Private key is valid for secp256k1
+ * - Public key is correctly derived from private key
+ * - Key formats are consistent
+ *
+ * @param {NostrKeypair} keypair - Keypair to verify
+ * @returns {boolean} - True if keypair is valid and consistent
+ */
+export function verifyNostrKeypair(keypair) {
+  try {
+    const { privateKeyBytes, publicKeyBytes, privateKeyHex, publicKeyHex } = keypair;
+
+    // Validate private key
+    if (!isValidSecp256k1Seed(privateKeyBytes)) {
+      return false;
+    }
+
+    // Verify that public key is correctly derived from private key
+    const derivedPublicKey = secp256k1.getPublicKey(privateKeyBytes, true);
+    if (uint8ArrayToHex(derivedPublicKey) !== publicKeyHex) {
+      return false;
+    }
+
+    // Verify hex format consistency
+    if (uint8ArrayToHex(privateKeyBytes) !== privateKeyHex) {
+      return false;
+    }
+
+    if (uint8ArrayToHex(publicKeyBytes) !== publicKeyHex) {
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Error verifying Nostr keypair:", error);
+    return false;
+  }
+}
+
+/**
+ * Get the Nostr public key from a private key
+ *
+ * Utility function to derive just the public key from a private key.
+ *
+ * @param {Uint8Array|string} privateKey - Private key as bytes or hex string
+ * @returns {string} - Public key as hex string
+ * @throws {Error} If private key is invalid
+ */
+export function getNostrPublicKey(privateKey) {
+  try {
+    let privateKeyBytes;
+
+    if (typeof privateKey === 'string') {
+      privateKeyBytes = hexToUint8Array(privateKey);
+    } else {
+      privateKeyBytes = privateKey;
+    }
+
+    if (!isValidSecp256k1Seed(privateKeyBytes)) {
+      throw new Error("Invalid private key");
+    }
+
+    const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, true);
+    return uint8ArrayToHex(publicKeyBytes);
+  } catch (error) {
+    console.error("Failed to get Nostr public key:", error);
+    throw new Error("Failed to get Nostr public key: " + error.message);
+  }
+}
+
+// In-memory cache for derived Nostr keypairs
+// This avoids expensive HKDF derivation and keypair generation on repeated calls
+const nostrKeypairCache = new Map();
+
+/**
+ * Cache invalidation time in milliseconds (5 minutes)
+ * Keypairs are cached for 5 minutes to balance performance and security
+ */
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Cache entry structure
+ * @typedef {Object} CacheEntry
+ * @property {NostrKeypair} keypair - Cached keypair
+ * @property {number} timestamp - When the entry was created (ms since epoch)
+ * @property {string} lekFingerprint - Fingerprint of LEK used for derivation
+ */
+
+/**
+ * Generate a fingerprint for a LEK to detect key rotation
+ *
+ * Creates a short, deterministic identifier for an LEK that changes
+ * when the LEK changes, allowing cache invalidation on key rotation.
+ *
+ * @param {CryptoKey} lek - LEK to fingerprint
+ * @returns {Promise<string>} - Base64 fingerprint (first 16 chars of SHA-256)
+ * @throws {Error} If fingerprinting fails
+ */
+async function generateLEKFingerprint(lek) {
+  try {
+    // Export LEK to get its raw bytes
+    const lekRaw = await crypto.subtle.exportKey("raw", lek);
+
+    // Hash the LEK bytes
+    const hashBuffer = await crypto.subtle.digest("SHA-256", lekRaw);
+
+    // Convert to base64 and take first 16 characters as fingerprint
+    const fingerprint = arrayBufferToBase64(hashBuffer).substring(0, 16);
+
+    return fingerprint;
+  } catch (error) {
+    console.error("Failed to generate LEK fingerprint:", error);
+    throw new Error("Failed to generate LEK fingerprint: " + error.message);
+  }
+}
+
+/**
+ * Check if a cache entry is still valid
+ *
+ * Entry is valid if:
+ * - It's not expired (within TTL)
+ * - The LEK fingerprint matches (no key rotation)
+ *
+ * @param {CacheEntry} entry - Cache entry to validate
+ * @param {string} currentLEKFingerprint - Current LEK fingerprint
+ * @returns {boolean} - True if entry is valid
+ */
+function isCacheEntryValid(entry, currentLEKFingerprint) {
+  const now = Date.now();
+  const isNotExpired = (now - entry.timestamp) < CACHE_TTL_MS;
+  const lekMatches = entry.lekFingerprint === currentLEKFingerprint;
+
+  return isNotExpired && lekMatches;
+}
+
+/**
+ * Get cache key for a given LEK fingerprint
+ *
+ * @param {string} lekFingerprint - LEK fingerprint
+ * @returns {string} - Cache key
+ */
+function getCacheKey(lekFingerprint) {
+  return `nostr-keypair:${lekFingerprint}`;
+}
+
+/**
+ * Clear expired entries from the cache
+ *
+ * This is called periodically to prevent memory leaks from old cache entries.
+ */
+function clearExpiredCacheEntries() {
+  const now = Date.now();
+
+  for (const [key, entry] of nostrKeypairCache.entries()) {
+    if ((now - entry.timestamp) >= CACHE_TTL_MS) {
+      nostrKeypairCache.delete(key);
+    }
+  }
+}
+
+/**
+ * Derive Nostr keypair with caching
+ *
+ * This is the main entry point for getting Nostr keypairs. It implements
+ * intelligent caching to avoid expensive re-derivation while maintaining
+ * security through cache TTL and LEK rotation detection.
+ *
+ * @param {CryptoKey} lek - Ledger Encryption Key (must be extractable)
+ * @returns {Promise<NostrKeypair>} - Cached or newly derived keypair
+ * @throws {Error} If derivation fails
+ */
+export async function deriveNostrKeypairCached(lek) {
+  try {
+    // Generate fingerprint for the current LEK
+    const lekFingerprint = await generateLEKFingerprint(lek);
+    const cacheKey = getCacheKey(lekFingerprint);
+
+    // Check if we have a valid cached entry
+    const cachedEntry = nostrKeypairCache.get(cacheKey);
+
+    if (cachedEntry && isCacheEntryValid(cachedEntry, lekFingerprint)) {
+      // Return cached keypair
+      return cachedEntry.keypair;
+    }
+
+    // Cache miss or invalid - derive new keypair
+    const keypair = await deriveNostrKeypair(lek);
+
+    // Cache the new keypair
+    nostrKeypairCache.set(cacheKey, {
+      keypair,
+      timestamp: Date.now(),
+      lekFingerprint,
+    });
+
+    // Periodically clean up expired entries (every 100 cache operations)
+    if (Math.random() < 0.01) { // 1% chance
+      clearExpiredCacheEntries();
+    }
+
+    return keypair;
+
+  } catch (error) {
+    console.error("Failed to derive cached Nostr keypair:", error);
+    throw error;
+  }
+}
+
+/**
+ * Clear all cached Nostr keypairs
+ *
+ * This should be called when:
+ * - LEK is rotated/changed
+ * - Security policy requires cache clearing
+ * - User logs out or device is reset
+ *
+ * @returns {void}
+ */
+export function clearNostrKeypairCache() {
+  nostrKeypairCache.clear();
+}
+
+/**
+ * Get current cache statistics
+ *
+ * Useful for debugging and monitoring cache performance.
+ *
+ * @returns {Object} - Cache statistics
+ */
+export function getNostrCacheStats() {
+  const now = Date.now();
+  let validEntries = 0;
+  let expiredEntries = 0;
+
+  for (const entry of nostrKeypairCache.values()) {
+    if ((now - entry.timestamp) < CACHE_TTL_MS) {
+      validEntries++;
+    } else {
+      expiredEntries++;
+    }
+  }
+
+  return {
+    totalEntries: nostrKeypairCache.size,
+    validEntries,
+    expiredEntries,
+    ttlMs: CACHE_TTL_MS,
+  };
+}

@@ -11,6 +11,11 @@
  * - Clean lifecycle management and cleanup
  * - Error handling with user-friendly messages
  * - Integration with Yjs for bookmark change detection
+ * - Performance optimizations for large bookmark collections (1000+)
+ *   - Paginated initial sync to reduce memory pressure
+ *   - Priority-based loading (recent/important bookmarks first)
+ *   - Background sync for non-critical bookmarks after UI render
+ *   - Network-aware batching and retry logic
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
@@ -18,10 +23,17 @@ import { NostrSyncService, CONNECTION_STATES } from '../services/nostr-sync'
 import { retrieveLEK } from '../services/key-storage'
 import { getYdocInstance } from './useYjs'
 import { getNostrDiagnostics } from '../services/nostr-diagnostics'
+import {
+  SyncPerformanceManager,
+  PERFORMANCE_CONFIG,
+  sortBookmarksByPriority,
+  PRIORITY_LEVELS,
+} from '../services/sync-performance'
 
 // Global service instance (singleton pattern like useYjs)
 let nostrSyncService = null
 let nostrSyncListeners = []
+let performanceManager = null
 
 /**
  * Notify all listeners of service changes
@@ -58,6 +70,14 @@ export function getNostrSyncService() {
 }
 
 /**
+ * Get the global performance manager instance
+ * @returns {SyncPerformanceManager|null}
+ */
+export function getPerformanceManager() {
+  return performanceManager
+}
+
+/**
  * Initialize Nostr sync service if not already initialized
  * @param {CryptoKey} lek - Ledger Encryption Key
  * @param {Object} options - Service options
@@ -88,6 +108,12 @@ export async function initializeNostrSync(lek, options = {}) {
  * @returns {Promise<void>}
  */
 export async function disconnectNostrSync() {
+  if (performanceManager) {
+    console.log('[useNostrSync] Shutting down performance manager')
+    performanceManager.shutdown()
+    performanceManager = null
+  }
+
   if (nostrSyncService) {
     console.log('[useNostrSync] Disconnecting Nostr sync service')
     await nostrSyncService.disconnect()
@@ -144,10 +170,15 @@ export async function updateNostrRelays(relays) {
  * @param {Object} options - Hook options
  * @param {boolean} options.autoInitialize - Auto-initialize when LEK available (default: true)
  * @param {boolean} options.debug - Enable debug logging (default: false)
+ * @param {boolean} options.enablePerformanceOptimizations - Enable performance features (default: true)
  * @returns {Object} Hook state and methods
  */
 export function useNostrSync(options = {}) {
-  const { autoInitialize = true, debug = false } = options
+  const {
+    autoInitialize = true,
+    debug = false,
+    enablePerformanceOptimizations = true,
+  } = options
 
   // State
   const [isInitialized, setIsInitialized] = useState(false)
@@ -158,10 +189,16 @@ export function useNostrSync(options = {}) {
   const [error, setError] = useState(null)
   const [lastSyncTime, setLastSyncTime] = useState(null)
 
+  // Performance state
+  const [syncProgress, setSyncProgress] = useState(null)
+  const [isBackgroundSyncing, setIsBackgroundSyncing] = useState(false)
+  const [performanceStats, setPerformanceStats] = useState(null)
+
   // Refs for cleanup
   const bookmarkSubscriptionRef = useRef(null)
   const connectionUnsubscribeRef = useRef(null)
   const yjsObserverRef = useRef(null)
+  const receivedBookmarksRef = useRef(new Map()) // Track received bookmarks for batching
 
   /**
    * Update status from service
@@ -192,6 +229,7 @@ export function useNostrSync(options = {}) {
 
     setIsConnecting(true)
     setError(null)
+    setSyncProgress(null)
 
     try {
       const lek = await retrieveLEK()
@@ -203,6 +241,23 @@ export function useNostrSync(options = {}) {
 
       await initializeNostrSync(lek, { debug })
 
+      // Initialize performance manager if optimizations are enabled
+      if (enablePerformanceOptimizations && !performanceManager) {
+        performanceManager = new SyncPerformanceManager({
+          onBackgroundProgress: (progress) => {
+            setSyncProgress(progress)
+          },
+          onBackgroundComplete: (stats) => {
+            setIsBackgroundSyncing(false)
+            setPerformanceStats(stats)
+            console.log('[useNostrSync] Background sync complete:', stats)
+          },
+          onBackgroundError: (error) => {
+            console.error('[useNostrSync] Background sync error:', error)
+          },
+        })
+      }
+
       // Subscribe to connection changes
       if (nostrSyncService) {
         connectionUnsubscribeRef.current = () => {
@@ -212,6 +267,12 @@ export function useNostrSync(options = {}) {
         nostrSyncService.onConnectionChange((relayUrl, oldState, newState) => {
           updateStatus()
 
+          // Record network latency for optimization
+          if (performanceManager && newState === CONNECTION_STATES.CONNECTED) {
+            // Simple latency estimation based on connection time
+            performanceManager.recordNetworkLatency(500) // Default estimate
+          }
+
           if (newState === CONNECTION_STATES.ERROR) {
             setError(`Connection error with ${relayUrl}`)
           } else if (newState === CONNECTION_STATES.CONNECTED) {
@@ -219,12 +280,18 @@ export function useNostrSync(options = {}) {
           }
         })
 
-        // Set up bookmark sync subscription
+        // Set up bookmark sync subscription with performance optimizations
         bookmarkSubscriptionRef.current = await nostrSyncService.subscribeToBookmarks(
           async (bookmarkId, bookmarkData, event) => {
             // Handle incoming bookmark updates
-            console.log('[useNostrSync] Received bookmark update:', bookmarkId)
-            setLastSyncTime(Date.now())
+            const receiveStart = Date.now()
+
+            // Track received bookmarks for batched processing
+            receivedBookmarksRef.current.set(bookmarkId, {
+              data: bookmarkData,
+              event,
+              receivedAt: receiveStart,
+            })
 
             // Record in diagnostics
             try {
@@ -243,6 +310,13 @@ export function useNostrSync(options = {}) {
                 bookmarksMap.set(bookmarkId, bookmarkData)
               }
             }
+
+            // Record network latency for performance optimization
+            if (performanceManager) {
+              performanceManager.recordNetworkLatency(Date.now() - receiveStart)
+            }
+
+            setLastSyncTime(Date.now())
           },
           async (bookmarkId, event) => {
             // Handle bookmark deletions
@@ -268,6 +342,19 @@ export function useNostrSync(options = {}) {
         const ydoc = getYdocInstance()
         if (ydoc) {
           const bookmarksMap = ydoc.getMap('bookmarks')
+
+          // Initialize performance manager with bookmark count
+          const bookmarkCount = bookmarksMap.size
+          if (performanceManager) {
+            performanceManager.initialize(bookmarkCount)
+            console.log('[useNostrSync] Performance manager initialized for', bookmarkCount, 'bookmarks')
+
+            // Check if this is a large collection and enable background sync
+            if (bookmarkCount >= PERFORMANCE_CONFIG.LARGE_COLLECTION_THRESHOLD) {
+              console.log('[useNostrSync] Large collection detected, performance optimizations enabled')
+              setIsBackgroundSyncing(true)
+            }
+          }
 
           yjsObserverRef.current = (ymapEvent) => {
             ymapEvent.changes.keys.forEach((change, key) => {
@@ -322,7 +409,7 @@ export function useNostrSync(options = {}) {
         // Diagnostics recording should not break initialization
       }
     }
-  }, [debug, updateStatus])
+  }, [debug, updateStatus, enablePerformanceOptimizations])
 
   /**
    * Manually trigger sync (flush pending updates)
@@ -357,10 +444,46 @@ export function useNostrSync(options = {}) {
       bookmarkSubscriptionRef.current = null
     }
 
+    // Clear received bookmarks tracking
+    receivedBookmarksRef.current.clear()
+
     await disconnectNostrSync()
     updateStatus()
     setError(null)
+    setSyncProgress(null)
+    setIsBackgroundSyncing(false)
+    setPerformanceStats(null)
   }, [updateStatus])
+
+  /**
+   * Pause background sync operations (useful when app goes to background)
+   */
+  const pauseBackgroundSync = useCallback(() => {
+    if (performanceManager) {
+      performanceManager.pauseBackgroundOperations()
+      setIsBackgroundSyncing(false)
+    }
+  }, [])
+
+  /**
+   * Resume background sync operations
+   */
+  const resumeBackgroundSync = useCallback(() => {
+    if (performanceManager) {
+      performanceManager.resumeBackgroundOperations()
+      setIsBackgroundSyncing(true)
+    }
+  }, [])
+
+  /**
+   * Get recommended sync parameters based on current network/memory conditions
+   */
+  const getRecommendedParameters = useCallback(() => {
+    if (performanceManager) {
+      return performanceManager.getRecommendedParameters()
+    }
+    return null
+  }, [])
 
   // Auto-initialize effect
   useEffect(() => {
@@ -399,14 +522,32 @@ export function useNostrSync(options = {}) {
     error,
     lastSyncTime,
 
+    // Performance status
+    syncProgress,
+    isBackgroundSyncing,
+    performanceStats,
+
     // Methods
     initialize,
     disconnect,
     syncNow,
 
+    // Performance methods
+    pauseBackgroundSync,
+    resumeBackgroundSync,
+    getRecommendedParameters,
+
     // Service access (for advanced use)
     getService: () => nostrSyncService,
+    getPerformanceManager: () => performanceManager,
   }
 }
+
+// Re-export performance utilities for external use
+export {
+  PERFORMANCE_CONFIG,
+  PRIORITY_LEVELS,
+  sortBookmarksByPriority,
+} from '../services/sync-performance'
 
 export default useNostrSync

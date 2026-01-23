@@ -1386,6 +1386,30 @@ export class NostrSyncService {
   }
 
   /**
+   * Update the debounce delay dynamically
+   *
+   * Useful for adjusting sync frequency based on network conditions
+   * or user activity patterns.
+   *
+   * @param {number} delayMs - New debounce delay in milliseconds
+   */
+  setDebounceDelay(delayMs) {
+    if (typeof delayMs !== 'number' || delayMs < 0) {
+      throw new Error('Debounce delay must be a non-negative number')
+    }
+    this.debounceDelay = delayMs
+    this._log('Debounce delay updated', { newDelay: delayMs })
+  }
+
+  /**
+   * Get current debounce delay
+   * @returns {number} Current debounce delay in milliseconds
+   */
+  getDebounceDelay() {
+    return this.debounceDelay
+  }
+
+  /**
    * Get current connection status
    * @returns {Object} Status information
    */

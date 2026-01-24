@@ -2,11 +2,16 @@
   color-scheme: dark;
 }
 
+html,
+body {
+  height: 100dvh;
+  overflow: hidden;
+}
+
 html {
   background-color: hsl(222.2 84% 4.9%);
 }
 
 body {
   margin: 0;
-  min-height: 100vh;
 }

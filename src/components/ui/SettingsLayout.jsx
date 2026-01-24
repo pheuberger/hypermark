@@ -44,7 +44,7 @@ export function SettingCard({ children, className }) {
 
 export function SettingsContainer({ children, className }) {
   return (
-    <div className={cn("max-w-2xl mx-auto px-6 py-8", className)}>
+    <div className={cn("w-full px-6 py-8", className)}>
       {children}
     </div>
   )

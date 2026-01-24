@@ -1228,22 +1228,32 @@ export class NostrSyncService {
 
     const xOnlyPubkey = getXOnlyPubkey(this.nostrKeypair.publicKeyBytes)
 
+    // Note: We use #t (indexed) instead of #app (not indexed by most relays)
+    // The app tag is verified client-side in the event handler
     const filters = [
       {
         kinds: [NOSTR_KINDS.REPLACEABLE_EVENT],
         authors: [xOnlyPubkey],
-        '#app': ['hypermark'],
+        '#t': ['bookmark'],
       },
       {
         kinds: [NOSTR_KINDS.DELETE],
         authors: [xOnlyPubkey],
-        '#app': ['hypermark'],
+        // Delete events don't have #t tag, so just filter by kind and author
+        // We verify it's our event by checking the 'a' tag references our kind
       },
     ]
 
     return this.subscribe(filters, async (event, relayUrl) => {
       try {
         if (event.kind === NOSTR_KINDS.REPLACEABLE_EVENT) {
+          // Verify this is a hypermark event (client-side check since #app isn't indexed)
+          const appTag = event.tags.find(t => t[0] === 'app')
+          if (!appTag || appTag[1] !== 'hypermark') {
+            this._log('Ignoring non-hypermark event', { eventId: event.id, app: appTag?.[1] })
+            return
+          }
+
           // Extract bookmark ID from 'd' tag
           const dTag = event.tags.find(t => t[0] === 'd')
           if (!dTag) {
@@ -1267,9 +1277,12 @@ export class NostrSyncService {
           if (!aTag) return
 
           // Parse addressable event reference (kind:pubkey:d-tag)
+          // Note: d-tag may contain colons (e.g., "bookmark:123456-abc")
+          // so we only split on first 2 colons
           const parts = aTag[1].split(':')
           if (parts.length >= 3) {
-            const bookmarkId = parts[2]
+            // Rejoin everything from index 2 onwards to get the full d-tag
+            const bookmarkId = parts.slice(2).join(':')
             if (onBookmarkDelete) {
               await onBookmarkDelete(bookmarkId, event)
             }
@@ -1765,6 +1778,7 @@ export class NostrSyncService {
         return
       }
 
+      this._log(`Event received and validated from ${relayUrl}`, { id: event?.id?.substring(0, 8), kind: event?.kind })
       // Call subscription handler
       await subscription.onEvent(event, relayUrl)
 
@@ -1779,7 +1793,7 @@ export class NostrSyncService {
   }
 
   _handleEndOfStoredEvents(relayUrl, [subscriptionId]) {
-    this._log(`End of stored events for subscription ${subscriptionId} from ${relayUrl}`)
+    this._log(`EOSE: End of stored events for subscription ${subscriptionId} from ${relayUrl}`)
   }
 
   _handleNoticeMessage(relayUrl, [message]) {

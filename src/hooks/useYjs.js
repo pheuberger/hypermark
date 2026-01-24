@@ -112,6 +112,12 @@ export function reconnectYjsWebRTC(password = null) {
     notifyWebrtcListeners()
   }
 
+  // Initialize Yjs if not already done (e.g., if user went directly to pairing)
+  if (!ydoc || !awareness) {
+    console.log('[Yjs] Initializing Yjs before WebRTC reconnect')
+    initializeYjs()
+  }
+
   if (!webrtcProvider && ydoc && awareness) {
     const signalingUrl = import.meta.env.VITE_SIGNALING_URL || 'ws://localhost:4444'
     // Log password fingerprint (first 8 + last 4 chars) to verify both devices use same password

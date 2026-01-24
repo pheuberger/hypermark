@@ -28,6 +28,15 @@ export function getWebrtcProvider() {
   return webrtcProvider
 }
 
+export function getYjsStatus() {
+  return {
+    ydocExists: !!ydoc,
+    awarenessExists: !!awareness,
+    webrtcProviderExists: !!webrtcProvider,
+    webrtcConnected: webrtcProvider?.connected ?? false,
+  }
+}
+
 function initializeYjs(roomName = 'hypermark') {
   if (ydoc) return ydoc
 

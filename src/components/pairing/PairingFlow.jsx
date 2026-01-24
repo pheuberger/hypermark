@@ -35,7 +35,7 @@ import {
 } from '../../services/key-storage'
 import { getDeviceInfo } from '../../utils/device-id'
 import { addPairedDevice } from '../../services/device-registry'
-import { reconnectYjsWebRTC } from '../../hooks/useYjs'
+import { reconnectYjsWebRTC, getYjsStatus } from '../../hooks/useYjs'
 import { SignalingClient, getSignalingUrl } from '../../services/signaling'
 
 const STATES = {
@@ -293,7 +293,8 @@ export default function PairingFlow() {
       addDebugLog(`Password fingerprint: ${pwFingerprint}`)
       addDebugLog('Calling reconnectYjsWebRTC...')
       reconnectYjsWebRTC(yjsPassword)
-      addDebugLog('WebRTC reconnect initiated')
+      const status = getYjsStatus()
+      addDebugLog(`Yjs: doc=${status.ydocExists}, aware=${status.awarenessExists}, rtc=${status.webrtcProviderExists}`)
 
       let deviceKeypair = await retrieveDeviceKeypair()
       if (!deviceKeypair) {
@@ -344,7 +345,8 @@ export default function PairingFlow() {
       const pwFingerprint = yjsPassword ? `${yjsPassword.substring(0, 8)}...${yjsPassword.slice(-4)}` : 'null'
       addDebugLog(`Password fingerprint: ${pwFingerprint}`)
       reconnectYjsWebRTC(yjsPassword)
-      addDebugLog('WebRTC reconnect called')
+      const status = getYjsStatus()
+      addDebugLog(`Yjs: doc=${status.ydocExists}, aware=${status.awarenessExists}, rtc=${status.webrtcProviderExists}`)
     } catch (err) {
       addDebugLog(`ACK error: ${err.message}`)
       console.error('[Pairing] ACK handler error:', err)

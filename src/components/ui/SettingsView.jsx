@@ -8,7 +8,7 @@ import { SettingSection, SettingRow, SettingCard, SettingsContainer } from './Se
 import { RelayConfigurationView } from './RelayConfigurationView'
 import { DiagnosticsView } from './DiagnosticsView'
 
-export function SettingsView() {
+export function SettingsView({ onBack }) {
   const [showPairing, setShowPairing] = useState(false)
   const [showRelayConfig, setShowRelayConfig] = useState(false)
   const [showDiagnostics, setShowDiagnostics] = useState(false)
@@ -123,6 +123,15 @@ export function SettingsView() {
 
   return (
     <SettingsContainer>
+      {onBack && (
+        <button
+          onClick={onBack}
+          className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground -ml-1 mb-2 transition-colors lg:hidden"
+        >
+          <ChevronLeft className="w-4 h-4" />
+          Bookmarks
+        </button>
+      )}
       <h1 className="text-2xl font-semibold mb-8">Settings</h1>
 
       <SettingSection title="Sync">

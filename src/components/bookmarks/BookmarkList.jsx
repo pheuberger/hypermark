@@ -204,7 +204,7 @@ export function BookmarkList() {
 
         {currentView === 'settings' && (
           <div className="flex-1 overflow-y-auto bg-background">
-            <SettingsView />
+            <SettingsView onBack={() => setCurrentView('bookmarks')} />
           </div>
         )}
       </div>

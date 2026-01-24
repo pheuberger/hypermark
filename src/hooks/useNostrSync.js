@@ -365,6 +365,11 @@ export function useNostrSync(options = {}) {
 
           yjsObserverRef.current = (ymapEvent) => {
             ymapEvent.changes.keys.forEach((change, key) => {
+              console.log('[useNostrSync] Bookmark change detected:', {
+                action: change.action,
+                bookmarkId: key,
+                serviceInitialized: nostrSyncService?.isInitialized
+              })
               if (nostrSyncService && nostrSyncService.isInitialized) {
                 if (change.action === 'add' || change.action === 'update') {
                   const bookmarkData = bookmarksMap.get(key)
@@ -373,6 +378,7 @@ export function useNostrSync(options = {}) {
                     nostrSyncService.queueBookmarkUpdate(key, bookmarkData)
                   }
                 } else if (change.action === 'delete') {
+                  console.log('[useNostrSync] Publishing bookmark deletion:', key)
                   // Publish deletion immediately (no debounce for deletions)
                   nostrSyncService.publishBookmarkDeletion(key)
                     .then((event) => {

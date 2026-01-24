@@ -912,7 +912,14 @@ export class NostrSyncService {
     const connectedCount = Array.from(this.connections.values())
       .filter(conn => conn.state === CONNECTION_STATES.CONNECTED).length
 
-    this._log(`Connected to ${connectedCount}/${this.relays.length} relays`)
+    if (connectedCount === 0) {
+      console.warn('[NostrSync] Failed to connect to any relays! Sync will not work until at least one relay connects.', {
+        relays: this.relays,
+        disabledRelays: Array.from(this.disabledRelays.keys())
+      })
+    } else {
+      console.log(`[NostrSync] Connected to ${connectedCount}/${this.relays.length} relays`)
+    }
 
     // Process any queued events
     if (this.eventQueue.length > 0) {
@@ -977,7 +984,10 @@ export class NostrSyncService {
 
     if (connectedRelays.length === 0) {
       // No connected relays - queue the event for later
-      this._log('No connected relays, queueing event', { kind: eventData.kind })
+      console.warn('[NostrSync] No connected relays, queueing event for later', {
+        kind: eventData.kind,
+        queueLength: this.eventQueue.length + 1
+      })
       this.eventQueue.push(eventData)
       return null
     }
@@ -1100,7 +1110,8 @@ export class NostrSyncService {
     }
 
     const plaintext = JSON.stringify(bookmarkData)
-    const { ciphertext, iv } = await encryptData(this.lek, plaintext)
+    const plaintextBytes = new TextEncoder().encode(plaintext)
+    const { ciphertext, iv } = await encryptData(this.lek, plaintextBytes)
 
     // Combine IV and ciphertext for storage
     // Format: base64(iv):base64(ciphertext)
@@ -1130,7 +1141,8 @@ export class NostrSyncService {
     const iv = new Uint8Array(base64ToArrayBuffer(ivBase64))
     const ciphertext = new Uint8Array(base64ToArrayBuffer(ciphertextBase64))
 
-    const plaintext = await decryptData(this.lek, ciphertext, iv)
+    const plaintextBytes = await decryptData(this.lek, ciphertext, iv)
+    const plaintext = new TextDecoder().decode(plaintextBytes)
     return JSON.parse(plaintext)
   }
 
@@ -1336,7 +1348,7 @@ export class NostrSyncService {
     let published = 0
     let failed = 0
 
-    for (const [bookmarkId, { data }] of updates) {
+    for (const [bookmarkId, { data, retryCount = 0 }] of updates) {
       try {
         await this.publishBookmarkState(bookmarkId, data)
         published++
@@ -1344,9 +1356,21 @@ export class NostrSyncService {
         failed++
         this._logError(`Failed to publish bookmark ${bookmarkId}`, error)
 
-        // Re-queue failed updates if not shutting down
-        if (!this.isShuttingDown) {
-          this.pendingUpdates.set(bookmarkId, { data, timestamp: Date.now() })
+        // Don't re-queue on permanent errors (encryption failures, etc.)
+        const isPermanentError = error.message?.includes('encrypt') ||
+                                 error.message?.includes('LEK not available')
+
+        // Re-queue failed updates if not shutting down and not a permanent error
+        // Max 3 retries to prevent infinite loops
+        if (!this.isShuttingDown && !isPermanentError && retryCount < 3) {
+          this.pendingUpdates.set(bookmarkId, {
+            data,
+            timestamp: Date.now(),
+            retryCount: retryCount + 1
+          })
+          this._log(`Re-queued bookmark ${bookmarkId} (retry ${retryCount + 1}/3)`)
+        } else if (retryCount >= 3) {
+          console.warn(`[NostrSync] Giving up on bookmark ${bookmarkId} after ${retryCount} retries`)
         }
       }
     }

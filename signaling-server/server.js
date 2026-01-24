@@ -13,6 +13,9 @@ const wss = new WebSocketServer({ port: PORT })
 // topic -> Set<WebSocket>
 const topics = new Map()
 
+// Client ID counter for logging
+let clientIdCounter = 0
+
 function send(ws, message) {
   if (ws.readyState === ws.OPEN) {
     ws.send(JSON.stringify(message))
@@ -28,6 +31,9 @@ function subscribe(ws, topicList) {
 
     if (!ws.topics) ws.topics = new Set()
     ws.topics.add(topic)
+
+    const subscriberCount = topics.get(topic).size
+    console.log(`[${ws.clientId}] Subscribed to "${topic}" (${subscriberCount} total)`)
   }
 }
 
@@ -46,16 +52,30 @@ function unsubscribe(ws, topicList) {
 }
 
 function publish(ws, topic, data) {
-  if (!topics.has(topic)) return
+  if (!topics.has(topic)) {
+    console.log(`[${ws.clientId}] Publish to "${topic}" - no subscribers`)
+    return
+  }
 
   const message = JSON.stringify({ topic, data })
+  let sentCount = 0
+  let skippedSelf = false
+  let skippedClosed = 0
 
   for (const client of topics.get(topic)) {
-    // Don't send back to sender
-    if (client !== ws && client.readyState === client.OPEN) {
-      client.send(message)
+    if (client === ws) {
+      skippedSelf = true
+      continue
     }
+    if (client.readyState !== client.OPEN) {
+      skippedClosed++
+      continue
+    }
+    client.send(message)
+    sentCount++
   }
+
+  console.log(`[${ws.clientId}] Publish to "${topic}" - sent to ${sentCount}, skipped self: ${skippedSelf}, closed: ${skippedClosed}`)
 }
 
 function cleanup(ws) {
@@ -65,7 +85,9 @@ function cleanup(ws) {
 }
 
 wss.on('connection', (ws) => {
+  ws.clientId = ++clientIdCounter
   ws.isAlive = true
+  console.log(`[${ws.clientId}] Connected`)
 
   ws.on('pong', () => {
     ws.isAlive = true
@@ -90,16 +112,17 @@ wss.on('connection', (ws) => {
           break
       }
     } catch (err) {
-      console.error('Failed to parse message:', err)
+      console.error(`[${ws.clientId}] Failed to parse message:`, err)
     }
   })
 
   ws.on('close', () => {
+    console.log(`[${ws.clientId}] Disconnected`)
     cleanup(ws)
   })
 
   ws.on('error', (err) => {
-    console.error('WebSocket error:', err)
+    console.error(`[${ws.clientId}] WebSocket error:`, err)
     cleanup(ws)
   })
 })

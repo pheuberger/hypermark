@@ -66,6 +66,13 @@ export default function PairingFlow() {
   const [error, setError] = useState(null)
   const [pairingCode, setPairingCode] = useState(null)
   const [codeInput, setCodeInput] = useState('')
+  const [debugLog, setDebugLog] = useState([])
+
+  const addDebugLog = useCallback((msg) => {
+    const timestamp = new Date().toLocaleTimeString()
+    console.log(`[Pairing] ${msg}`)
+    setDebugLog(prev => [...prev.slice(-9), `${timestamp} ${msg}`])
+  }, [])
   
   const roleRef = useRef(null)
   const pskRef = useRef(null)
@@ -139,19 +146,19 @@ export default function PairingFlow() {
   const handleSignalingMessage = useCallback(async (data) => {
     try {
       if (!data.encrypted || !pskRef.current) {
-        console.log('[Pairing] Ignoring unencrypted or pre-PSK message')
+        addDebugLog('Ignoring unencrypted/pre-PSK msg')
         return
       }
-      
+
       let message
       try {
         message = await decryptMessage(pskRef.current, data.ciphertext, data.iv)
       } catch (decryptError) {
-        console.warn('[Pairing] Failed to decrypt - wrong code or MITM attempt')
+        addDebugLog('Decrypt failed - wrong code?')
         return
       }
-      
-      console.log('[Pairing] Received:', message.type)
+
+      addDebugLog(`Received: ${message.type}`)
 
       switch (message.type) {
         case MESSAGE_TYPES.KEY_EXCHANGE:
@@ -171,10 +178,10 @@ export default function PairingFlow() {
           break
       }
     } catch (err) {
-      console.error('[Pairing] Message handling error:', err)
+      addDebugLog(`Error: ${err.message}`)
       handleError(err)
     }
-  }, [handleError])
+  }, [handleError, addDebugLog])
 
   const handleKeyExchange = async (message) => {
     if (roleRef.current !== 'initiator') return
@@ -211,30 +218,46 @@ export default function PairingFlow() {
     if (roleRef.current !== 'responder') return
 
     const { ephemeralPublicKey, deviceName, deviceId, sessionId } = message
-    console.log('[Pairing] Key exchange response from:', deviceName)
+    addDebugLog(`Key response from: ${deviceName}`)
 
     peerDeviceInfoRef.current = { deviceId, deviceName }
 
-    const initiatorPublicKey = await importPublicKey(ephemeralPublicKey)
-    const sharedSecret = await deriveSharedSecret(
-      ephemeralKeypairRef.current.privateKey,
-      initiatorPublicKey
-    )
+    try {
+      const initiatorPublicKey = await importPublicKey(ephemeralPublicKey)
+      const sharedSecret = await deriveSharedSecret(
+        ephemeralKeypairRef.current.privateKey,
+        initiatorPublicKey
+      )
 
-    const sk = await deriveSessionKey(sharedSecret, sessionId)
-    sessionKeyRef.current = sk
+      const sk = await deriveSessionKey(sharedSecret, sessionId)
+      sessionKeyRef.current = sk
+      addDebugLog('Session key derived')
 
-    if (!mountedRef.current) return
-    setPairingState(STATES.IMPORTING)
+      if (!mountedRef.current) return
+      setPairingState(STATES.IMPORTING)
+      addDebugLog('State: IMPORTING, waiting for LEK...')
+    } catch (err) {
+      addDebugLog(`Key derive error: ${err.message}`)
+      throw err
+    }
   }
 
   const handleLEKTransfer = async (message) => {
-    if (roleRef.current !== 'responder') return
+    if (roleRef.current !== 'responder') {
+      addDebugLog(`LEK ignored: role=${roleRef.current}`)
+      return
+    }
 
     try {
       const { encryptedLEK, iv, deviceId, deviceName, identityPublicKey, sessionId } = message
-      console.log('[Pairing] Receiving LEK from:', deviceName)
+      addDebugLog(`LEK from: ${deviceName}`)
 
+      if (!sessionKeyRef.current) {
+        addDebugLog('ERROR: No session key!')
+        throw new Error('Session key not established')
+      }
+
+      addDebugLog('Decrypting LEK...')
       const additionalData = `${sessionId}:${deviceId}`
       const lekRaw = await decryptData(
         sessionKeyRef.current,
@@ -243,10 +266,11 @@ export default function PairingFlow() {
         additionalData
       )
 
+      addDebugLog('Importing LEK...')
       const lek = await importLEK(lekRaw, true)
       await storeLEK(lek)
 
-      console.log('[Pairing] LEK imported successfully')
+      addDebugLog('LEK stored successfully')
 
       addPairedDevice({
         deviceId,
@@ -254,6 +278,7 @@ export default function PairingFlow() {
         publicKey: identityPublicKey,
       })
 
+      addDebugLog('Deriving Yjs password...')
       const yjsPassword = await deriveYjsPassword(lek)
       reconnectYjsWebRTC(yjsPassword)
 
@@ -263,6 +288,7 @@ export default function PairingFlow() {
         await storeDeviceKeypair(deviceKeypair)
       }
 
+      addDebugLog('Sending ACK...')
       const deviceInfo = getDeviceInfo()
       const ourPublicKey = await exportPublicKey(deviceKeypair.publicKey)
 
@@ -272,10 +298,11 @@ export default function PairingFlow() {
         identityPublicKey: ourPublicKey,
       })
 
+      addDebugLog('Pairing complete!')
       if (!mountedRef.current) return
       setPairingState(STATES.COMPLETE)
     } catch (err) {
-      console.error('[Pairing] Failed to import LEK:', err)
+      addDebugLog(`LEK error: ${err.message}`)
       handleError(new Error(`Failed to import LEK: ${err.message}`))
     }
   }
@@ -394,27 +421,34 @@ export default function PairingFlow() {
 
   const handleCodeSubmit = async (e) => {
     e.preventDefault()
+    setDebugLog([])
 
     try {
       const { room, words } = parsePairingCode(codeInput)
+      addDebugLog(`Parsed code, room: ${room}`)
 
       if (!mountedRef.current) return
       setPairingState(STATES.CONNECTING)
       roomRef.current = getRoomName(room)
 
+      addDebugLog('Deriving PSK...')
       const psk = await derivePSK(words)
       pskRef.current = psk
 
+      addDebugLog('Generating keypair...')
       const keypair = await generateEphemeralKeypair()
       ephemeralKeypairRef.current = keypair
 
+      addDebugLog('Connecting to signaling...')
       const client = new SignalingClient()
       signalingClientRef.current = client
       await client.connect()
 
       if (!mountedRef.current) return
+      addDebugLog(`Subscribing to: ${roomRef.current}`)
       client.subscribe(roomRef.current, handleSignalingMessage)
 
+      addDebugLog('Sending key exchange...')
       const deviceInfo = getDeviceInfo()
       await sendEncrypted(MESSAGE_TYPES.KEY_EXCHANGE, {
         ephemeralPublicKey: await exportPublicKey(keypair.publicKey),
@@ -424,7 +458,7 @@ export default function PairingFlow() {
 
       if (!mountedRef.current) return
       setPairingState(STATES.KEY_EXCHANGE)
-      console.log('[Pairing] Responder connected, sent key exchange')
+      addDebugLog('Waiting for response...')
     } catch (err) {
       console.error('[Pairing] Code submit failed:', err)
       handleError(err)
@@ -542,22 +576,42 @@ export default function PairingFlow() {
       )}
 
       {(pairingState === STATES.CONNECTING || pairingState === STATES.KEY_EXCHANGE) && (
-        <SettingCard className="p-12 text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-6" />
+        <SettingCard className="p-6 text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-4" />
           <h3 className="font-medium mb-2">Connecting...</h3>
-          <p className="text-sm text-muted-foreground">Establishing secure connection</p>
+          <p className="text-sm text-muted-foreground mb-4">Establishing secure connection</p>
+          {debugLog.length > 0 && (
+            <div className="mt-4 p-3 bg-muted/50 rounded-lg text-left">
+              <p className="text-[10px] font-medium text-muted-foreground mb-2 uppercase">Debug Log</p>
+              <div className="space-y-1 font-mono text-[11px] text-muted-foreground max-h-32 overflow-y-auto">
+                {debugLog.map((log, i) => (
+                  <div key={i}>{log}</div>
+                ))}
+              </div>
+            </div>
+          )}
         </SettingCard>
       )}
 
       {(pairingState === STATES.TRANSFERRING || pairingState === STATES.IMPORTING) && (
-        <SettingCard className="p-12 text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-6" />
+        <SettingCard className="p-6 text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-4" />
           <h3 className="font-medium mb-2">
             {role === 'initiator' ? 'Syncing...' : 'Receiving data...'}
           </h3>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground mb-4">
             Securely transferring encryption keys
           </p>
+          {debugLog.length > 0 && (
+            <div className="mt-4 p-3 bg-muted/50 rounded-lg text-left">
+              <p className="text-[10px] font-medium text-muted-foreground mb-2 uppercase">Debug Log</p>
+              <div className="space-y-1 font-mono text-[11px] text-muted-foreground max-h-32 overflow-y-auto">
+                {debugLog.map((log, i) => (
+                  <div key={i}>{log}</div>
+                ))}
+              </div>
+            </div>
+          )}
         </SettingCard>
       )}
 

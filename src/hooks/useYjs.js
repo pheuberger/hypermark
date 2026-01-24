@@ -104,12 +104,19 @@ export function disconnectYjsWebRTC() {
 }
 
 export function reconnectYjsWebRTC(password = null) {
+  // If password provided and provider exists, destroy old one to create new with password
+  if (password && webrtcProvider) {
+    console.log('[Yjs] Destroying old provider to reconnect with password')
+    webrtcProvider.destroy()
+    webrtcProvider = null
+    notifyWebrtcListeners()
+  }
+
   if (!webrtcProvider && ydoc && awareness) {
     const signalingUrl = import.meta.env.VITE_SIGNALING_URL || 'ws://localhost:4444'
     console.log('[Yjs] Creating WebRTC provider with password:', password ? `${password.substring(0, 20)}...` : 'null')
-    console.log('[Yjs] Password type:', typeof password, 'length:', password?.length)
     console.log('[Yjs] Signaling server:', signalingUrl)
-    
+
     const provider = new WebrtcProvider('hypermark', ydoc, {
       signaling: [signalingUrl],
       password: password,

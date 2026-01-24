@@ -34,6 +34,8 @@ export function getYjsStatus() {
     awarenessExists: !!awareness,
     webrtcProviderExists: !!webrtcProvider,
     webrtcConnected: webrtcProvider?.connected ?? false,
+    peerCount: webrtcProvider?.awareness?.getStates()?.size ?? 0,
+    room: webrtcProvider?.roomName ?? null,
   }
 }
 

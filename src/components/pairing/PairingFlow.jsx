@@ -295,6 +295,13 @@ export default function PairingFlow() {
       reconnectYjsWebRTC(yjsPassword)
       const status = getYjsStatus()
       addDebugLog(`Yjs: doc=${status.ydocExists}, aware=${status.awarenessExists}, rtc=${status.webrtcProviderExists}`)
+      addDebugLog(`Room: ${status.room}, peers: ${status.peerCount}`)
+
+      // Check peers again after 3 seconds
+      setTimeout(() => {
+        const s = getYjsStatus()
+        addDebugLog(`[3s] peers: ${s.peerCount}, connected: ${s.webrtcConnected}`)
+      }, 3000)
 
       let deviceKeypair = await retrieveDeviceKeypair()
       if (!deviceKeypair) {
@@ -347,6 +354,13 @@ export default function PairingFlow() {
       reconnectYjsWebRTC(yjsPassword)
       const status = getYjsStatus()
       addDebugLog(`Yjs: doc=${status.ydocExists}, aware=${status.awarenessExists}, rtc=${status.webrtcProviderExists}`)
+      addDebugLog(`Room: ${status.room}, peers: ${status.peerCount}`)
+
+      // Check peers again after 3 seconds
+      setTimeout(() => {
+        const s = getYjsStatus()
+        addDebugLog(`[3s] peers: ${s.peerCount}, connected: ${s.webrtcConnected}`)
+      }, 3000)
     } catch (err) {
       addDebugLog(`ACK error: ${err.message}`)
       console.error('[Pairing] ACK handler error:', err)

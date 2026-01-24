@@ -7,7 +7,7 @@ export function App() {
   useNostrSync()
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="h-dvh bg-background">
       <BookmarkList />
     </div>
   )

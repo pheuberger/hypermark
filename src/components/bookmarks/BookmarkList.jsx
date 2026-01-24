@@ -135,14 +135,14 @@ export function BookmarkList() {
 
   if (!synced) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
+      <div className="flex h-dvh items-center justify-center bg-background">
         <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full opacity-50"></div>
       </div>
     )
   }
 
   return (
-    <div className="flex h-screen overflow-hidden relative bg-background text-foreground">
+    <div className="flex h-dvh overflow-hidden relative bg-background text-foreground">
       <TagSidebar
         bookmarks={bookmarks}
         selectedFilter={filterView}

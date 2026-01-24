@@ -289,6 +289,8 @@ export default function PairingFlow() {
 
       addDebugLog('Deriving Yjs password...')
       const yjsPassword = await deriveYjsPassword(lek)
+      const pwFingerprint = yjsPassword ? `${yjsPassword.substring(0, 8)}...${yjsPassword.slice(-4)}` : 'null'
+      addDebugLog(`Password fingerprint: ${pwFingerprint}`)
       reconnectYjsWebRTC(yjsPassword)
 
       let deviceKeypair = await retrieveDeviceKeypair()
@@ -337,7 +339,8 @@ export default function PairingFlow() {
       }
       addDebugLog('Deriving Yjs password...')
       const yjsPassword = await deriveYjsPassword(lek)
-      addDebugLog(`Reconnecting WebRTC with password (len=${yjsPassword?.length})...`)
+      const pwFingerprint = yjsPassword ? `${yjsPassword.substring(0, 8)}...${yjsPassword.slice(-4)}` : 'null'
+      addDebugLog(`Password fingerprint: ${pwFingerprint}`)
       reconnectYjsWebRTC(yjsPassword)
       addDebugLog('WebRTC reconnect called')
     } catch (err) {

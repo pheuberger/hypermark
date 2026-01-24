@@ -114,7 +114,9 @@ export function reconnectYjsWebRTC(password = null) {
 
   if (!webrtcProvider && ydoc && awareness) {
     const signalingUrl = import.meta.env.VITE_SIGNALING_URL || 'ws://localhost:4444'
-    console.log('[Yjs] Creating WebRTC provider with password:', password ? `${password.substring(0, 20)}...` : 'null')
+    // Log password fingerprint (first 8 + last 4 chars) to verify both devices use same password
+    const pwFingerprint = password ? `${password.substring(0, 8)}...${password.slice(-4)}` : 'null'
+    console.log('[Yjs] Creating WebRTC provider, password fingerprint:', pwFingerprint)
     console.log('[Yjs] Signaling server:', signalingUrl)
 
     const provider = new WebrtcProvider('hypermark', ydoc, {

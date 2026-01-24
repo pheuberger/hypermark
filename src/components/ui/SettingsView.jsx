@@ -3,7 +3,7 @@ import PairingFlow from '../pairing/PairingFlow'
 import { cn } from '@/utils/cn'
 import { subscribeToWebrtcProvider } from '../../hooks/useYjs'
 import { useNostrSync } from '../../hooks/useNostrSync'
-import { ChevronLeft, Cloud, CloudOff, RefreshCw, Settings2, ChevronRight, Activity } from 'lucide-react'
+import { ChevronLeft, Cloud, CloudOff, RefreshCw, Settings2, ChevronRight, Activity, Smartphone } from 'lucide-react'
 import { SettingSection, SettingRow, SettingCard, SettingsContainer } from './SettingsLayout'
 import { RelayConfigurationView } from './RelayConfigurationView'
 import { DiagnosticsView } from './DiagnosticsView'
@@ -139,13 +139,13 @@ export function SettingsView({ onBack }) {
           <SettingRow
             label="Device pairing"
             description="Connect this device with your other devices to sync bookmarks"
+            onClick={() => setShowPairing(true)}
+            className="cursor-pointer hover:bg-muted/50"
           >
-            <button
-              onClick={() => setShowPairing(true)}
-              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Set up
-            </button>
+            <div className="flex items-center gap-1 text-muted-foreground">
+              <Smartphone className="w-4 h-4" />
+              <ChevronRight className="w-4 h-4" />
+            </div>
           </SettingRow>
           <SettingRow
             label="P2P sync status"

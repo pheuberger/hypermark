@@ -641,14 +641,24 @@ export default function PairingFlow() {
       )}
 
       {pairingState === STATES.COMPLETE && (
-        <SettingCard className="p-12 text-center">
-          <div className="w-16 h-16 rounded-full bg-green-500/10 flex items-center justify-center mx-auto mb-6">
+        <SettingCard className="p-6 text-center">
+          <div className="w-16 h-16 rounded-full bg-green-500/10 flex items-center justify-center mx-auto mb-4">
             <Check className="w-8 h-8 text-green-500" />
           </div>
           <h3 className="text-xl font-semibold mb-2">Pairing Complete</h3>
-          <p className="text-muted-foreground text-sm mb-8">
+          <p className="text-muted-foreground text-sm mb-6">
             Your devices are now securely synced.
           </p>
+          {debugLog.length > 0 && (
+            <div className="mb-6 p-3 bg-muted/50 rounded-lg text-left">
+              <p className="text-[10px] font-medium text-muted-foreground mb-2 uppercase">Debug Log</p>
+              <div className="space-y-1 font-mono text-[11px] text-muted-foreground max-h-32 overflow-y-auto">
+                {debugLog.map((log, i) => (
+                  <div key={i}>{log}</div>
+                ))}
+              </div>
+            </div>
+          )}
           <Button onClick={reset} className="w-full">
             Done
           </Button>

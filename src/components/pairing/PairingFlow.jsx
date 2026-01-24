@@ -320,7 +320,7 @@ export default function PairingFlow() {
     if (roleRef.current !== 'initiator') return
 
     const { deviceId, deviceName, identityPublicKey } = message
-    console.log('[Pairing] Acknowledged by:', deviceName)
+    addDebugLog(`ACK from: ${deviceName}`)
 
     addPairedDevice({
       deviceId,
@@ -328,9 +328,22 @@ export default function PairingFlow() {
       publicKey: identityPublicKey,
     })
 
-    const lek = await retrieveLEK()
-    const yjsPassword = await deriveYjsPassword(lek)
-    reconnectYjsWebRTC(yjsPassword)
+    try {
+      addDebugLog('Retrieving LEK...')
+      const lek = await retrieveLEK()
+      if (!lek) {
+        addDebugLog('ERROR: LEK not found!')
+        return
+      }
+      addDebugLog('Deriving Yjs password...')
+      const yjsPassword = await deriveYjsPassword(lek)
+      addDebugLog(`Reconnecting WebRTC with password (len=${yjsPassword?.length})...`)
+      reconnectYjsWebRTC(yjsPassword)
+      addDebugLog('WebRTC reconnect called')
+    } catch (err) {
+      addDebugLog(`ACK error: ${err.message}`)
+      console.error('[Pairing] ACK handler error:', err)
+    }
 
     if (!mountedRef.current) return
     setPairingState(STATES.COMPLETE)

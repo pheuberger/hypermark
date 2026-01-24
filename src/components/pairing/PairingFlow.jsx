@@ -252,8 +252,17 @@ export default function PairingFlow() {
       const { encryptedLEK, iv, deviceId, deviceName, identityPublicKey, sessionId } = message
       addDebugLog(`LEK from: ${deviceName}`)
 
+      // Wait for session key if key-exchange-response is still being processed (race condition)
       if (!sessionKeyRef.current) {
-        addDebugLog('ERROR: No session key!')
+        addDebugLog('Waiting for session key...')
+        for (let i = 0; i < 50; i++) {
+          await new Promise(r => setTimeout(r, 100))
+          if (sessionKeyRef.current) break
+        }
+      }
+
+      if (!sessionKeyRef.current) {
+        addDebugLog('ERROR: Session key timeout!')
         throw new Error('Session key not established')
       }
 

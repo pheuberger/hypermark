@@ -80,54 +80,10 @@ export function BookmarkList() {
     setIsHelpOpen(true)
   }, [])
 
-  const selectNext = useCallback(() => {
-    setSelectedIndex((prev) => {
-      const maxIndex = filteredBookmarks.length - 1
-      if (maxIndex < 0) return -1
-      return prev < maxIndex ? prev + 1 : prev
-    })
-  }, [filteredBookmarks.length])
-
-  const selectPrev = useCallback(() => {
-    setSelectedIndex((prev) => {
-      if (prev <= 0) return 0
-      return prev - 1
-    })
-  }, [])
-
-  const openSelected = useCallback(() => {
-    if (selectedIndex >= 0 && selectedIndex < filteredBookmarks.length) {
-      const bookmark = filteredBookmarks[selectedIndex]
-      window.open(bookmark.url, '_blank', 'noopener,noreferrer')
-    }
-  }, [selectedIndex, filteredBookmarks])
-
   const focusSearch = useCallback(() => {
     searchInputRef.current?.focus()
     searchInputRef.current?.select()
   }, [])
-
-  useEffect(() => {
-    setSelectedIndex(-1)
-  }, [filteredBookmarks.length, filterView, selectedTag, debouncedSearchQuery])
-
-  useEffect(() => {
-    if (selectedIndex >= 0 && selectedItemRef.current) {
-      selectedItemRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-    }
-  }, [selectedIndex])
-
-  useHotkeys({
-    'g n': openNewBookmarkForm,
-    'g a': goToAllBookmarks,
-    'g l': goToReadLater,
-    'g s': goToSettings,
-    'shift+?': showHelp,
-    'j': selectNext,
-    'k': selectPrev,
-    'enter': openSelected,
-    'mod+k': focusSearch,
-  })
 
   const filteredBookmarks = useMemo(() => {
     let filtered = [...searchedBookmarks]
@@ -155,6 +111,50 @@ export function BookmarkList() {
 
     return filtered
   }, [searchedBookmarks, filterView, selectedTag, sortBy])
+
+  const selectNext = useCallback(() => {
+    setSelectedIndex((prev) => {
+      const maxIndex = filteredBookmarks.length - 1
+      if (maxIndex < 0) return -1
+      return prev < maxIndex ? prev + 1 : prev
+    })
+  }, [filteredBookmarks.length])
+
+  const selectPrev = useCallback(() => {
+    setSelectedIndex((prev) => {
+      if (prev <= 0) return 0
+      return prev - 1
+    })
+  }, [])
+
+  const openSelected = useCallback(() => {
+    if (selectedIndex >= 0 && selectedIndex < filteredBookmarks.length) {
+      const bookmark = filteredBookmarks[selectedIndex]
+      window.open(bookmark.url, '_blank', 'noopener,noreferrer')
+    }
+  }, [selectedIndex, filteredBookmarks])
+
+  useEffect(() => {
+    setSelectedIndex(-1)
+  }, [filteredBookmarks.length, filterView, selectedTag, debouncedSearchQuery])
+
+  useEffect(() => {
+    if (selectedIndex >= 0 && selectedItemRef.current) {
+      selectedItemRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+  }, [selectedIndex])
+
+  useHotkeys({
+    'g n': openNewBookmarkForm,
+    'g a': goToAllBookmarks,
+    'g l': goToReadLater,
+    'g s': goToSettings,
+    'shift+?': showHelp,
+    'j': selectNext,
+    'k': selectPrev,
+    'enter': openSelected,
+    'mod+k': focusSearch,
+  })
 
   const handleAddNew = openNewBookmarkForm
 

@@ -7,6 +7,7 @@ export function FilterBar({
   onSortChange,
   onToggleSidebar,
   onAddNew,
+  searchInputRef,
 }) {
   return (
     <div className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 py-3">
@@ -24,6 +25,7 @@ export function FilterBar({
             <Search className="w-4 h-4" strokeWidth={1.5} />
           </div>
           <input
+            ref={searchInputRef}
             type="text"
             placeholder="Search bookmarks..."
             value={searchQuery}

@@ -7,23 +7,27 @@ import {
 
 const HOTKEY_GROUPS = [
   {
-    title: 'Navigation',
+    title: 'List Navigation',
     hotkeys: [
-      { keys: ['g', 'a'], description: 'Go to all bookmarks' },
-      { keys: ['g', 'l'], description: 'Go to read later' },
-      { keys: ['g', 's'], description: 'Go to settings' },
+      { keys: ['j'], description: 'Select next bookmark' },
+      { keys: ['k'], description: 'Select previous bookmark' },
+      { keys: ['Enter'], description: 'Open selected bookmark' },
+      { keys: ['Ctrl', 'k'], description: 'Focus search bar', modifier: true },
     ],
   },
   {
-    title: 'Actions',
+    title: 'Go To',
     hotkeys: [
+      { keys: ['g', 'a'], description: 'All bookmarks' },
+      { keys: ['g', 'l'], description: 'Read later' },
+      { keys: ['g', 's'], description: 'Settings' },
       { keys: ['g', 'n'], description: 'New bookmark' },
-      { keys: ['Ctrl', 'Enter'], description: 'Submit form', modifier: true },
     ],
   },
   {
     title: 'General',
     hotkeys: [
+      { keys: ['Ctrl', 'Enter'], description: 'Submit form', modifier: true },
       { keys: ['?'], description: 'Show this help' },
       { keys: ['Esc'], description: 'Close modal / Cancel' },
     ],

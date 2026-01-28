@@ -245,7 +245,13 @@ describe('Encryption Security', () => {
 
   describe('EN-06: Large Content Handling', () => {
     it('should handle content near size limit', async () => {
-      const largeData = crypto.getRandomValues(new Uint8Array(99 * 1024)) // 99KB
+      const largeData = new Uint8Array(99 * 1024) // 99KB
+      // Fill in chunks to avoid 65536 byte limit of getRandomValues
+      const chunkSize = 65536;
+      for (let i = 0; i < largeData.length; i += chunkSize) {
+        const chunk = new Uint8Array(largeData.buffer, i, Math.min(chunkSize, largeData.length - i));
+        crypto.getRandomValues(chunk);
+      }
       const { ciphertext, iv } = await encryptData(lek, largeData.buffer)
       const decrypted = await decryptData(lek, ciphertext, iv)
 

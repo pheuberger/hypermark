@@ -156,12 +156,13 @@ const localStorageMock = (() => {
   };
 })();
 
-// Only override if localStorage is not properly functioning
-if (typeof globalThis.localStorage === "undefined") {
-  Object.defineProperty(globalThis, "localStorage", {
-    value: localStorageMock,
-  });
-}
+// Always use our mock for consistent test behavior across all environments
+// (jsdom's localStorage may not be fully functional in forked processes)
+Object.defineProperty(globalThis, "localStorage", {
+  value: localStorageMock,
+  writable: true,
+  configurable: true,
+});
 
 // 7. Cleanup hooks
 import { afterEach, beforeEach, vi } from "vitest";

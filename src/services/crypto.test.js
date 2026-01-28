@@ -435,7 +435,12 @@ describe("crypto service", () => {
 
     it("handles large plaintext", async () => {
       const largeData = new Uint8Array(1024 * 1024); // 1MB
-      crypto.getRandomValues(largeData);
+      // Fill in chunks to avoid 65536 byte limit of getRandomValues
+      const chunkSize = 65536;
+      for (let i = 0; i < largeData.length; i += chunkSize) {
+        const chunk = new Uint8Array(largeData.buffer, i, Math.min(chunkSize, largeData.length - i));
+        crypto.getRandomValues(chunk);
+      }
 
       const { ciphertext, iv } = await encryptData(testKey, largeData.buffer);
       const decrypted = await decryptData(testKey, ciphertext, iv);
@@ -821,7 +826,7 @@ describe("crypto service", () => {
       const nonExtractableLEK = await importLEK(lekRaw, false);
 
       await expect(deriveNostrPrivateKeyMaterial(nonExtractableLEK)).rejects.toThrow(
-        'LEK is not extractable'
+        'key is not extractable'
       );
     });
 

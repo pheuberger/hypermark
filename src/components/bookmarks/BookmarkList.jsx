@@ -14,6 +14,7 @@ import {
   createBookmark,
   updateBookmark,
   deleteBookmark,
+  getInboxBookmarks,
 } from '../../services/bookmarks'
 
 export function BookmarkList() {
@@ -73,6 +74,12 @@ export function BookmarkList() {
     setCurrentView('bookmarks')
   }, [])
 
+  const goToInbox = useCallback(() => {
+    setFilterView('inbox')
+    setSelectedTag(null)
+    setCurrentView('bookmarks')
+  }, [])
+
   const goToSettings = useCallback(() => {
     setCurrentView('settings')
   }, [])
@@ -91,6 +98,8 @@ export function BookmarkList() {
 
     if (filterView === 'read-later') {
       filtered = filtered.filter((b) => b.readLater)
+    } else if (filterView === 'inbox') {
+      filtered = filtered.filter((b) => b.inbox)
     } else if (filterView === 'tag' && selectedTag) {
       filtered = filtered.filter(
         (b) => Array.isArray(b.tags) && b.tags.includes(selectedTag)
@@ -163,6 +172,7 @@ export function BookmarkList() {
   useHotkeys({
     'g n': openNewBookmarkForm,
     'g a': goToAllBookmarks,
+    'g i': goToInbox,
     'g l': goToReadLater,
     'g s': goToSettings,
     'shift+?': showHelp,

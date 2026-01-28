@@ -16,4 +16,5 @@ export {
   Monitor,
   Smartphone,
   AlertCircle,
+  Inbox,
 } from 'lucide-react'

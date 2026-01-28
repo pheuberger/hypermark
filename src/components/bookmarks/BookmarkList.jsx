@@ -134,6 +134,14 @@ export function BookmarkList() {
     }
   }, [selectedIndex, filteredBookmarks])
 
+  const editSelected = useCallback(() => {
+    if (selectedIndex >= 0 && selectedIndex < filteredBookmarks.length) {
+      const bookmark = filteredBookmarks[selectedIndex]
+      setEditingBookmark(bookmark)
+      setIsFormOpen(true)
+    }
+  }, [selectedIndex, filteredBookmarks])
+
   useEffect(() => {
     setSelectedIndex(-1)
   }, [filteredBookmarks.length, filterView, selectedTag, debouncedSearchQuery])
@@ -153,6 +161,7 @@ export function BookmarkList() {
     'j': selectNext,
     'k': selectPrev,
     'enter': openSelected,
+    'e': editSelected,
     'mod+k': focusSearch,
   })
 

@@ -9,6 +9,8 @@ import { TagSidebar } from './TagSidebar'
 import { FilterBar } from './FilterBar'
 import { SettingsView } from '../ui/SettingsView'
 import { HelpModal } from '../ui/HelpModal'
+import { Modal } from '../ui/Modal'
+import { Button } from '../ui/Button'
 import { PackageOpen } from '../ui/Icons'
 import {
   getAllBookmarks,
@@ -51,6 +53,7 @@ export function BookmarkList() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isHelpOpen, setIsHelpOpen] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(-1)
+  const [deleteConfirmBookmark, setDeleteConfirmBookmark] = useState(null)
   const selectedItemRef = useRef(null)
   const searchInputRef = useRef(null)
   const inboxViewRef = useRef(null)
@@ -177,6 +180,25 @@ export function BookmarkList() {
     }
   }, [selectedIndex, filteredBookmarks])
 
+  const promptDeleteSelected = useCallback(() => {
+    if (filterView === 'inbox') return
+    if (selectedIndex >= 0 && selectedIndex < filteredBookmarks.length) {
+      const bookmark = filteredBookmarks[selectedIndex]
+      setDeleteConfirmBookmark(bookmark)
+    }
+  }, [selectedIndex, filteredBookmarks, filterView])
+
+  const confirmDelete = useCallback(() => {
+    if (deleteConfirmBookmark) {
+      try {
+        deleteBookmark(deleteConfirmBookmark._id)
+      } catch (error) {
+        console.error('Failed to delete bookmark:', error)
+      }
+      setDeleteConfirmBookmark(null)
+    }
+  }, [deleteConfirmBookmark])
+
   useEffect(() => {
     setSelectedIndex(-1)
   }, [filteredBookmarks.length, filterView, selectedTag, debouncedSearchQuery])
@@ -198,6 +220,7 @@ export function BookmarkList() {
     'k': selectPrev,
     'enter': openSelected,
     'e': editSelected,
+    'd': promptDeleteSelected,
     'mod+k': focusSearch,
     'q': exitInbox,
   })
@@ -352,6 +375,24 @@ export function BookmarkList() {
       />
 
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
+
+      <Modal
+        isOpen={!!deleteConfirmBookmark}
+        onClose={() => setDeleteConfirmBookmark(null)}
+        title="Delete bookmark?"
+      >
+        <p className="text-sm text-muted-foreground mb-4">
+          This will permanently delete "{deleteConfirmBookmark?.title}".
+        </p>
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setDeleteConfirmBookmark(null)}>
+            Cancel
+          </Button>
+          <Button variant="danger" onClick={confirmDelete}>
+            Delete
+          </Button>
+        </div>
+      </Modal>
     </div>
   )
 }

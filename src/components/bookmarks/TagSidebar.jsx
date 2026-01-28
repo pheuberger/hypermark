@@ -198,9 +198,7 @@ export function TagSidebar({
               <Inbox className={cn('w-4 h-4', selectedFilter === 'inbox' ? 'opacity-100' : 'opacity-70 group-hover:opacity-100')} strokeWidth={1.5} />
               <span className="text-sm">Inbox</span>
             </div>
-            {inboxCount > 0 && (
-              <span className={cn('text-xs px-1.5 py-0.5 rounded-full bg-primary/10 text-primary', selectedFilter === 'inbox' ? 'opacity-80' : 'opacity-60 group-hover:opacity-80')}>{inboxCount}</span>
-            )}
+            <span className={cn('text-xs', selectedFilter === 'inbox' ? 'opacity-60' : 'opacity-40 group-hover:opacity-60')}>{inboxCount}</span>
           </button>
 
           {sortedTags.length > 0 && (

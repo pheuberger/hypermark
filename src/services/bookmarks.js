@@ -77,15 +77,15 @@ export function validateBookmark(data) {
     throw new Error('Invalid URL format')
   }
 
-  // Validate title
-  if (!data.title || typeof data.title !== 'string' || !data.title.trim()) {
+  // Validate title (not required for inbox items)
+  if (!data.inbox && (!data.title || typeof data.title !== 'string' || !data.title.trim())) {
     throw new Error('Title is required')
   }
 
   // Normalize and validate fields
   const validated = {
     url: normalizeUrl(data.url),
-    title: data.title.trim(),
+    title: data.title ? data.title.trim() : '',
     description: (data.description || '').trim(),
     tags: Array.isArray(data.tags)
       ? data.tags
@@ -93,6 +93,7 @@ export function validateBookmark(data) {
           .filter(tag => tag.length > 0)
       : [],
     readLater: Boolean(data.readLater),
+    inbox: Boolean(data.inbox),
     favicon: data.favicon || null,
     preview: data.preview || null,
   }
@@ -146,6 +147,7 @@ export function createBookmark(bookmarkData) {
     ['description', validated.description],
     ['tags', new Y.Array(validated.tags)],
     ['readLater', validated.readLater],
+    ['inbox', validated.inbox],
     ['favicon', validated.favicon],
     ['preview', validated.preview],
     ['createdAt', now],
@@ -181,6 +183,7 @@ export function updateBookmark(id, updates) {
   if (updates.url !== undefined) bookmark.set('url', validated.url)
   if (updates.description !== undefined) bookmark.set('description', validated.description)
   if (updates.readLater !== undefined) bookmark.set('readLater', validated.readLater)
+  if (updates.inbox !== undefined) bookmark.set('inbox', validated.inbox)
   if (updates.favicon !== undefined) bookmark.set('favicon', validated.favicon)
   if (updates.preview !== undefined) bookmark.set('preview', validated.preview)
 
@@ -313,6 +316,70 @@ export function getReadLaterBookmarks() {
 }
 
 /**
+ * Get all inbox bookmarks
+ */
+export function getInboxBookmarks() {
+  const all = getAllBookmarks()
+  return all.filter(bookmark => bookmark.inbox)
+}
+
+/**
+ * Create inbox item from URL
+ * @param {string} url - URL to add to inbox
+ * @returns {Object} - Created bookmark object
+ * @throws {Error} - If URL is invalid or duplicate
+ */
+export function createInboxItem(url) {
+  // Validate URL
+  if (!url || typeof url !== 'string') {
+    throw new Error('URL is required')
+  }
+
+  if (!isValidUrl(url)) {
+    throw new Error('Invalid URL format')
+  }
+
+  // Check for duplicates
+  const existing = findBookmarksByUrl(url)
+  if (existing.length > 0) {
+    throw new Error('Bookmark already exists for this URL')
+  }
+
+  // Extract domain as title
+  const domain = new URL(normalizeUrl(url)).hostname
+
+  // Create inbox bookmark
+  const bookmarkData = {
+    url,
+    title: domain,
+    description: '',
+    tags: [],
+    readLater: false,
+    inbox: true,
+  }
+
+  return createBookmark(bookmarkData)
+}
+
+/**
+ * Move bookmark from inbox (set inbox to false)
+ * @param {string} id - Bookmark ID
+ */
+export function moveFromInbox(id) {
+  const bookmarksMap = getYdoc().getMap('bookmarks')
+  const bookmark = bookmarksMap.get(id)
+
+  if (!bookmark) {
+    throw new Error(`Bookmark not found: ${id}`)
+  }
+
+  bookmark.set('inbox', false)
+  bookmark.set('updatedAt', Date.now())
+
+  console.log('[Bookmarks] Moved from inbox:', id)
+}
+
+/**
  * Get all unique tags
  */
 export function getAllTags() {
@@ -362,6 +429,7 @@ function bookmarkToObject(id, ymap) {
     description: ymap.get('description') || '',
     tags: ymap.get('tags')?.toArray() || [],
     readLater: ymap.get('readLater') || false,
+    inbox: ymap.get('inbox') || false,
     favicon: ymap.get('favicon') || null,
     preview: ymap.get('preview') || null,
     createdAt: ymap.get('createdAt'),

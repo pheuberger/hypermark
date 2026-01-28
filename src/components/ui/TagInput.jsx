@@ -1,19 +1,27 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, forwardRef, useImperativeHandle } from 'react'
 import { Plus, Hash } from './Icons'
 import { cn } from '@/utils/cn'
 
-export function TagInput({
+export const TagInput = forwardRef(function TagInput({
   value = [],
   onChange,
   allTags = [],
   placeholder = 'Add tags...',
   disabled = false,
-}) {
+  onEscapeWhenClosed,
+  onFocus,
+  onKeyDown: externalOnKeyDown,
+}, ref) {
   const [inputValue, setInputValue] = useState('')
   const [isOpen, setIsOpen] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const inputRef = useRef(null)
   const listRef = useRef(null)
+
+  useImperativeHandle(ref, () => ({
+    focus: () => inputRef.current?.focus(),
+    blur: () => inputRef.current?.blur(),
+  }))
 
   const filteredTags = useMemo(() => {
     const input = inputValue.toLowerCase().trim()
@@ -92,17 +100,24 @@ export function TagInput({
     }
 
     if (e.key === 'Escape') {
-      setIsOpen(false)
-      setSelectedIndex(0)
+      if (isOpen) {
+        setIsOpen(false)
+        setSelectedIndex(0)
+      } else {
+        onEscapeWhenClosed?.(e)
+      }
     }
 
     if (e.key === 'Backspace' && !inputValue && value.length > 0) {
       onChange(value.slice(0, -1))
     }
+
+    externalOnKeyDown?.(e)
   }
 
   const handleFocus = () => {
     setIsOpen(true)
+    onFocus?.()
   }
 
   const handleBlur = () => {
@@ -171,4 +186,4 @@ export function TagInput({
       )}
     </div>
   )
-}
+})

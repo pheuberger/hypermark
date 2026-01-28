@@ -237,15 +237,6 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
           disabled={loading}
         />
 
-        <TextArea
-          label="Description"
-          value={formData.description}
-          onChange={(value) => updateField('description', value)}
-          placeholder="Optional description..."
-          rows={3}
-          disabled={loading}
-        />
-
         <div className="mb-4">
           <label className="block text-sm font-medium text-muted-foreground mb-1">
             Tags
@@ -311,6 +302,15 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
           </p>
           )}
         </div>
+
+        <TextArea
+          label="Description"
+          value={formData.description}
+          onChange={(value) => updateField('description', value)}
+          placeholder="Optional description..."
+          rows={3}
+          disabled={loading}
+        />
 
         <div className="mb-4">
           <label className="flex items-center gap-2 cursor-pointer">

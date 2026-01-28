@@ -1,5 +1,8 @@
 import { forwardRef, useRef, useEffect, useState } from 'react'
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, Check, Trash2 } from 'lucide-react'
+import { TagInput } from '../ui/TagInput'
+import { Tag } from '../ui/Tag'
+import { getAllTags } from '../../services/bookmarks'
 
 /**
  * InboxItem - Bookmark item for inbox triage with inline editing
@@ -10,7 +13,7 @@ import { ExternalLink } from 'lucide-react'
  * - Focus mode + selected: Expanded with editable fields
  */
 export const InboxItem = forwardRef(function InboxItem(
-  { bookmark, isSelected, isFocusMode, onDone, onFieldChange },
+  { bookmark, isSelected, isFocusMode, editMode, onDone, onDiscard, onFieldChange, onEnterEditMode, onExitEditMode },
   ref
 ) {
   const { title, url, tags = [], description = '' } = bookmark
@@ -18,10 +21,10 @@ export const InboxItem = forwardRef(function InboxItem(
   const tagsInputRef = useRef(null)
   const descInputRef = useRef(null)
   
-  // Local state for editing
   const [localTitle, setLocalTitle] = useState(title)
-  const [localTags, setLocalTags] = useState(tags.join(', '))
+  const [localTags, setLocalTags] = useState(tags)
   const [localDesc, setLocalDesc] = useState(description)
+  const [allTags, setAllTags] = useState([])
 
   // Extract domain from URL
   let domain = ''
@@ -33,18 +36,25 @@ export const InboxItem = forwardRef(function InboxItem(
 
   const faviconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`
 
-  // Auto-focus title when entering focus mode
   useEffect(() => {
-    if (isFocusMode && isSelected && titleInputRef.current) {
+    if (editMode && titleInputRef.current) {
       titleInputRef.current.focus()
-      titleInputRef.current.select()
+    }
+  }, [editMode])
+
+  useEffect(() => {
+    if (isFocusMode && isSelected) {
+      try {
+        setAllTags(getAllTags())
+      } catch {
+        setAllTags([])
+      }
     }
   }, [isFocusMode, isSelected])
 
-  // Sync local state with props when bookmark changes
   useEffect(() => {
     setLocalTitle(title)
-    setLocalTags(tags.join(', '))
+    setLocalTags(tags)
     setLocalDesc(description)
   }, [title, tags, description])
 
@@ -55,14 +65,15 @@ export const InboxItem = forwardRef(function InboxItem(
     }
   }
 
-  const handleTagsBlur = () => {
-    const newTags = localTags
-      .split(',')
-      .map(t => t.trim().toLowerCase())
-      .filter(t => t.length > 0)
-    if (JSON.stringify(newTags) !== JSON.stringify(tags)) {
-      onFieldChange?.('tags', newTags)
-    }
+  const handleTagsChange = (newTags) => {
+    setLocalTags(newTags)
+    onFieldChange?.('tags', newTags)
+  }
+
+  const removeTag = (tagToRemove) => {
+    const newTags = localTags.filter((t) => t !== tagToRemove)
+    setLocalTags(newTags)
+    onFieldChange?.('tags', newTags)
   }
 
   const handleDescBlur = () => {
@@ -71,28 +82,57 @@ export const InboxItem = forwardRef(function InboxItem(
     }
   }
 
-  // Tab navigation - cycle through fields
   const handleKeyDown = (e, currentField) => {
-    if (e.key === 'Tab' && isFocusMode && isSelected) {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      e.target.blur()
+      onExitEditMode?.()
+      return
+    }
+
+    if (e.key === 'Enter' && currentField !== 'desc') {
+      e.preventDefault()
+      e.target.blur()
+      onDone?.()
+      return
+    }
+
+    if (e.key === 'Tab' && editMode) {
       e.preventDefault()
       if (e.shiftKey) {
-        // Backwards
         if (currentField === 'title') {
-          descInputRef.current?.focus()
-        } else if (currentField === 'tags') {
-          titleInputRef.current?.focus()
-        } else if (currentField === 'desc') {
           tagsInputRef.current?.focus()
+        } else if (currentField === 'desc') {
+          titleInputRef.current?.focus()
         }
       } else {
-        // Forwards
         if (currentField === 'title') {
-          tagsInputRef.current?.focus()
-        } else if (currentField === 'tags') {
           descInputRef.current?.focus()
         } else if (currentField === 'desc') {
-          titleInputRef.current?.focus()
+          tagsInputRef.current?.focus()
         }
+      }
+    }
+  }
+
+  const handleInputFocus = () => {
+    if (!editMode) {
+      onEnterEditMode?.()
+    }
+  }
+
+  const handleTagsEscape = () => {
+    tagsInputRef.current?.blur()
+    onExitEditMode?.()
+  }
+
+  const handleTagsKeyDown = (e) => {
+    if (e.key === 'Tab' && editMode) {
+      e.preventDefault()
+      if (e.shiftKey) {
+        descInputRef.current?.focus()
+      } else {
+        titleInputRef.current?.focus()
       }
     }
   }
@@ -102,75 +142,105 @@ export const InboxItem = forwardRef(function InboxItem(
     return (
       <div
         ref={ref}
-        className="bg-accent ring-2 ring-primary rounded-lg p-4 space-y-3"
+        className="relative bg-card shadow-lg ring-1 ring-border rounded-lg p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150"
       >
-        {/* URL display */}
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <img 
             src={faviconUrl} 
             alt="" 
-            className="w-4 h-4 rounded-[3px] opacity-70" 
+            className="w-4 h-4 rounded-[3px] opacity-70 flex-shrink-0" 
             onError={(e) => { e.target.style.opacity = 0 }} 
           />
           <a
             href={url}
             target="_blank"
             rel="noopener noreferrer"
-            className="hover:text-primary transition-colors truncate flex items-center gap-1"
+            className="truncate hover:text-primary transition-colors opacity-70 hover:opacity-100"
+            title={url}
           >
-            {domain}
-            <ExternalLink className="w-3 h-3 opacity-50" />
+            {url}
           </a>
+          <ExternalLink className="w-3 h-3 flex-shrink-0 opacity-50" />
         </div>
 
-        {/* Title input */}
-        <div>
-          <label className="text-xs font-medium text-muted-foreground mb-1 block">Title</label>
-          <input
-            ref={titleInputRef}
-            type="text"
-            value={localTitle}
-            onChange={(e) => setLocalTitle(e.target.value)}
-            onBlur={handleTitleBlur}
-            onKeyDown={(e) => handleKeyDown(e, 'title')}
-            className="input input-bordered input-sm w-full bg-background"
-            placeholder="Enter title..."
-          />
+        {/* Main Inputs - Linear style (borderless, clean) */}
+        <div className="space-y-3">
+            {/* Title */}
+            <div>
+            <input
+                ref={titleInputRef}
+                type="text"
+                value={localTitle}
+                onChange={(e) => setLocalTitle(e.target.value)}
+                onBlur={handleTitleBlur}
+                onFocus={handleInputFocus}
+                onKeyDown={(e) => handleKeyDown(e, 'title')}
+                className="w-full bg-transparent border-none outline-none text-base font-medium placeholder:text-muted-foreground/50 p-0 focus:ring-0"
+                placeholder="Title"
+            />
+            </div>
+
+            {/* Description */}
+            <div>
+            <textarea
+                ref={descInputRef}
+                value={localDesc}
+                onChange={(e) => setLocalDesc(e.target.value)}
+                onBlur={handleDescBlur}
+                onFocus={handleInputFocus}
+                onKeyDown={(e) => handleKeyDown(e, 'desc')}
+                className="w-full bg-transparent border-none outline-none text-sm text-muted-foreground placeholder:text-muted-foreground/40 resize-none p-0 focus:ring-0 min-h-[2.5em]"
+                rows={2}
+                placeholder="Add description..."
+            />
+            </div>
+
+            <div className="pt-1">
+              <TagInput
+                ref={tagsInputRef}
+                value={localTags}
+                onChange={handleTagsChange}
+                allTags={allTags}
+                placeholder="Add tags..."
+                onFocus={handleInputFocus}
+                onEscapeWhenClosed={handleTagsEscape}
+                onKeyDown={handleTagsKeyDown}
+              />
+              {localTags.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {localTags.map((tag) => (
+                    <Tag key={tag} onRemove={() => removeTag(tag)}>
+                      {tag}
+                    </Tag>
+                  ))}
+                </div>
+              )}
+            </div>
         </div>
 
-        {/* Tags input */}
-        <div>
-          <label className="text-xs font-medium text-muted-foreground mb-1 block">Tags (comma-separated)</label>
-          <input
-            ref={tagsInputRef}
-            type="text"
-            value={localTags}
-            onChange={(e) => setLocalTags(e.target.value)}
-            onBlur={handleTagsBlur}
-            onKeyDown={(e) => handleKeyDown(e, 'tags')}
-            className="input input-bordered input-sm w-full bg-background"
-            placeholder="tag1, tag2, tag3..."
-          />
-        </div>
-
-        {/* Description textarea */}
-        <div>
-          <label className="text-xs font-medium text-muted-foreground mb-1 block">Description (optional)</label>
-          <textarea
-            ref={descInputRef}
-            value={localDesc}
-            onChange={(e) => setLocalDesc(e.target.value)}
-            onBlur={handleDescBlur}
-            onKeyDown={(e) => handleKeyDown(e, 'desc')}
-            className="textarea textarea-bordered textarea-sm w-full bg-background resize-none"
-            rows={2}
-            placeholder="Add a description..."
-          />
-        </div>
-
-        {/* Action hint */}
-        <div className="pt-2 border-t border-border/50 text-xs text-muted-foreground">
-          Press <kbd className="px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-mono">Enter</kbd> when done, <kbd className="px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-mono">Tab</kbd> to cycle fields, <kbd className="px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-mono">q</kbd> to exit
+        <div className="pt-3 flex items-center justify-between border-t border-border/40">
+           <div className="flex items-center gap-3">
+             <button 
+               onClick={() => onDone()}
+               className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+             >
+               <div className="flex items-center justify-center w-4 h-4 rounded-full bg-primary/10">
+                 <Check className="w-2.5 h-2.5" />
+               </div>
+               Done
+             </button>
+             <button 
+               onClick={() => onDiscard?.()}
+               className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-destructive transition-colors"
+             >
+               <Trash2 className="w-3.5 h-3.5" />
+               Discard
+             </button>
+           </div>
+           
+           <div className="text-[10px] text-muted-foreground/50 font-medium">
+              {editMode ? 'Esc to navigate' : 'Enter to edit'}
+           </div>
         </div>
       </div>
     )
@@ -182,10 +252,14 @@ export const InboxItem = forwardRef(function InboxItem(
       ref={ref}
       className={`group flex items-center gap-3 px-3 py-2.5 rounded-md transition-all duration-200 cursor-default ${
         isSelected
-          ? 'bg-accent ring-1 ring-ring'
-          : 'hover:bg-accent/50'
+          ? 'bg-accent/70'
+          : 'hover:bg-accent/40'
       }`}
     >
+      <div className="flex-shrink-0 w-4 flex justify-center">
+         {isSelected && <div className="w-1 h-4 rounded-full bg-primary/50" />}
+      </div>
+
       <img 
         src={faviconUrl} 
         alt="" 
@@ -195,30 +269,26 @@ export const InboxItem = forwardRef(function InboxItem(
 
       <div className="flex-1 min-w-0 overflow-hidden">
         <div className="flex items-center gap-2">
-          <span className="font-medium text-sm text-foreground truncate">
+          <span className={`text-sm truncate ${isSelected ? 'font-medium text-foreground' : 'text-foreground/90'}`}>
             {title}
           </span>
-          <span className="text-xs text-muted-foreground truncate flex-shrink-0 font-normal">{domain}</span>
+          <span className="text-xs text-muted-foreground truncate flex-shrink-0 font-normal opacity-70">{domain}</span>
         </div>
-        
-        {tags && tags.length > 0 && (
-          <div className="flex gap-1.5 mt-1">
-            {tags.map((tag) => (
+      </div>
+      
+      {tags && tags.length > 0 && (
+          <div className="flex gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
+            {tags.slice(0, 2).map((tag) => (
               <span
                 key={tag}
-                className="text-[10px] leading-tight px-1.5 py-0.5 rounded-[3px] bg-secondary text-secondary-foreground"
+                className="text-[10px] leading-tight px-1.5 py-0.5 rounded-[3px] bg-secondary/50 text-secondary-foreground"
               >
                 #{tag}
               </span>
             ))}
+            {tags.length > 2 && <span className="text-[10px] text-muted-foreground">+{tags.length - 2}</span>}
           </div>
-        )}
-      </div>
-
-      {/* Inbox badge */}
-      <span className="text-[10px] leading-tight px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
-        inbox
-      </span>
+      )}
     </div>
   )
 })

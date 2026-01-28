@@ -1,6 +1,10 @@
+import { forwardRef } from 'react'
 import { Pencil, Trash } from '../ui/Icons'
 
-export function BookmarkItem({ bookmark, onEdit, onDelete, onTagClick }) {
+export const BookmarkItem = forwardRef(function BookmarkItem(
+  { bookmark, isSelected, onEdit, onDelete, onTagClick },
+  ref
+) {
   const { title, url, tags } = bookmark
 
   let domain = ''
@@ -13,7 +17,14 @@ export function BookmarkItem({ bookmark, onEdit, onDelete, onTagClick }) {
   const faviconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`
 
   return (
-    <div className="group flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-accent/50 transition-all duration-200 cursor-default">
+    <div
+      ref={ref}
+      className={`group flex items-center gap-3 px-3 py-2.5 rounded-md transition-all duration-200 cursor-default ${
+        isSelected
+          ? 'bg-accent ring-1 ring-ring'
+          : 'hover:bg-accent/50'
+      }`}
+    >
       <img 
         src={faviconUrl} 
         alt="" 
@@ -74,4 +85,4 @@ export function BookmarkItem({ bookmark, onEdit, onDelete, onTagClick }) {
       </div>
     </div>
   )
-}
+})

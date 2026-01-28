@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { useYjs } from '../../hooks/useYjs'
 import { useSearch, useDebounce } from '../../hooks/useSearch'
 import { useHotkeys } from '../../hooks/useHotkeys'
@@ -48,6 +48,9 @@ export function BookmarkList() {
   const [searchQuery, setSearchQuery] = useState('')
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isHelpOpen, setIsHelpOpen] = useState(false)
+  const [selectedIndex, setSelectedIndex] = useState(-1)
+  const selectedItemRef = useRef(null)
+  const searchInputRef = useRef(null)
 
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
   const searchedBookmarks = useSearch(bookmarks, debouncedSearchQuery)
@@ -77,12 +80,53 @@ export function BookmarkList() {
     setIsHelpOpen(true)
   }, [])
 
+  const selectNext = useCallback(() => {
+    setSelectedIndex((prev) => {
+      const maxIndex = filteredBookmarks.length - 1
+      if (maxIndex < 0) return -1
+      return prev < maxIndex ? prev + 1 : prev
+    })
+  }, [filteredBookmarks.length])
+
+  const selectPrev = useCallback(() => {
+    setSelectedIndex((prev) => {
+      if (prev <= 0) return 0
+      return prev - 1
+    })
+  }, [])
+
+  const openSelected = useCallback(() => {
+    if (selectedIndex >= 0 && selectedIndex < filteredBookmarks.length) {
+      const bookmark = filteredBookmarks[selectedIndex]
+      window.open(bookmark.url, '_blank', 'noopener,noreferrer')
+    }
+  }, [selectedIndex, filteredBookmarks])
+
+  const focusSearch = useCallback(() => {
+    searchInputRef.current?.focus()
+    searchInputRef.current?.select()
+  }, [])
+
+  useEffect(() => {
+    setSelectedIndex(-1)
+  }, [filteredBookmarks.length, filterView, selectedTag, debouncedSearchQuery])
+
+  useEffect(() => {
+    if (selectedIndex >= 0 && selectedItemRef.current) {
+      selectedItemRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+  }, [selectedIndex])
+
   useHotkeys({
     'g n': openNewBookmarkForm,
     'g a': goToAllBookmarks,
     'g l': goToReadLater,
     'g s': goToSettings,
     'shift+?': showHelp,
+    'j': selectNext,
+    'k': selectPrev,
+    'enter': openSelected,
+    'mod+k': focusSearch,
   })
 
   const filteredBookmarks = useMemo(() => {
@@ -202,6 +246,7 @@ export function BookmarkList() {
               onSortChange={setSortBy}
               onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
               onAddNew={handleAddNew}
+              searchInputRef={searchInputRef}
             />
 
             <div className="flex-1 overflow-y-auto bg-background">
@@ -220,10 +265,12 @@ export function BookmarkList() {
                       )}
                     </div>
                  ) : (
-                    filteredBookmarks.map((bookmark) => (
+                    filteredBookmarks.map((bookmark, index) => (
                       <BookmarkItem
                         key={bookmark._id}
+                        ref={index === selectedIndex ? selectedItemRef : null}
                         bookmark={bookmark}
+                        isSelected={index === selectedIndex}
                         onEdit={handleEdit}
                         onDelete={handleDelete}
                         onTagClick={handleTagClick}

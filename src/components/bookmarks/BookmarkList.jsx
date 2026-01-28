@@ -1,11 +1,13 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useYjs } from '../../hooks/useYjs'
 import { useSearch, useDebounce } from '../../hooks/useSearch'
+import { useHotkeys } from '../../hooks/useHotkeys'
 import { BookmarkItem } from './BookmarkItem'
 import { BookmarkForm } from './BookmarkForm'
 import { TagSidebar } from './TagSidebar'
 import { FilterBar } from './FilterBar'
 import { SettingsView } from '../ui/SettingsView'
+import { HelpModal } from '../ui/HelpModal'
 import { PackageOpen } from '../ui/Icons'
 import {
   getAllBookmarks,
@@ -17,7 +19,7 @@ import {
 export function BookmarkList() {
   const { bookmarks: bookmarksMap, synced } = useYjs()
   const [bookmarks, setBookmarks] = useState([])
-  const [currentView, setCurrentView] = useState('bookmarks') // 'bookmarks' | 'settings'
+  const [currentView, setCurrentView] = useState('bookmarks')
 
   useEffect(() => {
     const loadBookmarks = () => {
@@ -45,9 +47,43 @@ export function BookmarkList() {
   const [sortBy, setSortBy] = useState('recent')
   const [searchQuery, setSearchQuery] = useState('')
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [isHelpOpen, setIsHelpOpen] = useState(false)
 
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
   const searchedBookmarks = useSearch(bookmarks, debouncedSearchQuery)
+
+  const openNewBookmarkForm = useCallback(() => {
+    setEditingBookmark(null)
+    setIsFormOpen(true)
+  }, [])
+
+  const goToAllBookmarks = useCallback(() => {
+    setFilterView('all')
+    setSelectedTag(null)
+    setCurrentView('bookmarks')
+  }, [])
+
+  const goToReadLater = useCallback(() => {
+    setFilterView('read-later')
+    setSelectedTag(null)
+    setCurrentView('bookmarks')
+  }, [])
+
+  const goToSettings = useCallback(() => {
+    setCurrentView('settings')
+  }, [])
+
+  const showHelp = useCallback(() => {
+    setIsHelpOpen(true)
+  }, [])
+
+  useHotkeys({
+    'g n': openNewBookmarkForm,
+    'g a': goToAllBookmarks,
+    'g l': goToReadLater,
+    'g s': goToSettings,
+    'shift+?': showHelp,
+  })
 
   const filteredBookmarks = useMemo(() => {
     let filtered = [...searchedBookmarks]
@@ -76,10 +112,7 @@ export function BookmarkList() {
     return filtered
   }, [searchedBookmarks, filterView, selectedTag, sortBy])
 
-  const handleAddNew = () => {
-    setEditingBookmark(null)
-    setIsFormOpen(true)
-  }
+  const handleAddNew = openNewBookmarkForm
 
   const handleEdit = (bookmark) => {
     setEditingBookmark(bookmark)
@@ -218,6 +251,8 @@ export function BookmarkList() {
         onSave={handleSave}
         initialData={editingBookmark}
       />
+
+      <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
     </div>
   )
 }

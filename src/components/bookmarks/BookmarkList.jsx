@@ -63,6 +63,7 @@ export function BookmarkList() {
   const goToAllBookmarks = useCallback(() => {
     setFilterView('all')
     setSelectedTag(null)
+    setSearchQuery('')
     setCurrentView('bookmarks')
   }, [])
 

@@ -3,6 +3,7 @@ import { useYjs } from '../../hooks/useYjs'
 import { useSearch, useDebounce } from '../../hooks/useSearch'
 import { useHotkeys } from '../../hooks/useHotkeys'
 import { BookmarkItem } from './BookmarkItem'
+import { InboxView } from './InboxView'
 import { BookmarkForm } from './BookmarkForm'
 import { TagSidebar } from './TagSidebar'
 import { FilterBar } from './FilterBar'
@@ -52,6 +53,7 @@ export function BookmarkList() {
   const [selectedIndex, setSelectedIndex] = useState(-1)
   const selectedItemRef = useRef(null)
   const searchInputRef = useRef(null)
+  const inboxViewRef = useRef(null)
 
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
   const searchedBookmarks = useSearch(bookmarks, debouncedSearchQuery)
@@ -130,26 +132,42 @@ export function BookmarkList() {
   }, [filteredBookmarks.length])
 
   const selectNext = useCallback(() => {
-    setSelectedIndex((prev) => {
-      const maxIndex = filteredBookmarks.length - 1
-      if (maxIndex < 0) return -1
-      return prev < maxIndex ? prev + 1 : prev
-    })
-  }, [filteredBookmarks.length])
+    if (filterView === 'inbox') {
+      inboxViewRef.current?.selectNext()
+    } else {
+      setSelectedIndex((prev) => {
+        const maxIndex = filteredBookmarks.length - 1
+        if (maxIndex < 0) return -1
+        return prev < maxIndex ? prev + 1 : prev
+      })
+    }
+  }, [filteredBookmarks.length, filterView])
 
   const selectPrev = useCallback(() => {
-    setSelectedIndex((prev) => {
-      if (prev <= 0) return 0
-      return prev - 1
-    })
-  }, [])
+    if (filterView === 'inbox') {
+      inboxViewRef.current?.selectPrev()
+    } else {
+      setSelectedIndex((prev) => {
+        if (prev <= 0) return 0
+        return prev - 1
+      })
+    }
+  }, [filterView])
 
   const openSelected = useCallback(() => {
-    if (selectedIndex >= 0 && selectedIndex < filteredBookmarks.length) {
+    if (filterView === 'inbox') {
+      inboxViewRef.current?.handleEnter()
+    } else if (selectedIndex >= 0 && selectedIndex < filteredBookmarks.length) {
       const bookmark = filteredBookmarks[selectedIndex]
       window.open(bookmark.url, '_blank', 'noopener,noreferrer')
     }
-  }, [selectedIndex, filteredBookmarks])
+  }, [selectedIndex, filteredBookmarks, filterView])
+
+  const exitInbox = useCallback(() => {
+    if (filterView === 'inbox') {
+      goToAllBookmarks()
+    }
+  }, [filterView, goToAllBookmarks])
 
   const editSelected = useCallback(() => {
     if (selectedIndex >= 0 && selectedIndex < filteredBookmarks.length) {
@@ -181,6 +199,7 @@ export function BookmarkList() {
     'enter': openSelected,
     'e': editSelected,
     'mod+k': focusSearch,
+    'q': exitInbox,
   })
 
   const handleAddNew = openNewBookmarkForm
@@ -279,7 +298,12 @@ export function BookmarkList() {
 
             <div className="flex-1 overflow-y-auto bg-background">
               <div className="px-4 pb-12 pt-1 space-y-1">
-                 {filteredBookmarks.length === 0 ? (
+                 {filterView === 'inbox' ? (
+                    <InboxView 
+                      ref={inboxViewRef}
+                      bookmarks={filteredBookmarks}
+                    />
+                 ) : filteredBookmarks.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20 opacity-50">
                       <PackageOpen className="w-12 h-12 mb-4 stroke-1" />
                       <p className="text-sm font-medium">No bookmarks found</p>

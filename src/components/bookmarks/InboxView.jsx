@@ -1,9 +1,9 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react'
 import { InboxItem } from './InboxItem'
 import { updateBookmark, moveFromInbox } from '../../services/bookmarks'
 import { Inbox as InboxIcon } from '../ui/Icons'
 
-export function InboxView({ bookmarks }) {
+export const InboxView = forwardRef(function InboxView({ bookmarks }, ref) {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const selectedItemRef = useRef(null)
   
@@ -62,7 +62,12 @@ export function InboxView({ bookmarks }) {
     }
   }, [selectedIndex, bookmarks, handleDone])
 
-  // Empty state
+  useImperativeHandle(ref, () => ({
+    selectNext,
+    selectPrev,
+    handleEnter,
+  }), [selectNext, selectPrev, handleEnter])
+
   if (bookmarks.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 opacity-50">
@@ -107,13 +112,4 @@ export function InboxView({ bookmarks }) {
       ))}
     </div>
   )
-}
-
-// Export navigation functions for hotkey binding
-InboxView.useInboxNavigation = function useInboxNavigation(inboxViewRef) {
-  return {
-    selectNext: () => inboxViewRef.current?.selectNext?.(),
-    selectPrev: () => inboxViewRef.current?.selectPrev?.(),
-    handleEnter: () => inboxViewRef.current?.handleEnter?.(),
-  }
-}
+})

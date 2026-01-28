@@ -1,12 +1,15 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { Input, TextArea } from '../ui/Input'
 import { Tag } from '../ui/Tag'
 import { Plus } from '../ui/Icons'
+import { getAllTags } from '../../services/bookmarks'
+import { useHotkeys } from '../../hooks/useHotkeys'
 
 export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
   const isEditing = Boolean(initialData)
+  const formRef = useRef(null)
 
   const [formData, setFormData] = useState({
     url: '',
@@ -19,6 +22,12 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
   const [tagInput, setTagInput] = useState('')
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
+
+  const [allTags, setAllTags] = useState([])
+  const [suggestions, setSuggestions] = useState([])
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1)
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const tagInputRef = useRef(null)
 
   useEffect(() => {
     if (initialData) {
@@ -40,7 +49,46 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
     }
     setErrors({})
     setTagInput('')
+    setShowSuggestions(false)
+    setSelectedSuggestionIndex(-1)
   }, [initialData, isOpen])
+
+  useEffect(() => {
+    if (isOpen) {
+      try {
+        setAllTags(getAllTags())
+      } catch {
+        setAllTags([])
+      }
+    }
+  }, [isOpen])
+
+  useEffect(() => {
+    if (!tagInput.trim()) {
+      setSuggestions([])
+      setShowSuggestions(false)
+      return
+    }
+
+    const input = tagInput.toLowerCase().trim()
+    const filtered = allTags.filter(
+      (tag) => tag.includes(input) && !formData.tags.includes(tag)
+    )
+    setSuggestions(filtered)
+    setShowSuggestions(filtered.length > 0)
+    setSelectedSuggestionIndex(-1)
+  }, [tagInput, allTags, formData.tags])
+
+  const submitForm = useCallback(() => {
+    if (formRef.current && !loading) {
+      formRef.current.requestSubmit()
+    }
+  }, [loading])
+
+  useHotkeys(
+    { 'mod+enter': submitForm },
+    { enabled: isOpen, enableOnInputs: true }
+  )
 
   const updateField = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -53,8 +101,8 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
     }
   }
 
-  const addTag = () => {
-    const tag = tagInput.trim().toLowerCase()
+  const addTag = (tagToAdd = null) => {
+    const tag = (tagToAdd || tagInput).trim().toLowerCase()
     if (!tag) return
 
     if (formData.tags.includes(tag)) {
@@ -67,11 +115,18 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
       tags: [...prev.tags, tag],
     }))
     setTagInput('')
+    setShowSuggestions(false)
+    setSelectedSuggestionIndex(-1)
     setErrors((prev) => {
       const newErrors = { ...prev }
       delete newErrors.tags
       return newErrors
     })
+  }
+
+  const selectSuggestion = (tag) => {
+    addTag(tag)
+    tagInputRef.current?.focus()
   }
 
   const removeTag = (tagToRemove) => {
@@ -81,7 +136,34 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
     }))
   }
 
-  const handleTagKeyPress = (e) => {
+  const handleTagKeyDown = (e) => {
+    if (showSuggestions && suggestions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSelectedSuggestionIndex((prev) =>
+          prev < suggestions.length - 1 ? prev + 1 : 0
+        )
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSelectedSuggestionIndex((prev) =>
+          prev > 0 ? prev - 1 : suggestions.length - 1
+        )
+        return
+      }
+      if ((e.key === 'Enter' || e.key === 'Tab') && selectedSuggestionIndex >= 0) {
+        e.preventDefault()
+        selectSuggestion(suggestions[selectedSuggestionIndex])
+        return
+      }
+      if (e.key === 'Escape') {
+        setShowSuggestions(false)
+        setSelectedSuggestionIndex(-1)
+        return
+      }
+    }
+
     if (e.key === 'Enter') {
       e.preventDefault()
       addTag()
@@ -132,7 +214,7 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
       onClose={onClose}
       title={isEditing ? 'Edit Bookmark' : 'Add Bookmark'}
     >
-      <form onSubmit={handleSubmit}>
+      <form ref={formRef} onSubmit={handleSubmit}>
         <Input
           label="URL"
           type="url"
@@ -170,18 +252,41 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
           </label>
 
           <div className="flex gap-2 mb-2">
-            <input
-              type="text"
-              value={tagInput}
-              onChange={(e) => setTagInput(e.target.value)}
-              onKeyPress={handleTagKeyPress}
-              placeholder="Add a tag..."
-              disabled={loading}
-              className="flex-1 h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
-            />
+            <div className="relative flex-1">
+              <input
+                ref={tagInputRef}
+                type="text"
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={handleTagKeyDown}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                onFocus={() => tagInput.trim() && suggestions.length > 0 && setShowSuggestions(true)}
+                placeholder="Add a tag..."
+                disabled={loading}
+                autoComplete="off"
+                className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
+              />
+              {showSuggestions && suggestions.length > 0 && (
+                <ul className="absolute z-50 w-full mt-1 max-h-40 overflow-auto rounded-md border border-input bg-background shadow-lg">
+                  {suggestions.map((tag, index) => (
+                    <li
+                      key={tag}
+                      onMouseDown={() => selectSuggestion(tag)}
+                      className={`px-3 py-2 text-sm cursor-pointer transition-colors ${
+                        index === selectedSuggestionIndex
+                          ? 'bg-accent text-accent-foreground'
+                          : 'hover:bg-accent/50'
+                      }`}
+                    >
+                      {tag}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
             <button
               type="button"
-              onClick={addTag}
+              onClick={() => addTag()}
               disabled={loading || !tagInput.trim()}
               className="h-10 w-10 inline-flex items-center justify-center rounded-md bg-secondary hover:bg-accent text-foreground border-none transition-colors disabled:opacity-50"
               aria-label="Add tag"

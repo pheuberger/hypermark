@@ -112,6 +112,13 @@ export function BookmarkList() {
     return filtered
   }, [searchedBookmarks, filterView, selectedTag, sortBy])
 
+  const handleSearchSubmit = useCallback(() => {
+    if (filteredBookmarks.length > 0) {
+      setSelectedIndex(0)
+      searchInputRef.current?.blur()
+    }
+  }, [filteredBookmarks.length])
+
   const selectNext = useCallback(() => {
     setSelectedIndex((prev) => {
       const maxIndex = filteredBookmarks.length - 1
@@ -251,6 +258,7 @@ export function BookmarkList() {
             <FilterBar
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
+              onSearchSubmit={handleSearchSubmit}
               sortBy={sortBy}
               onSortChange={setSortBy}
               onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}

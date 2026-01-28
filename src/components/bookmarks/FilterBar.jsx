@@ -3,12 +3,20 @@ import { X, ChevronDown, Menu, Search, Plus } from '../ui/Icons'
 export function FilterBar({
   searchQuery,
   onSearchChange,
+  onSearchSubmit,
   sortBy,
   onSortChange,
   onToggleSidebar,
   onAddNew,
   searchInputRef,
 }) {
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      onSearchSubmit?.()
+    }
+  }
+
   return (
     <div className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 py-3">
       <div className="flex items-center gap-3">
@@ -30,6 +38,7 @@ export function FilterBar({
             placeholder="Search bookmarks..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
+            onKeyDown={handleKeyDown}
             className="w-full pl-9 pr-8 h-10 bg-transparent text-sm rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background transition-colors placeholder:text-muted-foreground"
           />
           {searchQuery && (

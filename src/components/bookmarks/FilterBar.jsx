@@ -14,6 +14,9 @@ export function FilterBar({
     if (e.key === 'Enter') {
       e.preventDefault()
       onSearchSubmit?.()
+    } else if (e.key === 'Escape') {
+      onSearchChange('')
+      e.target.blur()
     }
   }
 

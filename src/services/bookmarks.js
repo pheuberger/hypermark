@@ -139,13 +139,17 @@ export function createBookmark(bookmarkData) {
   const id = `bookmark:${generateId()}`
   const now = Date.now()
 
+  // Create Y.Array for tags and populate it
+  const tagsArray = new Y.Array()
+  tagsArray.insert(0, validated.tags)
+
   // Create Y.Map for bookmark
   const bookmark = new Y.Map([
     ['id', id],
     ['url', validated.url],
     ['title', validated.title],
     ['description', validated.description],
-    ['tags', new Y.Array(validated.tags)],
+    ['tags', tagsArray],
     ['readLater', validated.readLater],
     ['inbox', validated.inbox],
     ['favicon', validated.favicon],

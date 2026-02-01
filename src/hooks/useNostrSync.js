@@ -63,7 +63,7 @@ function bookmarkDataToYMap(bookmarkData) {
     // Filter out any undefined/null values before pushing
     const validTags = bookmarkData.tags.filter(t => t != null)
     if (validTags.length > 0) {
-      tagsArray.push(...validTags)
+      tagsArray.push(validTags)
     }
     ymap.set('tags', tagsArray)
   } else {

@@ -3,8 +3,8 @@ import { useYjs } from '../../hooks/useYjs'
 import { useSearch, useDebounce } from '../../hooks/useSearch'
 import { useHotkeys } from '../../hooks/useHotkeys'
 import { BookmarkItem } from './BookmarkItem'
+import { BookmarkInlineCard } from './BookmarkInlineCard'
 import { InboxView } from './InboxView'
-import { BookmarkForm } from './BookmarkForm'
 import { TagSidebar } from './TagSidebar'
 import { FilterBar } from './FilterBar'
 import { SettingsView } from '../ui/SettingsView'
@@ -14,10 +14,7 @@ import { Button } from '../ui/Button'
 import { PackageOpen } from '../ui/Icons'
 import {
   getAllBookmarks,
-  createBookmark,
-  updateBookmark,
   deleteBookmark,
-  getInboxBookmarks,
 } from '../../services/bookmarks'
 
 export function BookmarkList() {
@@ -44,8 +41,8 @@ export function BookmarkList() {
     }
   }, [bookmarksMap])
 
-  const [isFormOpen, setIsFormOpen] = useState(false)
-  const [editingBookmark, setEditingBookmark] = useState(null)
+  const [isAddingNew, setIsAddingNew] = useState(false)
+  const [editingBookmarkId, setEditingBookmarkId] = useState(null)
   const [filterView, setFilterView] = useState('all')
   const [selectedTag, setSelectedTag] = useState(null)
   const [sortBy, setSortBy] = useState('recent')
@@ -62,8 +59,8 @@ export function BookmarkList() {
   const searchedBookmarks = useSearch(bookmarks, debouncedSearchQuery)
 
   const openNewBookmarkForm = useCallback(() => {
-    setEditingBookmark(null)
-    setIsFormOpen(true)
+    setEditingBookmarkId(null)
+    setIsAddingNew(true)
   }, [])
 
   const goToAllBookmarks = useCallback(() => {
@@ -158,13 +155,15 @@ export function BookmarkList() {
   }, [filterView])
 
   const openSelected = useCallback(() => {
+    // Don't open URL if we're adding/editing
+    if (isAddingNew || editingBookmarkId) return
     if (filterView === 'inbox') {
       inboxViewRef.current?.handleEnter()
     } else if (selectedIndex >= 0 && selectedIndex < filteredBookmarks.length) {
       const bookmark = filteredBookmarks[selectedIndex]
       window.open(bookmark.url, '_blank', 'noopener,noreferrer')
     }
-  }, [selectedIndex, filteredBookmarks, filterView])
+  }, [selectedIndex, filteredBookmarks, filterView, isAddingNew, editingBookmarkId])
 
   const exitInbox = useCallback(() => {
     if (filterView === 'inbox') {
@@ -173,12 +172,12 @@ export function BookmarkList() {
   }, [filterView, goToAllBookmarks])
 
   const editSelected = useCallback(() => {
+    if (filterView === 'inbox') return
     if (selectedIndex >= 0 && selectedIndex < filteredBookmarks.length) {
       const bookmark = filteredBookmarks[selectedIndex]
-      setEditingBookmark(bookmark)
-      setIsFormOpen(true)
+      setEditingBookmarkId(bookmark._id)
     }
-  }, [selectedIndex, filteredBookmarks])
+  }, [selectedIndex, filteredBookmarks, filterView])
 
   const promptDeleteSelected = useCallback(() => {
     if (filterView === 'inbox') return
@@ -202,6 +201,12 @@ export function BookmarkList() {
   useEffect(() => {
     setSelectedIndex(-1)
   }, [filteredBookmarks.length, filterView, selectedTag, debouncedSearchQuery])
+
+  // Close inline card when view/filter changes
+  useEffect(() => {
+    setIsAddingNew(false)
+    setEditingBookmarkId(null)
+  }, [filterView, selectedTag, currentView])
 
   useEffect(() => {
     if (selectedIndex >= 0 && selectedItemRef.current) {
@@ -228,22 +233,13 @@ export function BookmarkList() {
   const handleAddNew = openNewBookmarkForm
 
   const handleEdit = (bookmark) => {
-    setEditingBookmark(bookmark)
-    setIsFormOpen(true)
+    setEditingBookmarkId(bookmark._id)
   }
 
-  const handleSave = (bookmarkData) => {
-    try {
-      if (bookmarkData._id) {
-        updateBookmark(bookmarkData._id, bookmarkData)
-      } else {
-        createBookmark(bookmarkData)
-      }
-    } catch (error) {
-      console.error('Failed to save bookmark:', error)
-      alert('Failed to save bookmark: ' + error.message)
-    }
-  }
+  const handleCloseInlineCard = useCallback(() => {
+    setIsAddingNew(false)
+    setEditingBookmarkId(null)
+  }, [])
 
   const handleDelete = (bookmarkId) => {
     try {
@@ -322,35 +318,60 @@ export function BookmarkList() {
             <div className="flex-1 overflow-y-auto bg-background">
               <div className="px-4 pb-12 pt-1 space-y-1">
                  {filterView === 'inbox' ? (
-                    <InboxView 
+                    <InboxView
                       ref={inboxViewRef}
                       bookmarks={filteredBookmarks}
                     />
-                 ) : filteredBookmarks.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-20 opacity-50">
-                      <PackageOpen className="w-12 h-12 mb-4 stroke-1" />
-                      <p className="text-sm font-medium">No bookmarks found</p>
-                      {filterView !== 'all' && (
-                         <button 
-                           onClick={() => handleFilterChange('all')} 
-                           className="mt-2 text-sm text-primary hover:underline"
-                         >
-                           Clear filters
-                         </button>
-                      )}
-                    </div>
                  ) : (
-                    filteredBookmarks.map((bookmark, index) => (
-                      <BookmarkItem
-                        key={bookmark._id}
-                        ref={index === selectedIndex ? selectedItemRef : null}
-                        bookmark={bookmark}
-                        isSelected={index === selectedIndex}
-                        onEdit={handleEdit}
-                        onDelete={handleDelete}
-                        onTagClick={handleTagClick}
-                      />
-                    ))
+                    <>
+                      {/* New bookmark inline card at top */}
+                      {isAddingNew && (
+                        <div className="mb-3 pt-2">
+                          <BookmarkInlineCard
+                            isNew={true}
+                            onDone={handleCloseInlineCard}
+                            onDiscard={handleCloseInlineCard}
+                          />
+                        </div>
+                      )}
+
+                      {filteredBookmarks.length === 0 && !isAddingNew ? (
+                        <div className="flex flex-col items-center justify-center py-20 opacity-50">
+                          <PackageOpen className="w-12 h-12 mb-4 stroke-1" />
+                          <p className="text-sm font-medium">No bookmarks found</p>
+                          {filterView !== 'all' && (
+                            <button
+                              onClick={() => handleFilterChange('all')}
+                              className="mt-2 text-sm text-primary hover:underline"
+                            >
+                              Clear filters
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        filteredBookmarks.map((bookmark, index) => (
+                          editingBookmarkId === bookmark._id ? (
+                            <BookmarkInlineCard
+                              key={bookmark._id}
+                              ref={index === selectedIndex ? selectedItemRef : null}
+                              bookmark={bookmark}
+                              onDone={handleCloseInlineCard}
+                              onDiscard={handleCloseInlineCard}
+                            />
+                          ) : (
+                            <BookmarkItem
+                              key={bookmark._id}
+                              ref={index === selectedIndex ? selectedItemRef : null}
+                              bookmark={bookmark}
+                              isSelected={index === selectedIndex}
+                              onEdit={handleEdit}
+                              onDelete={handleDelete}
+                              onTagClick={handleTagClick}
+                            />
+                          )
+                        ))
+                      )}
+                    </>
                  )}
               </div>
             </div>
@@ -363,16 +384,6 @@ export function BookmarkList() {
           </div>
         )}
       </div>
-
-      <BookmarkForm
-        isOpen={isFormOpen}
-        onClose={() => {
-          setIsFormOpen(false)
-          setEditingBookmark(null)
-        }}
-        onSave={handleSave}
-        initialData={editingBookmark}
-      />
 
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
 

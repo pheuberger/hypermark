@@ -87,7 +87,7 @@ export async function exportPublicKey(publicKey) {
  */
 export async function importPublicKey(base64Key) {
   try {
-    const keyData = base64ToArrayBuffer(base64Key)
+    const keyData = base64ToUint8Array(base64Key)
     const publicKey = await crypto.subtle.importKey(
       'spki',
       keyData,
@@ -193,7 +193,9 @@ export async function encryptData(key, data, additionalData = '') {
       options.additionalData = new TextEncoder().encode(additionalData)
     }
 
-    const ciphertext = await crypto.subtle.encrypt(options, key, data)
+    // Ensure data is Uint8Array to avoid cross-realm ArrayBuffer issues
+    const dataBytes = data instanceof Uint8Array ? data : new Uint8Array(data)
+    const ciphertext = await crypto.subtle.encrypt(options, key, dataBytes)
 
     return { ciphertext, iv }
   } catch (error) {
@@ -212,16 +214,21 @@ export async function encryptData(key, data, additionalData = '') {
  */
 export async function decryptData(key, ciphertext, iv, additionalData = '') {
   try {
+    // Ensure iv is Uint8Array to avoid cross-realm issues
+    const ivBytes = iv instanceof Uint8Array ? iv : new Uint8Array(iv)
+
     const options = {
       name: 'AES-GCM',
-      iv: iv,
+      iv: ivBytes,
     }
 
     if (additionalData) {
       options.additionalData = new TextEncoder().encode(additionalData)
     }
 
-    const plaintext = await crypto.subtle.decrypt(options, key, ciphertext)
+    // Ensure ciphertext is Uint8Array to avoid cross-realm ArrayBuffer issues
+    const ciphertextBytes = ciphertext instanceof Uint8Array ? ciphertext : new Uint8Array(ciphertext)
+    const plaintext = await crypto.subtle.decrypt(options, key, ciphertextBytes)
 
     return plaintext
   } catch (error) {
@@ -288,6 +295,22 @@ export function base64ToArrayBuffer(base64) {
     bytes[i] = binary.charCodeAt(i)
   }
   return bytes.buffer
+}
+
+/**
+ * Convert base64 string to Uint8Array
+ * Use this instead of base64ToArrayBuffer for crypto.subtle operations
+ * to avoid cross-realm ArrayBuffer issues in Node.js test environments
+ * @param {string} base64
+ * @returns {Uint8Array}
+ */
+export function base64ToUint8Array(base64) {
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i)
+  }
+  return bytes
 }
 
 /**

@@ -112,15 +112,15 @@ export async function encryptMessage(psk, message) {
 }
 
 export async function decryptMessage(psk, ciphertext, iv) {
-  const ciphertextBuffer = base64ToArrayBuffer(ciphertext)
-  const ivBuffer = new Uint8Array(base64ToArrayBuffer(iv))
-  
+  const ciphertextBytes = base64ToUint8Array(ciphertext)
+  const ivBytes = base64ToUint8Array(iv)
+
   const plaintext = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: ivBuffer },
+    { name: 'AES-GCM', iv: ivBytes },
     psk,
-    ciphertextBuffer
+    ciphertextBytes
   )
-  
+
   return JSON.parse(new TextDecoder().decode(plaintext))
 }
 
@@ -140,4 +140,13 @@ function base64ToArrayBuffer(base64) {
     bytes[i] = binary.charCodeAt(i)
   }
   return bytes.buffer
+}
+
+function base64ToUint8Array(base64) {
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i)
+  }
+  return bytes
 }

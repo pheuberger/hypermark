@@ -15,6 +15,234 @@
 import { isWebCryptoAvailable, arrayBufferToBase64 } from "./crypto.js";
 import * as secp256k1 from '@noble/secp256k1';
 
+// ============================================================================
+// Bech32 Encoding for Nostr (npub/nsec)
+// ============================================================================
+
+/**
+ * Bech32 character set (lowercase)
+ */
+const BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+
+/**
+ * Generator values for bech32 polymod checksum
+ */
+const BECH32_GENERATOR = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+
+/**
+ * Compute bech32 polymod checksum
+ * @param {number[]} values - Array of 5-bit values
+ * @returns {number} - Polymod checksum value
+ */
+function bech32Polymod(values) {
+  let chk = 1;
+  for (const v of values) {
+    const top = chk >> 25;
+    chk = ((chk & 0x1ffffff) << 5) ^ v;
+    for (let i = 0; i < 5; i++) {
+      if ((top >> i) & 1) {
+        chk ^= BECH32_GENERATOR[i];
+      }
+    }
+  }
+  return chk;
+}
+
+/**
+ * Expand human-readable part for checksum calculation
+ * @param {string} hrp - Human-readable part (e.g., "npub" or "nsec")
+ * @returns {number[]} - Expanded values for polymod
+ */
+function bech32HrpExpand(hrp) {
+  const result = [];
+  for (let i = 0; i < hrp.length; i++) {
+    result.push(hrp.charCodeAt(i) >> 5);
+  }
+  result.push(0);
+  for (let i = 0; i < hrp.length; i++) {
+    result.push(hrp.charCodeAt(i) & 31);
+  }
+  return result;
+}
+
+/**
+ * Create bech32 checksum
+ * @param {string} hrp - Human-readable part
+ * @param {number[]} data - 5-bit data values
+ * @returns {number[]} - 6-value checksum
+ */
+function bech32CreateChecksum(hrp, data) {
+  const values = bech32HrpExpand(hrp).concat(data).concat([0, 0, 0, 0, 0, 0]);
+  const polymod = bech32Polymod(values) ^ 1;
+  const checksum = [];
+  for (let i = 0; i < 6; i++) {
+    checksum.push((polymod >> (5 * (5 - i))) & 31);
+  }
+  return checksum;
+}
+
+/**
+ * Convert between bit groups
+ * @param {Uint8Array} data - Input data
+ * @param {number} fromBits - Source bit width (8 for bytes)
+ * @param {number} toBits - Target bit width (5 for bech32)
+ * @param {boolean} pad - Whether to pad the output
+ * @returns {number[]} - Converted values
+ */
+function convertBits(data, fromBits, toBits, pad) {
+  let acc = 0;
+  let bits = 0;
+  const result = [];
+  const maxv = (1 << toBits) - 1;
+
+  for (const value of data) {
+    acc = (acc << fromBits) | value;
+    bits += fromBits;
+    while (bits >= toBits) {
+      bits -= toBits;
+      result.push((acc >> bits) & maxv);
+    }
+  }
+
+  if (pad) {
+    if (bits > 0) {
+      result.push((acc << (toBits - bits)) & maxv);
+    }
+  } else if (bits >= fromBits || ((acc << (toBits - bits)) & maxv)) {
+    throw new Error("Invalid padding in bech32 conversion");
+  }
+
+  return result;
+}
+
+/**
+ * Encode data as bech32
+ * @param {string} hrp - Human-readable part (e.g., "npub", "nsec")
+ * @param {Uint8Array} data - Data to encode (32 bytes for Nostr keys)
+ * @returns {string} - Bech32 encoded string
+ */
+export function bech32Encode(hrp, data) {
+  // Convert 8-bit bytes to 5-bit groups
+  const data5bit = convertBits(data, 8, 5, true);
+
+  // Create checksum
+  const checksum = bech32CreateChecksum(hrp, data5bit);
+
+  // Combine data and checksum
+  const combined = data5bit.concat(checksum);
+
+  // Encode to bech32 string
+  let result = hrp + "1";
+  for (const value of combined) {
+    result += BECH32_CHARSET[value];
+  }
+
+  return result;
+}
+
+/**
+ * Decode a bech32 string
+ * @param {string} str - Bech32 encoded string
+ * @returns {{ hrp: string, data: Uint8Array }} - Decoded HRP and data
+ * @throws {Error} If the string is invalid
+ */
+export function bech32Decode(str) {
+  // Bech32 is case-insensitive, but must be all lowercase or all uppercase
+  const hasLower = /[a-z]/.test(str);
+  const hasUpper = /[A-Z]/.test(str);
+  if (hasLower && hasUpper) {
+    throw new Error("Mixed case in bech32 string");
+  }
+  str = str.toLowerCase();
+
+  // Find separator
+  const sepIndex = str.lastIndexOf("1");
+  if (sepIndex < 1 || sepIndex + 7 > str.length) {
+    throw new Error("Invalid bech32 separator position");
+  }
+
+  const hrp = str.slice(0, sepIndex);
+  const dataStr = str.slice(sepIndex + 1);
+
+  // Decode data characters
+  const data = [];
+  for (const char of dataStr) {
+    const index = BECH32_CHARSET.indexOf(char);
+    if (index === -1) {
+      throw new Error(`Invalid bech32 character: ${char}`);
+    }
+    data.push(index);
+  }
+
+  // Verify checksum
+  const hrpExpanded = bech32HrpExpand(hrp);
+  if (bech32Polymod(hrpExpanded.concat(data)) !== 1) {
+    throw new Error("Invalid bech32 checksum");
+  }
+
+  // Remove checksum (last 6 values) and convert back to 8-bit
+  const data5bit = data.slice(0, -6);
+  const data8bit = convertBits(data5bit, 5, 8, false);
+
+  return { hrp, data: new Uint8Array(data8bit) };
+}
+
+/**
+ * Encode a Nostr public key as npub
+ * @param {Uint8Array} pubkey - 32-byte x-only public key
+ * @returns {string} - npub1... encoded string
+ */
+export function encodeNpub(pubkey) {
+  if (pubkey.length !== 32) {
+    throw new Error("Public key must be 32 bytes (x-only format)");
+  }
+  return bech32Encode("npub", pubkey);
+}
+
+/**
+ * Encode a Nostr private key as nsec
+ * @param {Uint8Array} privkey - 32-byte private key
+ * @returns {string} - nsec1... encoded string
+ */
+export function encodeNsec(privkey) {
+  if (privkey.length !== 32) {
+    throw new Error("Private key must be 32 bytes");
+  }
+  return bech32Encode("nsec", privkey);
+}
+
+/**
+ * Decode an npub string to a public key
+ * @param {string} npub - npub1... encoded string
+ * @returns {Uint8Array} - 32-byte x-only public key
+ */
+export function decodeNpub(npub) {
+  const { hrp, data } = bech32Decode(npub);
+  if (hrp !== "npub") {
+    throw new Error(`Expected npub prefix, got ${hrp}`);
+  }
+  if (data.length !== 32) {
+    throw new Error(`Invalid npub data length: ${data.length}`);
+  }
+  return data;
+}
+
+/**
+ * Decode an nsec string to a private key
+ * @param {string} nsec - nsec1... encoded string
+ * @returns {Uint8Array} - 32-byte private key
+ */
+export function decodeNsec(nsec) {
+  const { hrp, data } = bech32Decode(nsec);
+  if (hrp !== "nsec") {
+    throw new Error(`Expected nsec prefix, got ${hrp}`);
+  }
+  if (data.length !== 32) {
+    throw new Error(`Invalid nsec data length: ${data.length}`);
+  }
+  return data;
+}
+
 // Configure @noble/secp256k1 with Web Crypto SHA-256
 // Required for Schnorr signatures in v3.x
 // The library needs both sha256 and hmacSha256 configured
@@ -293,17 +521,19 @@ export async function generateNostrKeypair(seed) {
     const publicKeyHex = uint8ArrayToHex(publicKeyBytes);
 
     // Generate bech32 formats for Nostr compatibility
-    // TODO: Implement proper bech32 encoding for npub/nsec
-    const npub = uint8ArrayToHex(publicKeyBytes);
-    const nsec = uint8ArrayToHex(privateKeyBytes);
+    // npub uses x-only public key (32 bytes, without the prefix byte)
+    // nsec uses the raw 32-byte private key
+    const xOnlyPubkey = publicKeyBytes.slice(1); // Remove prefix byte (02 or 03)
+    const npub = encodeNpub(xOnlyPubkey);
+    const nsec = encodeNsec(privateKeyBytes);
 
     return {
       privateKeyBytes,
       privateKeyHex,
       publicKeyBytes,
       publicKeyHex,
-      npub: `npub1${npub}`, // Placeholder - would need proper bech32 encoding
-      nsec: `nsec1${nsec}`, // Placeholder - would need proper bech32 encoding
+      npub,
+      nsec,
     };
   } catch (error) {
     console.error("Failed to generate Nostr keypair:", error);

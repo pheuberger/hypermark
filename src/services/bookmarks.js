@@ -4,7 +4,7 @@
  */
 
 import * as Y from 'yjs'
-import { getYdocInstance } from '../hooks/useYjs'
+import { getYdocInstance, LOCAL_ORIGIN } from '../hooks/useYjs'
 
 // Helper to get ydoc instance
 function getYdoc() {
@@ -158,9 +158,12 @@ export function createBookmark(bookmarkData) {
     ['updatedAt', now],
   ])
 
-  // Add to bookmarks map
-  const bookmarksMap = getYdoc().getMap('bookmarks')
-  bookmarksMap.set(id, bookmark)
+  // Add to bookmarks map (wrapped in transaction for undo support)
+  const doc = getYdoc()
+  const bookmarksMap = doc.getMap('bookmarks')
+  doc.transact(() => {
+    bookmarksMap.set(id, bookmark)
+  }, LOCAL_ORIGIN)
 
   console.log('[Bookmarks] Created:', id)
   return bookmarkToObject(id, bookmark)
@@ -170,7 +173,8 @@ export function createBookmark(bookmarkData) {
  * Update existing bookmark
  */
 export function updateBookmark(id, updates) {
-  const bookmarksMap = getYdoc().getMap('bookmarks')
+  const doc = getYdoc()
+  const bookmarksMap = doc.getMap('bookmarks')
   const bookmark = bookmarksMap.get(id)
 
   if (!bookmark) {
@@ -182,23 +186,25 @@ export function updateBookmark(id, updates) {
   const merged = { ...existing, ...updates }
   const validated = validateBookmark(merged)
 
-  // Update fields
-  if (updates.title !== undefined) bookmark.set('title', validated.title)
-  if (updates.url !== undefined) bookmark.set('url', validated.url)
-  if (updates.description !== undefined) bookmark.set('description', validated.description)
-  if (updates.readLater !== undefined) bookmark.set('readLater', validated.readLater)
-  if (updates.inbox !== undefined) bookmark.set('inbox', validated.inbox)
-  if (updates.favicon !== undefined) bookmark.set('favicon', validated.favicon)
-  if (updates.preview !== undefined) bookmark.set('preview', validated.preview)
+  // Wrap all updates in a single transaction for undo support
+  doc.transact(() => {
+    if (updates.title !== undefined) bookmark.set('title', validated.title)
+    if (updates.url !== undefined) bookmark.set('url', validated.url)
+    if (updates.description !== undefined) bookmark.set('description', validated.description)
+    if (updates.readLater !== undefined) bookmark.set('readLater', validated.readLater)
+    if (updates.inbox !== undefined) bookmark.set('inbox', validated.inbox)
+    if (updates.favicon !== undefined) bookmark.set('favicon', validated.favicon)
+    if (updates.preview !== undefined) bookmark.set('preview', validated.preview)
 
-  // Update tags (replace entire array)
-  if (updates.tags !== undefined) {
-    const tagsArray = bookmark.get('tags')
-    tagsArray.delete(0, tagsArray.length) // Clear
-    tagsArray.insert(0, validated.tags) // Insert new
-  }
+    // Update tags (replace entire array)
+    if (updates.tags !== undefined) {
+      const tagsArray = bookmark.get('tags')
+      tagsArray.delete(0, tagsArray.length) // Clear
+      tagsArray.insert(0, validated.tags) // Insert new
+    }
 
-  bookmark.set('updatedAt', Date.now())
+    bookmark.set('updatedAt', Date.now())
+  }, LOCAL_ORIGIN)
 
   console.log('[Bookmarks] Updated:', id)
   return bookmarkToObject(id, bookmark)
@@ -208,13 +214,16 @@ export function updateBookmark(id, updates) {
  * Delete bookmark
  */
 export function deleteBookmark(id) {
-  const bookmarksMap = getYdoc().getMap('bookmarks')
+  const doc = getYdoc()
+  const bookmarksMap = doc.getMap('bookmarks')
 
   if (!bookmarksMap.has(id)) {
     throw new Error(`Bookmark not found: ${id}`)
   }
 
-  bookmarksMap.delete(id)
+  doc.transact(() => {
+    bookmarksMap.delete(id)
+  }, LOCAL_ORIGIN)
   console.log('[Bookmarks] Deleted:', id)
 }
 
@@ -222,7 +231,8 @@ export function deleteBookmark(id) {
  * Toggle read-later status
  */
 export function toggleReadLater(id) {
-  const bookmarksMap = getYdoc().getMap('bookmarks')
+  const doc = getYdoc()
+  const bookmarksMap = doc.getMap('bookmarks')
   const bookmark = bookmarksMap.get(id)
 
   if (!bookmark) {
@@ -230,8 +240,10 @@ export function toggleReadLater(id) {
   }
 
   const current = bookmark.get('readLater')
-  bookmark.set('readLater', !current)
-  bookmark.set('updatedAt', Date.now())
+  doc.transact(() => {
+    bookmark.set('readLater', !current)
+    bookmark.set('updatedAt', Date.now())
+  }, LOCAL_ORIGIN)
 
   console.log('[Bookmarks] Toggled read-later:', id, !current)
   return !current
@@ -241,7 +253,8 @@ export function toggleReadLater(id) {
  * Add tag to bookmark
  */
 export function addTag(id, tag) {
-  const bookmarksMap = getYdoc().getMap('bookmarks')
+  const doc = getYdoc()
+  const bookmarksMap = doc.getMap('bookmarks')
   const bookmark = bookmarksMap.get(id)
 
   if (!bookmark) {
@@ -257,8 +270,10 @@ export function addTag(id, tag) {
   const existingTags = tags.toArray()
 
   if (!existingTags.includes(normalized)) {
-    tags.push([normalized])
-    bookmark.set('updatedAt', Date.now())
+    doc.transact(() => {
+      tags.push([normalized])
+      bookmark.set('updatedAt', Date.now())
+    }, LOCAL_ORIGIN)
     console.log('[Bookmarks] Added tag:', id, normalized)
   }
 }
@@ -267,7 +282,8 @@ export function addTag(id, tag) {
  * Remove tag from bookmark
  */
 export function removeTag(id, tag) {
-  const bookmarksMap = getYdoc().getMap('bookmarks')
+  const doc = getYdoc()
+  const bookmarksMap = doc.getMap('bookmarks')
   const bookmark = bookmarksMap.get(id)
 
   if (!bookmark) {
@@ -279,8 +295,10 @@ export function removeTag(id, tag) {
   const index = tags.toArray().indexOf(normalized)
 
   if (index !== -1) {
-    tags.delete(index, 1)
-    bookmark.set('updatedAt', Date.now())
+    doc.transact(() => {
+      tags.delete(index, 1)
+      bookmark.set('updatedAt', Date.now())
+    }, LOCAL_ORIGIN)
     console.log('[Bookmarks] Removed tag:', id, normalized)
   }
 }
@@ -370,15 +388,18 @@ export function createInboxItem(url) {
  * @param {string} id - Bookmark ID
  */
 export function moveFromInbox(id) {
-  const bookmarksMap = getYdoc().getMap('bookmarks')
+  const doc = getYdoc()
+  const bookmarksMap = doc.getMap('bookmarks')
   const bookmark = bookmarksMap.get(id)
 
   if (!bookmark) {
     throw new Error(`Bookmark not found: ${id}`)
   }
 
-  bookmark.set('inbox', false)
-  bookmark.set('updatedAt', Date.now())
+  doc.transact(() => {
+    bookmark.set('inbox', false)
+    bookmark.set('updatedAt', Date.now())
+  }, LOCAL_ORIGIN)
 
   console.log('[Bookmarks] Moved from inbox:', id)
 }

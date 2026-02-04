@@ -36,6 +36,12 @@ import {
   verifyNostrEventSignature,
   createSignedNostrEvent,
   getXOnlyPubkey,
+  bech32Encode,
+  bech32Decode,
+  encodeNpub,
+  encodeNsec,
+  decodeNpub,
+  decodeNsec,
 } from "./nostr-crypto.js";
 
 import { generateLEK, importLEK, exportLEK } from "./crypto.js";
@@ -614,6 +620,182 @@ describe("nostr-crypto", () => {
 
       it("throws for invalid length", () => {
         expect(() => getXOnlyPubkey(new Uint8Array(32))).toThrow("33-byte");
+      });
+    });
+  });
+
+  describe("bech32 encoding/decoding", () => {
+    describe("bech32Encode and bech32Decode", () => {
+      it("round-trips arbitrary data", () => {
+        const testData = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+        const encoded = bech32Encode("test", testData);
+        const { hrp, data } = bech32Decode(encoded);
+
+        expect(hrp).toBe("test");
+        expect(data).toEqual(testData);
+      });
+
+      it("produces lowercase output", () => {
+        const testData = new Uint8Array(32).fill(0xab);
+        const encoded = bech32Encode("npub", testData);
+
+        expect(encoded).toBe(encoded.toLowerCase());
+      });
+
+      it("decodes case-insensitively", () => {
+        const testData = new Uint8Array(32).fill(0x42);
+        const encoded = bech32Encode("npub", testData);
+        const upperEncoded = encoded.toUpperCase();
+
+        const { data: lowerData } = bech32Decode(encoded);
+        const { data: upperData } = bech32Decode(upperEncoded);
+
+        expect(lowerData).toEqual(upperData);
+      });
+
+      it("throws on mixed case input", () => {
+        expect(() => bech32Decode("Npub1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqe3kj6q")).toThrow();
+      });
+
+      it("throws on invalid checksum", () => {
+        const testData = new Uint8Array(32).fill(0x42);
+        const encoded = bech32Encode("npub", testData);
+        // Corrupt the last character
+        const corrupted = encoded.slice(0, -1) + "q";
+
+        expect(() => bech32Decode(corrupted)).toThrow();
+      });
+
+      it("throws on invalid separator position", () => {
+        expect(() => bech32Decode("1invalid")).toThrow();
+        expect(() => bech32Decode("short1a")).toThrow();
+      });
+
+      it("throws on invalid characters", () => {
+        // '0' is not a valid bech32 character, but checksum error may be thrown first
+        expect(() => bech32Decode("npub1qqqqqq0qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqe3kj6q")).toThrow();
+      });
+    });
+
+    describe("encodeNpub and decodeNpub", () => {
+      it("encodes 32-byte public key to npub", () => {
+        const pubkey = new Uint8Array(32).fill(0x01);
+        const npub = encodeNpub(pubkey);
+
+        expect(npub).toMatch(/^npub1/);
+        expect(typeof npub).toBe("string");
+      });
+
+      it("round-trips public key", () => {
+        const pubkey = hexToUint8Array("3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d");
+        const npub = encodeNpub(pubkey);
+        const decoded = decodeNpub(npub);
+
+        expect(decoded).toEqual(pubkey);
+      });
+
+      it("produces known test vector", () => {
+        // Test vector: all zeros (32 bytes → 52 five-bit groups → 52 'q's)
+        const pubkey = new Uint8Array(32).fill(0x00);
+        const npub = encodeNpub(pubkey);
+
+        expect(npub).toBe("npub1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqzqujme");
+      });
+
+      it("throws on invalid length for encodeNpub", () => {
+        expect(() => encodeNpub(new Uint8Array(31))).toThrow("32 bytes");
+        expect(() => encodeNpub(new Uint8Array(33))).toThrow("32 bytes");
+      });
+
+      it("throws on wrong prefix for decodeNpub", () => {
+        const privkey = new Uint8Array(32).fill(0x01);
+        const nsec = encodeNsec(privkey);
+
+        expect(() => decodeNpub(nsec)).toThrow("Expected npub prefix");
+      });
+    });
+
+    describe("encodeNsec and decodeNsec", () => {
+      it("encodes 32-byte private key to nsec", () => {
+        const privkey = new Uint8Array(32).fill(0x01);
+        const nsec = encodeNsec(privkey);
+
+        expect(nsec).toMatch(/^nsec1/);
+        expect(typeof nsec).toBe("string");
+      });
+
+      it("round-trips private key", () => {
+        const privkey = hexToUint8Array("67dea2ed018072d675f5415ecfaed7d2597555e202d85b3d65ea4e58d2d92ffa");
+        const nsec = encodeNsec(privkey);
+        const decoded = decodeNsec(nsec);
+
+        expect(decoded).toEqual(privkey);
+      });
+
+      it("produces known test vector", () => {
+        // Test vector: all zeros (32 bytes → 52 five-bit groups → 52 'q's)
+        const privkey = new Uint8Array(32).fill(0x00);
+        const nsec = encodeNsec(privkey);
+
+        expect(nsec).toBe("nsec1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqwkhnav");
+      });
+
+      it("throws on invalid length for encodeNsec", () => {
+        expect(() => encodeNsec(new Uint8Array(31))).toThrow("32 bytes");
+        expect(() => encodeNsec(new Uint8Array(33))).toThrow("32 bytes");
+      });
+
+      it("throws on wrong prefix for decodeNsec", () => {
+        const pubkey = new Uint8Array(32).fill(0x01);
+        const npub = encodeNpub(pubkey);
+
+        expect(() => decodeNsec(npub)).toThrow("Expected nsec prefix");
+      });
+    });
+
+    describe("integration with generateNostrKeypair", () => {
+      it("generates valid npub format", async () => {
+        const seed = await deriveNostrSeed(testLEK);
+        const keypair = await generateNostrKeypair(seed);
+
+        expect(keypair.npub).toMatch(/^npub1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]+$/);
+        expect(keypair.npub.length).toBe(63); // npub1 + 59 characters
+      });
+
+      it("generates valid nsec format", async () => {
+        const seed = await deriveNostrSeed(testLEK);
+        const keypair = await generateNostrKeypair(seed);
+
+        expect(keypair.nsec).toMatch(/^nsec1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]+$/);
+        expect(keypair.nsec.length).toBe(63); // nsec1 + 59 characters
+      });
+
+      it("npub decodes to x-only public key", async () => {
+        const seed = await deriveNostrSeed(testLEK);
+        const keypair = await generateNostrKeypair(seed);
+
+        const decodedPubkey = decodeNpub(keypair.npub);
+        const expectedXOnlyPubkey = keypair.publicKeyBytes.slice(1); // Remove prefix
+
+        expect(decodedPubkey).toEqual(expectedXOnlyPubkey);
+      });
+
+      it("nsec decodes to private key", async () => {
+        const seed = await deriveNostrSeed(testLEK);
+        const keypair = await generateNostrKeypair(seed);
+
+        const decodedPrivkey = decodeNsec(keypair.nsec);
+
+        expect(decodedPrivkey).toEqual(keypair.privateKeyBytes);
+      });
+
+      it("produces deterministic npub/nsec", async () => {
+        const seed = await deriveNostrSeed(testLEK);
+        const keypair1 = await generateNostrKeypair(seed);
+        const keypair2 = await generateNostrKeypair(seed);
+
+        expect(keypair1.npub).toBe(keypair2.npub);
+        expect(keypair1.nsec).toBe(keypair2.nsec);
       });
     });
   });

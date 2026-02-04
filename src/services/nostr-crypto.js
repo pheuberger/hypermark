@@ -14,6 +14,90 @@
 
 import { isWebCryptoAvailable, arrayBufferToBase64 } from "./crypto.js";
 import * as secp256k1 from '@noble/secp256k1';
+import { bech32 } from 'bech32';
+
+// ============================================================================
+// Bech32 Encoding for Nostr (npub/nsec)
+// ============================================================================
+
+/**
+ * Encode data as bech32
+ * @param {string} hrp - Human-readable part (e.g., "npub", "nsec")
+ * @param {Uint8Array} data - Data to encode (32 bytes for Nostr keys)
+ * @returns {string} - Bech32 encoded string
+ */
+export function bech32Encode(hrp, data) {
+  const words = bech32.toWords(data);
+  return bech32.encode(hrp, words);
+}
+
+/**
+ * Decode a bech32 string
+ * @param {string} str - Bech32 encoded string
+ * @returns {{ hrp: string, data: Uint8Array }} - Decoded HRP and data
+ * @throws {Error} If the string is invalid
+ */
+export function bech32Decode(str) {
+  const { prefix, words } = bech32.decode(str);
+  const data = bech32.fromWords(words);
+  return { hrp: prefix, data: new Uint8Array(data) };
+}
+
+/**
+ * Encode a Nostr public key as npub
+ * @param {Uint8Array} pubkey - 32-byte x-only public key
+ * @returns {string} - npub1... encoded string
+ */
+export function encodeNpub(pubkey) {
+  if (pubkey.length !== 32) {
+    throw new Error("Public key must be 32 bytes (x-only format)");
+  }
+  return bech32Encode("npub", pubkey);
+}
+
+/**
+ * Encode a Nostr private key as nsec
+ * @param {Uint8Array} privkey - 32-byte private key
+ * @returns {string} - nsec1... encoded string
+ */
+export function encodeNsec(privkey) {
+  if (privkey.length !== 32) {
+    throw new Error("Private key must be 32 bytes");
+  }
+  return bech32Encode("nsec", privkey);
+}
+
+/**
+ * Decode an npub string to a public key
+ * @param {string} npub - npub1... encoded string
+ * @returns {Uint8Array} - 32-byte x-only public key
+ */
+export function decodeNpub(npub) {
+  const { hrp, data } = bech32Decode(npub);
+  if (hrp !== "npub") {
+    throw new Error(`Expected npub prefix, got ${hrp}`);
+  }
+  if (data.length !== 32) {
+    throw new Error(`Invalid npub data length: ${data.length}`);
+  }
+  return data;
+}
+
+/**
+ * Decode an nsec string to a private key
+ * @param {string} nsec - nsec1... encoded string
+ * @returns {Uint8Array} - 32-byte private key
+ */
+export function decodeNsec(nsec) {
+  const { hrp, data } = bech32Decode(nsec);
+  if (hrp !== "nsec") {
+    throw new Error(`Expected nsec prefix, got ${hrp}`);
+  }
+  if (data.length !== 32) {
+    throw new Error(`Invalid nsec data length: ${data.length}`);
+  }
+  return data;
+}
 
 // Configure @noble/secp256k1 with Web Crypto SHA-256
 // Required for Schnorr signatures in v3.x
@@ -293,17 +377,19 @@ export async function generateNostrKeypair(seed) {
     const publicKeyHex = uint8ArrayToHex(publicKeyBytes);
 
     // Generate bech32 formats for Nostr compatibility
-    // TODO: Implement proper bech32 encoding for npub/nsec
-    const npub = uint8ArrayToHex(publicKeyBytes);
-    const nsec = uint8ArrayToHex(privateKeyBytes);
+    // npub uses x-only public key (32 bytes, without the prefix byte)
+    // nsec uses the raw 32-byte private key
+    const xOnlyPubkey = publicKeyBytes.slice(1); // Remove prefix byte (02 or 03)
+    const npub = encodeNpub(xOnlyPubkey);
+    const nsec = encodeNsec(privateKeyBytes);
 
     return {
       privateKeyBytes,
       privateKeyHex,
       publicKeyBytes,
       publicKeyHex,
-      npub: `npub1${npub}`, // Placeholder - would need proper bech32 encoding
-      nsec: `nsec1${nsec}`, // Placeholder - would need proper bech32 encoding
+      npub,
+      nsec,
     };
   } catch (error) {
     console.error("Failed to generate Nostr keypair:", error);

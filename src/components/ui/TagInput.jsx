@@ -12,6 +12,9 @@ export const TagInput = forwardRef(function TagInput({
   onFocus,
   onKeyDown: externalOnKeyDown,
 }, ref) {
+  // Ensure value is always an array (defensive against corrupted data)
+  const safeValue = Array.isArray(value) ? value : []
+
   const [inputValue, setInputValue] = useState('')
   const [isOpen, setIsOpen] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -26,14 +29,14 @@ export const TagInput = forwardRef(function TagInput({
   const filteredTags = useMemo(() => {
     const input = inputValue.toLowerCase().trim()
     return allTags
-      .filter((tag) => !value.includes(tag))
+      .filter((tag) => !safeValue.includes(tag))
       .filter((tag) => !input || tag.toLowerCase().includes(input))
-  }, [inputValue, allTags, value])
+  }, [inputValue, allTags, safeValue])
 
   const normalizedInput = inputValue.trim().toLowerCase()
-  const showCreateOption = normalizedInput && 
+  const showCreateOption = normalizedInput &&
     !allTags.some((tag) => tag.toLowerCase() === normalizedInput) &&
-    !value.includes(normalizedInput)
+    !safeValue.includes(normalizedInput)
 
   const options = useMemo(() => {
     const items = filteredTags.map((tag) => ({ type: 'existing', value: tag }))
@@ -57,8 +60,8 @@ export const TagInput = forwardRef(function TagInput({
   }, [selectedIndex, isOpen])
 
   const selectTag = (tag) => {
-    if (!value.includes(tag)) {
-      onChange([...value, tag])
+    if (!safeValue.includes(tag)) {
+      onChange([...safeValue, tag])
     }
     setInputValue('')
     setSelectedIndex(0)
@@ -108,8 +111,8 @@ export const TagInput = forwardRef(function TagInput({
       }
     }
 
-    if (e.key === 'Backspace' && !inputValue && value.length > 0) {
-      onChange(value.slice(0, -1))
+    if (e.key === 'Backspace' && !inputValue && safeValue.length > 0) {
+      onChange(safeValue.slice(0, -1))
     }
 
     externalOnKeyDown?.(e)
@@ -179,7 +182,7 @@ export const TagInput = forwardRef(function TagInput({
         </ul>
       )}
 
-      {!isOpen && value.length === 0 && !inputValue && (
+      {!isOpen && safeValue.length === 0 && !inputValue && (
         <p className="mt-1.5 text-xs text-muted-foreground">
           Press ↓ to see existing tags
         </p>

@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
-import { useYjs } from '../../hooks/useYjs'
+import { useYjs, undo, redo } from '../../hooks/useYjs'
 import { useSearch, useDebounce } from '../../hooks/useSearch'
 import { useHotkeys } from '../../hooks/useHotkeys'
+import { useToast } from '../../hooks/useToast'
 import { BookmarkItem } from './BookmarkItem'
 import { BookmarkInlineCard } from './BookmarkInlineCard'
 import { InboxView } from './InboxView'
@@ -11,6 +12,7 @@ import { SettingsView } from '../ui/SettingsView'
 import { HelpModal } from '../ui/HelpModal'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
+import { ToastContainer } from '../ui/Toast'
 import { PackageOpen } from '../ui/Icons'
 import {
   getAllBookmarks,
@@ -20,6 +22,7 @@ import {
 export function BookmarkList() {
   const { bookmarks: bookmarksMap, synced } = useYjs()
   const [bookmarks, setBookmarks] = useState([])
+  const { toasts, addToast, removeToast } = useToast()
   const [currentView, setCurrentView] = useState('bookmarks')
 
   useEffect(() => {
@@ -189,14 +192,35 @@ export function BookmarkList() {
 
   const confirmDelete = useCallback(() => {
     if (deleteConfirmBookmark) {
+      const bookmarkTitle = deleteConfirmBookmark.title
       try {
         deleteBookmark(deleteConfirmBookmark._id)
+        addToast({
+          message: `Deleted "${bookmarkTitle}"`,
+          action: () => {
+            undo()
+          },
+          actionLabel: 'Undo',
+          duration: 5000,
+        })
       } catch (error) {
         console.error('Failed to delete bookmark:', error)
       }
       setDeleteConfirmBookmark(null)
     }
-  }, [deleteConfirmBookmark])
+  }, [deleteConfirmBookmark, addToast])
+
+  const handleUndo = useCallback(() => {
+    if (undo()) {
+      addToast({ message: 'Undone', duration: 2000 })
+    }
+  }, [addToast])
+
+  const handleRedo = useCallback(() => {
+    if (redo()) {
+      addToast({ message: 'Redone', duration: 2000 })
+    }
+  }, [addToast])
 
   useEffect(() => {
     setSelectedIndex(-1)
@@ -228,6 +252,8 @@ export function BookmarkList() {
     'd': promptDeleteSelected,
     'mod+k': focusSearch,
     'q': exitInbox,
+    'mod+z': handleUndo,
+    'mod+shift+z': handleRedo,
   })
 
   const handleAddNew = openNewBookmarkForm
@@ -241,14 +267,24 @@ export function BookmarkList() {
     setEditingBookmarkId(null)
   }, [])
 
-  const handleDelete = (bookmarkId) => {
+  const handleDelete = useCallback((bookmarkId) => {
+    const bookmark = bookmarks.find(b => b._id === bookmarkId)
+    const bookmarkTitle = bookmark?.title || 'Bookmark'
     try {
       deleteBookmark(bookmarkId)
+      addToast({
+        message: `Deleted "${bookmarkTitle}"`,
+        action: () => {
+          undo()
+        },
+        actionLabel: 'Undo',
+        duration: 5000,
+      })
     } catch (error) {
       console.error('Failed to delete bookmark:', error)
-      alert('Failed to delete bookmark: ' + error.message)
+      addToast({ message: 'Failed to delete bookmark', duration: 3000 })
     }
-  }
+  }, [bookmarks, addToast])
 
   const handleTagClick = (tag) => {
     setFilterView('tag')
@@ -393,7 +429,7 @@ export function BookmarkList() {
         title="Delete bookmark?"
       >
         <p className="text-sm text-muted-foreground mb-4">
-          This will permanently delete "{deleteConfirmBookmark?.title}".
+          Delete "{deleteConfirmBookmark?.title}"? You can undo this action.
         </p>
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={() => setDeleteConfirmBookmark(null)}>
@@ -404,6 +440,8 @@ export function BookmarkList() {
           </Button>
         </div>
       </Modal>
+
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   )
 }

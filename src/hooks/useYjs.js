@@ -11,9 +11,53 @@ let webrtcProvider = null
 let indexeddbProvider = null
 let awareness = null
 let webrtcProviderListeners = []
+let undoManager = null
+let undoManagerListeners = []
+
+// Origin used for local bookmark operations (tracked by UndoManager)
+export const LOCAL_ORIGIN = 'local'
 
 function notifyWebrtcListeners() {
   webrtcProviderListeners.forEach(cb => cb(webrtcProvider))
+}
+
+function notifyUndoManagerListeners(event) {
+  undoManagerListeners.forEach(cb => cb(event))
+}
+
+export function subscribeToUndoManager(callback) {
+  undoManagerListeners.push(callback)
+  return () => {
+    undoManagerListeners = undoManagerListeners.filter(cb => cb !== callback)
+  }
+}
+
+export function getUndoManager() {
+  return undoManager
+}
+
+export function undo() {
+  if (undoManager && undoManager.canUndo()) {
+    undoManager.undo()
+    return true
+  }
+  return false
+}
+
+export function redo() {
+  if (undoManager && undoManager.canRedo()) {
+    undoManager.redo()
+    return true
+  }
+  return false
+}
+
+export function canUndo() {
+  return undoManager?.canUndo() ?? false
+}
+
+export function canRedo() {
+  return undoManager?.canRedo() ?? false
 }
 
 export function subscribeToWebrtcProvider(callback) {
@@ -45,6 +89,25 @@ function initializeYjs(roomName = 'hypermark') {
   if (!ydoc.getMap('bookmarks').size) {
     console.log('[Yjs] Initializing empty data structures')
   }
+
+  // Initialize UndoManager for bookmarks
+  const bookmarksMap = ydoc.getMap('bookmarks')
+  undoManager = new Y.UndoManager(bookmarksMap, {
+    trackedOrigins: new Set([LOCAL_ORIGIN]),
+    captureTimeout: 500, // Group rapid changes within 500ms
+  })
+
+  undoManager.on('stack-item-added', (event) => {
+    console.log('[Yjs] Undo stack item added:', event.type)
+    notifyUndoManagerListeners({ type: 'stack-item-added', ...event })
+  })
+
+  undoManager.on('stack-item-popped', (event) => {
+    console.log('[Yjs] Undo stack item popped:', event.type)
+    notifyUndoManagerListeners({ type: 'stack-item-popped', ...event })
+  })
+
+  console.log('[Yjs] UndoManager initialized')
 
   return ydoc
 }

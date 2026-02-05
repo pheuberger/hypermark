@@ -22,7 +22,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import * as Y from 'yjs'
 import { NostrSyncService, CONNECTION_STATES } from '../services/nostr-sync'
 import { retrieveLEK } from '../services/key-storage'
-import { getYdocInstance } from './useYjs'
+import { getYdocInstance, getUndoManager } from './useYjs'
 import { getNostrDiagnostics } from '../services/nostr-diagnostics'
 import {
   SyncPerformanceManager,
@@ -405,18 +405,36 @@ export function useNostrSync(options = {}) {
             if (deletedBookmarkIds.has(bookmarkId)) {
               return
             }
-            deletedBookmarkIds.add(bookmarkId)
-            // Limit set size
-            if (deletedBookmarkIds.size > 500) {
-              const idsToRemove = [...deletedBookmarkIds].slice(0, 250)
-              idsToRemove.forEach(id => deletedBookmarkIds.delete(id))
-            }
 
             // Defer to not block main thread
             setTimeout(() => {
               const ydoc = getYdocInstance()
               if (ydoc) {
                 const bookmarksMap = ydoc.getMap('bookmarks')
+                const existing = bookmarksMap.get(bookmarkId)
+
+                // Check if local bookmark exists and is newer than deletion event
+                // This handles the case where user undid a deletion - the restored
+                // bookmark will have a newer updatedAt than the deletion event
+                if (existing) {
+                  const updatedAt = existing?.get ? existing.get('updatedAt') : existing?.updatedAt
+                  // Nostr events use seconds, our timestamps use milliseconds
+                  const deletionTime = event?.created_at ? event.created_at * 1000 : 0
+
+                  if (updatedAt && updatedAt > deletionTime) {
+                    console.log('[useNostrSync] Skipping deletion - local bookmark is newer:', bookmarkId, { updatedAt, deletionTime })
+                    return
+                  }
+                }
+
+                // Track this deletion
+                deletedBookmarkIds.add(bookmarkId)
+                // Limit set size
+                if (deletedBookmarkIds.size > 500) {
+                  const idsToRemove = [...deletedBookmarkIds].slice(0, 250)
+                  idsToRemove.forEach(id => deletedBookmarkIds.delete(id))
+                }
+
                 // Use transaction with 'nostr-sync' origin so observer knows not to re-publish
                 ydoc.transact(() => {
                   bookmarksMap.delete(bookmarkId)
@@ -457,23 +475,44 @@ export function useNostrSync(options = {}) {
               return
             }
 
+            // Check if this is an undo/redo operation
+            const undoManager = getUndoManager()
+            const isUndoRedo = ymapEvent.transaction.origin === undoManager
+
             ymapEvent.changes.keys.forEach((change, key) => {
               if (nostrSyncService && nostrSyncService.isInitialized) {
                 if (change.action === 'add' || change.action === 'update') {
                   const bookmarkYMap = bookmarksMap.get(key)
                   if (bookmarkYMap) {
                     // Convert Y.Map to plain object for publishing
-                    const bookmarkData = bookmarkYMap.get ? {
+                    let bookmarkData = bookmarkYMap.get ? {
                       url: bookmarkYMap.get('url'),
                       title: bookmarkYMap.get('title'),
                       description: bookmarkYMap.get('description') || '',
                       tags: bookmarkYMap.get('tags')?.toArray() || [],
                       readLater: bookmarkYMap.get('readLater') || false,
+                      inbox: bookmarkYMap.get('inbox') || false,
                       favicon: bookmarkYMap.get('favicon') || null,
                       preview: bookmarkYMap.get('preview') || null,
                       createdAt: bookmarkYMap.get('createdAt'),
                       updatedAt: bookmarkYMap.get('updatedAt'),
-                    } : bookmarkYMap // Already a plain object
+                    } : { ...bookmarkYMap } // Already a plain object, clone it
+
+                    // If this is an undo restoration (bookmark was deleted and now restored),
+                    // bump updatedAt to ensure it's newer than any deletion events on relays.
+                    // This prevents the deletion from being replayed on refresh.
+                    if (isUndoRedo && change.action === 'add') {
+                      const newUpdatedAt = Date.now()
+                      console.log('[useNostrSync] Undo restoration detected, bumping updatedAt:', key, { old: bookmarkData.updatedAt, new: newUpdatedAt })
+                      bookmarkData = { ...bookmarkData, updatedAt: newUpdatedAt }
+
+                      // Persist the updated timestamp to IndexedDB
+                      // Use 'nostr-sync' origin to avoid re-triggering this observer
+                      ydoc.transact(() => {
+                        bookmarksMap.set(key, bookmarkData)
+                      }, 'nostr-sync')
+                    }
+
                     // Queue for debounced publishing
                     nostrSyncService.queueBookmarkUpdate(key, bookmarkData)
                   }

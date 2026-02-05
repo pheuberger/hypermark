@@ -1,59 +1,81 @@
-# Development Guide
+# Getting Started
 
-This guide covers the setup, development workflow, and testing procedures for the Hypermark project.
+This guide covers everything you need to set up a Hypermark development environment.
 
-## Quick Start
+## Prerequisites
 
-1. **Install dependencies:**
-   ```bash
-   npm install
-   ```
+- [Node.js](https://nodejs.org/) 18+ (20+ recommended)
+- npm 9+
+- [ngrok](https://ngrok.com/) (optional, for cross-device testing)
 
-2. **Start local development:**
-   ```bash
-   make dev
-   ```
-   This starts the signaling server and Vite dev server. Navigate to `http://localhost:5173`.
+## Setup
 
-## Makefile Workflow
+```bash
+git clone https://github.com/pheuberger/hypermark.git
+cd hypermark
+npm install
+```
 
-The project uses a Makefile to manage development processes.
+## Development
 
-### Available Targets
+### Local Development
+
+```bash
+make dev
+```
+
+This starts:
+- **Signaling server** on port 4444 (WebRTC peer discovery)
+- **Vite dev server** on port 5173 (the app)
+
+Navigate to [http://localhost:5173](http://localhost:5173). Logs are merged into `logs/dev.log`.
+
+### Stop All Services
+
+```bash
+make stop
+```
+
+Gracefully kills all processes spawned by `make dev` or `make remote`. Uses PID files in `/tmp/hypermark-*.pid`.
+
+## Makefile Commands
 
 | Command | Purpose |
 |---------|---------|
-| `make dev` | Local-only development (Signaling + Vite) |
-| `make remote` | Full ngrok setup for cross-device testing |
-| `make stop` | Graceful shutdown of all spawned processes |
+| `make dev` | Local development (signaling + Vite) |
+| `make remote` | Cross-device testing via ngrok tunnels |
+| `make stop` | Stop all Hypermark processes |
 
-### Local Mode (`make dev`)
+## Environment Variables
 
-- Starts signaling server on port 4444.
-- Starts Vite dev server on port 5173.
-- Automatically manages `.env.local` with `VITE_SIGNALING_URL=ws://localhost:4444`.
-- Logs are merged into `logs/dev.log`.
+Configuration is handled via `.env` and `.env.local` files.
 
-### Remote Mode (`make remote`)
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `VITE_SIGNALING_URL` | WebSocket URL for WebRTC signaling | `ws://localhost:4444` |
+| `VITE_SUGGESTION_URL` | Content suggestion service URL (optional) | Derived from signaling URL |
 
-Used for testing sync between different devices (e.g., Laptop and Phone).
+`make dev` and `make remote` overwrite `.env.local` automatically on each run. See `.env.example` for documentation.
 
-- Starts signaling server and Vite dev server.
-- Starts ngrok tunnels for both services.
-- Discovers tunnel URLs via ngrok API and updates `.env.local`.
-- Automatically opens the browser to the ngrok Vite URL.
+## Cross-Device Testing
 
-### Process Management (`make stop`)
+### Option 1: Same Machine
 
-- Kills all processes spawned by `make dev` or `make remote`.
-- Uses PID files stored in `/tmp/hypermark-*.pid`.
-- Does not affect other processes running on the same ports.
+Open multiple browser tabs to `http://localhost:5173`. They sync via BroadcastChannel (same-origin) and WebRTC.
 
-## ngrok Configuration
+### Option 2: Same Network
 
-To use `make remote`, you must have ngrok installed and configured with the following tunnels in `~/.config/ngrok/ngrok.yml`:
+1. Run `make dev`
+2. Find your local IP (`ip addr show` or `ifconfig`)
+3. Set `VITE_SIGNALING_URL=ws://<LOCAL_IP>:4444` in `.env.local`
+4. Access `http://<LOCAL_IP>:5173` from other devices
+
+### Option 3: Remote Devices (ngrok)
+
+Requires ngrok installed and configured:
 
 ```yaml
+# ~/.config/ngrok/ngrok.yml
 tunnels:
   vite:
     proto: http
@@ -63,35 +85,50 @@ tunnels:
     addr: 4444
 ```
 
-The Makefile discovers the public URLs at runtime using the ngrok local API (`http://localhost:4040/api/tunnels`).
+Then:
 
-## Environment Variables
+```bash
+make remote    # Starts tunnels, discovers URLs, opens browser
+make stop      # Stops everything
+```
 
-Configuration is handled via `.env` and `.env.local` files.
+The Makefile discovers tunnel URLs via the ngrok local API (`http://localhost:4040/api/tunnels`) and writes the signaling URL to `.env.local`.
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `VITE_SIGNALING_URL` | WebSocket URL for WebRTC signaling | `ws://localhost:4444` |
+## Testing
 
-Note: `make dev` and `make remote` will overwrite `.env.local` on each run.
+```bash
+npm test                 # Watch mode
+npm run test:run         # Single run
+npm run test:coverage    # With coverage report
+npm run test:security    # Security-critical tests only
+npm run test:ui          # Interactive test UI
+```
 
-## Testing Multi-Device Sync
+See [Testing documentation](testing/README.md) for details on test structure, coverage requirements, and CI/CD integration.
 
-### Option 1: Same Machine
-Open multiple browser tabs to the local or remote URL. They will sync via BroadcastChannel (same-tab) and WebRTC.
+## Building for Production
 
-### Option 2: Different Devices on Same Network
-1. Use `make dev`.
-2. Find your local IP (`ip addr show`).
-3. Manually set `VITE_SIGNALING_URL=ws://<LOCAL_IP>:4444` in `.env`.
-4. Access `http://<LOCAL_IP>:5173` from other devices.
+```bash
+npm run build     # Outputs to dist/
+npm run preview   # Preview the production build locally
+```
 
-### Option 3: Remote Devices
-Use `make remote` to expose both the app and signaling server via ngrok. Share the generated ngrok URL with the second device.
+The production build is configured for deployment to Netlify via `netlify.toml`.
+
+## Signaling Server
+
+The signaling server (in `services/`) handles WebRTC peer discovery and URL metadata extraction. It runs separately from the frontend:
+
+```bash
+npm run signaling              # Run locally on port 4444
+cd services && fly deploy      # Deploy to Fly.io
+```
+
+See `services/Dockerfile` for the container configuration.
 
 ## Troubleshooting
 
-- **Ports in use:** If ports 4444 or 5173 are occupied by other processes, the Makefile will fail. Use `make stop` or manually kill the conflicting processes.
-- **Log inspection:** Check `logs/dev.log` for detailed output from signaling, Vite, and ngrok.
-- **Stale PIDs:** If the app crashed, `make stop` will clean up stale PID files in `/tmp/`.
-- **ngrok API:** Ensure ngrok is running if `make remote` fails to discover URLs.
+- **Ports in use**: If ports 4444 or 5173 are occupied, `make dev` will fail. Run `make stop` or manually kill conflicting processes.
+- **Stale PIDs**: If the app crashed, `make stop` cleans up stale PID files in `/tmp/`.
+- **Log inspection**: Check `logs/dev.log` for output from signaling, Vite, and ngrok.
+- **ngrok not working**: Ensure ngrok is running and configured before `make remote`. The Makefile queries `http://localhost:4040/api/tunnels`.

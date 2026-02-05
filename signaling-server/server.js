@@ -1,14 +1,104 @@
 /**
- * y-webrtc compatible signaling server
- * Handles pub/sub for WebRTC peer discovery and pairing
+ * Hypermark server
+ * - WebSocket: y-webrtc compatible signaling (pub/sub for WebRTC peer discovery and pairing)
+ * - HTTP: Content suggestion API (metadata extraction for bookmarks)
  */
 
+import { createServer } from 'node:http'
 import { WebSocketServer } from 'ws'
+import { extractMetadata } from './metadata.js'
 
 const PORT = process.env.PORT || 4444
 const PING_INTERVAL = 30000
+const MAX_REQUEST_SIZE = 4096
 
-const wss = new WebSocketServer({ port: PORT })
+// ---- HTTP Server ----
+
+const httpServer = createServer(async (req, res) => {
+  // CORS headers (stateless, no cookies)
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204)
+    res.end()
+    return
+  }
+
+  // Health check
+  if (req.method === 'GET' && req.url === '/api/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ status: 'ok', services: ['signaling', 'suggest'] }))
+    return
+  }
+
+  // Content suggestion endpoint
+  if (req.method === 'POST' && req.url === '/api/suggest') {
+    try {
+      const body = await readBody(req)
+      const { url } = JSON.parse(body)
+
+      if (!url || typeof url !== 'string') {
+        res.writeHead(400, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: 'url is required' }))
+        return
+      }
+
+      // Validate URL format
+      let parsed
+      try {
+        parsed = new URL(url)
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: 'Invalid URL format' }))
+        return
+      }
+
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        res.writeHead(400, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: 'Only http/https URLs are supported' }))
+        return
+      }
+
+      const metadata = await extractMetadata(url)
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify(metadata))
+    } catch (err) {
+      console.error('[Suggest] Error:', err.message)
+      const status = err.message.includes('HTTP ') ? 502 : 500
+      res.writeHead(status, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: 'Failed to fetch metadata', detail: err.message }))
+    }
+    return
+  }
+
+  // 404 for everything else
+  res.writeHead(404, { 'Content-Type': 'application/json' })
+  res.end(JSON.stringify({ error: 'Not found' }))
+})
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let data = ''
+    let size = 0
+    req.on('data', (chunk) => {
+      size += chunk.length
+      if (size > MAX_REQUEST_SIZE) {
+        reject(new Error('Request body too large'))
+        req.destroy()
+        return
+      }
+      data += chunk
+    })
+    req.on('end', () => resolve(data))
+    req.on('error', reject)
+  })
+}
+
+// ---- WebSocket Signaling ----
+
+const wss = new WebSocketServer({ server: httpServer })
 
 // topic -> Set<WebSocket>
 const topics = new Map()
@@ -120,4 +210,11 @@ wss.on('close', () => {
   clearInterval(interval)
 })
 
-console.log(`Signaling server running on port ${PORT}`)
+// ---- Start ----
+
+httpServer.listen(PORT, () => {
+  console.log(`Hypermark server running on port ${PORT}`)
+  console.log(`  WebSocket signaling: ws://localhost:${PORT}`)
+  console.log(`  Content suggestion:  http://localhost:${PORT}/api/suggest`)
+  console.log(`  Health check:        http://localhost:${PORT}/api/health`)
+})

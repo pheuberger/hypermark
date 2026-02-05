@@ -60,6 +60,7 @@ export function BookmarkList() {
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [hoveredIndex, setHoveredIndex] = useState(-1)
+  const [keyboardNavActive, setKeyboardNavActive] = useState(false)
   const selectedItemRef = useRef(null)
   const searchInputRef = useRef(null)
   const inboxViewRef = useRef(null)
@@ -144,6 +145,7 @@ export function BookmarkList() {
     if (filterView === 'inbox') {
       inboxViewRef.current?.selectNext()
     } else {
+      setKeyboardNavActive(true)
       setSelectedIndex((prev) => {
         const maxIndex = filteredBookmarks.length - 1
         if (maxIndex < 0) return -1
@@ -160,6 +162,7 @@ export function BookmarkList() {
     if (filterView === 'inbox') {
       inboxViewRef.current?.selectPrev()
     } else {
+      setKeyboardNavActive(true)
       setSelectedIndex((prev) => {
         const maxIndex = filteredBookmarks.length - 1
         if (maxIndex < 0) return -1
@@ -408,6 +411,7 @@ export function BookmarkList() {
     if (filterView === 'inbox') {
       inboxViewRef.current?.goToTop?.()
     } else if (filteredBookmarks.length > 0) {
+      setKeyboardNavActive(true)
       setSelectedIndex(0)
     }
   }, [filterView, filteredBookmarks.length])
@@ -416,13 +420,19 @@ export function BookmarkList() {
     if (filterView === 'inbox') {
       inboxViewRef.current?.goToBottom?.()
     } else if (filteredBookmarks.length > 0) {
+      setKeyboardNavActive(true)
       setSelectedIndex(filteredBookmarks.length - 1)
     }
   }, [filterView, filteredBookmarks.length])
 
   const handleBookmarkHover = useCallback((index) => {
+    if (keyboardNavActive) {
+      // Mouse moved - cancel keyboard selection and return to hover mode
+      setKeyboardNavActive(false)
+      setSelectedIndex(-1)
+    }
     setHoveredIndex(index)
-  }, [])
+  }, [keyboardNavActive])
 
   useEffect(() => {
     setSelectedIndex(-1)
@@ -619,6 +629,7 @@ export function BookmarkList() {
                               isSelected={index === selectedIndex}
                               isChecked={selectedIds.has(bookmark._id)}
                               selectionMode={selectionMode}
+                              keyboardNavActive={keyboardNavActive}
                               onEdit={handleEdit}
                               onDelete={handleDelete}
                               onTagClick={handleTagClick}

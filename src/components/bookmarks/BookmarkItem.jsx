@@ -66,8 +66,8 @@ export const BookmarkItem = forwardRef(function BookmarkItem(
           isChecked
             ? 'bg-primary border-primary'
             : selectionMode
-              ? 'border-muted-foreground/40 hover:border-muted-foreground'
-              : 'border-transparent group-hover:border-muted-foreground/30 hover:!border-muted-foreground/50'
+              ? 'border-muted-foreground/40 hover:border-muted-foreground bg-transparent'
+              : 'border-transparent bg-transparent opacity-0 group-hover:opacity-100 group-hover:border-muted-foreground/30 hover:!border-muted-foreground/50'
         }`}
       >
         {isChecked && (

@@ -13,11 +13,18 @@ import { cn } from '@/utils/cn'
 export function QuickTagModal({ isOpen, onClose, bookmark }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const [localTags, setLocalTags] = useState([])
   const inputRef = useRef(null)
   const listRef = useRef(null)
 
   const allTags = getAllTags()
-  const currentTags = bookmark?.tags || []
+
+  // Sync local tags when modal opens or bookmark changes
+  useEffect(() => {
+    if (isOpen && bookmark) {
+      setLocalTags(bookmark.tags || [])
+    }
+  }, [isOpen, bookmark?._id])
 
   // Filter tags based on search, and include "create new" option
   const filteredOptions = useMemo(() => {
@@ -29,7 +36,7 @@ export function QuickTagModal({ isOpen, onClose, bookmark }) {
       .map(tag => ({
         type: 'existing',
         value: tag,
-        isSelected: currentTags.includes(tag),
+        isSelected: localTags.includes(tag),
       }))
 
     // Add "create new" option if query doesn't match existing tag exactly
@@ -43,7 +50,7 @@ export function QuickTagModal({ isOpen, onClose, bookmark }) {
     }
 
     return matchingTags
-  }, [allTags, currentTags, searchQuery])
+  }, [allTags, localTags, searchQuery])
 
   // Reset state when modal opens
   useEffect(() => {
@@ -70,18 +77,24 @@ export function QuickTagModal({ isOpen, onClose, bookmark }) {
   }, [selectedIndex, filteredOptions.length])
 
   const toggleTag = useCallback((tagValue) => {
+    const normalizedTag = tagValue.toLowerCase()
+    setLocalTags(prev =>
+      prev.includes(normalizedTag)
+        ? prev.filter(t => t !== normalizedTag)
+        : [...prev, normalizedTag]
+    )
+  }, [])
+
+  const saveAndClose = useCallback(() => {
     if (!bookmark?._id) return
 
-    const newTags = currentTags.includes(tagValue)
-      ? currentTags.filter(t => t !== tagValue)
-      : [...currentTags, tagValue.toLowerCase()]
-
     try {
-      updateBookmark(bookmark._id, { tags: newTags })
+      updateBookmark(bookmark._id, { tags: localTags })
     } catch (error) {
       console.error('Failed to update tags:', error)
     }
-  }, [bookmark?._id, currentTags])
+    onClose()
+  }, [bookmark?._id, localTags, onClose])
 
   const handleKeyDown = useCallback((e) => {
     const isModified = e.ctrlKey || e.metaKey
@@ -103,8 +116,8 @@ export function QuickTagModal({ isOpen, onClose, bookmark }) {
       return
     }
 
-    // Space or Enter to toggle selected tag
-    if (e.key === ' ' || e.key === 'Enter') {
+    // Space to toggle selected tag
+    if (e.key === ' ') {
       e.preventDefault()
       if (filteredOptions[selectedIndex]) {
         toggleTag(filteredOptions[selectedIndex].value)
@@ -112,7 +125,14 @@ export function QuickTagModal({ isOpen, onClose, bookmark }) {
       return
     }
 
-    // Escape to close
+    // Enter to save and close
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      saveAndClose()
+      return
+    }
+
+    // Escape to close without saving
     if (e.key === 'Escape') {
       e.preventDefault()
       onClose()
@@ -127,7 +147,7 @@ export function QuickTagModal({ isOpen, onClose, bookmark }) {
         toggleTag(filteredOptions[index].value)
       }
     }
-  }, [filteredOptions, selectedIndex, toggleTag, onClose])
+  }, [filteredOptions, selectedIndex, toggleTag, saveAndClose, onClose])
 
   if (!isOpen || !bookmark) return null
 
@@ -239,8 +259,12 @@ export function QuickTagModal({ isOpen, onClose, bookmark }) {
             toggle
           </span>
           <span className="flex items-center gap-1">
+            <kbd className="px-1 py-0.5 bg-muted border border-border rounded text-[10px]">Enter</kbd>
+            save
+          </span>
+          <span className="flex items-center gap-1">
             <kbd className="px-1 py-0.5 bg-muted border border-border rounded text-[10px]">Esc</kbd>
-            close
+            discard
           </span>
         </div>
       </div>

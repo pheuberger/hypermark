@@ -21,8 +21,8 @@ const HOTKEY_GROUPS = [
   {
     title: 'Quick Actions',
     hotkeys: [
-      { keys: ['Shift', 't'], description: 'Edit tags', modifier: true },
-      { keys: ['Shift', 'l'], description: 'Toggle read later', modifier: true },
+      { keys: ['t'], description: 'Edit tags' },
+      { keys: ['l'], description: 'Toggle read later' },
       { keys: ['c'], description: 'Copy URL' },
     ],
   },

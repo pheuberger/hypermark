@@ -10,7 +10,7 @@ import { DiagnosticsView } from './DiagnosticsView'
 import { ServiceConfigView } from './ServiceConfigView'
 import { performFullReset, checkResetableData } from '../../services/reset'
 import { downloadExport, importFromFile } from '../../services/bookmark-io'
-import { isSuggestionsEnabled } from '../../services/content-suggestion'
+import { isSuggestionsEnabled, setSuggestionsEnabled } from '../../services/content-suggestion'
 
 export function SettingsView({ onBack }) {
   const [showPairing, setShowPairing] = useState(false)
@@ -21,6 +21,9 @@ export function SettingsView({ onBack }) {
   const [peerCount, setPeerCount] = useState(0)
   const [importStatus, setImportStatus] = useState(null)
   const fileInputRef = useRef(null)
+
+  // Suggestions toggle state
+  const [suggestEnabled, setSuggestEnabled] = useState(isSuggestionsEnabled())
 
   // Reset state
   const [showResetConfirm, setShowResetConfirm] = useState(false)
@@ -301,7 +304,7 @@ const handleExport = () => {
   }
 
   if (showServiceConfig) {
-    return <ServiceConfigView onBack={() => setShowServiceConfig(false)} />
+    return <ServiceConfigView onBack={() => { setShowServiceConfig(false); setSuggestEnabled(isSuggestionsEnabled()) }} />
   }
 
   if (showRelayConfig) {
@@ -448,15 +451,26 @@ const handleExport = () => {
         <SettingCard>
           <SettingRow
             label="Content suggestions"
-            description={isSuggestionsEnabled() ? 'Enabled - suggests titles, descriptions, and tags' : 'Disabled - enable to auto-fill bookmark metadata'}
+            description="Sends bookmark URLs to a stateless service to auto-fill titles, descriptions, and tags"
           >
-            <div className="flex items-center gap-2">
-              <Sparkles className={cn("w-4 h-4", isSuggestionsEnabled() ? "text-primary" : "text-muted-foreground/50")} />
-              <div className={cn(
-                "w-2 h-2 rounded-full",
-                isSuggestionsEnabled() ? "bg-green-500" : "bg-muted-foreground/30"
-              )} />
-            </div>
+            <button
+              onClick={() => {
+                const next = !suggestEnabled
+                setSuggestionsEnabled(next)
+                setSuggestEnabled(next)
+              }}
+              className={cn(
+                "relative w-11 h-6 rounded-full transition-colors",
+                suggestEnabled ? "bg-primary" : "bg-muted-foreground/30"
+              )}
+            >
+              <span
+                className={cn(
+                  "absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform shadow-sm",
+                  suggestEnabled && "translate-x-5"
+                )}
+              />
+            </button>
           </SettingRow>
           <SettingRow
             label="Configure services"
@@ -471,10 +485,6 @@ const handleExport = () => {
             </div>
           </SettingRow>
         </SettingCard>
-        <p className="text-xs text-muted-foreground mt-2 px-1">
-          Content suggestions send bookmark URLs to a service for metadata extraction.
-          You can self-host the service for full privacy control.
-        </p>
       </SettingSection>
 
       <SettingSection title="Data">

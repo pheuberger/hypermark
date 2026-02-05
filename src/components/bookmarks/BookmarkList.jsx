@@ -148,11 +148,14 @@ export function BookmarkList() {
       inboxViewRef.current?.selectPrev()
     } else {
       setSelectedIndex((prev) => {
-        if (prev <= 0) return 0
+        const maxIndex = filteredBookmarks.length - 1
+        if (maxIndex < 0) return -1
+        if (prev === -1) return maxIndex
+        if (prev === 0) return 0
         return prev - 1
       })
     }
-  }, [filterView])
+  }, [filterView, filteredBookmarks.length])
 
   const openSelected = useCallback(() => {
     // Don't open URL if we're adding/editing

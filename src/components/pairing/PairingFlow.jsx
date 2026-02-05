@@ -79,6 +79,8 @@ export default function PairingFlow() {
   const stepTimeoutRef = useRef(null)
   const pairingStateRef = useRef(STATES.INITIAL)
   const mountedRef = useRef(true)
+  const messageQueueRef = useRef([])
+  const processingQueueRef = useRef(false)
 
   useEffect(() => {
     mountedRef.current = true
@@ -94,7 +96,9 @@ export default function PairingFlow() {
     sessionKeyRef.current = null
     peerDeviceInfoRef.current = null
     roomRef.current = null
-    
+    messageQueueRef.current = []
+    processingQueueRef.current = false
+
     if (signalingClientRef.current) {
       signalingClientRef.current.close()
       signalingClientRef.current = null
@@ -167,13 +171,13 @@ export default function PairingFlow() {
     })
   }, [])
 
-  const handleSignalingMessage = useCallback(async (data) => {
+  const processMessage = useCallback(async (data) => {
     try {
       if (!data.encrypted || !pskRef.current) {
         console.log('[Pairing] Ignoring unencrypted or pre-PSK message')
         return
       }
-      
+
       let message
       try {
         message = await decryptMessage(pskRef.current, data.ciphertext, data.iv)
@@ -181,7 +185,7 @@ export default function PairingFlow() {
         console.warn('[Pairing] Failed to decrypt - wrong code or MITM attempt')
         return
       }
-      
+
       console.log('[Pairing] Received:', message.type)
 
       switch (message.type) {
@@ -206,6 +210,25 @@ export default function PairingFlow() {
       handleError(err)
     }
   }, [handleError])
+
+  const drainMessageQueue = useCallback(async () => {
+    if (processingQueueRef.current) return
+    processingQueueRef.current = true
+
+    try {
+      while (messageQueueRef.current.length > 0) {
+        const data = messageQueueRef.current.shift()
+        await processMessage(data)
+      }
+    } finally {
+      processingQueueRef.current = false
+    }
+  }, [processMessage])
+
+  const handleSignalingMessage = useCallback((data) => {
+    messageQueueRef.current.push(data)
+    drainMessageQueue()
+  }, [drainMessageQueue])
 
   const handleKeyExchange = async (message) => {
     if (roleRef.current !== 'initiator') return

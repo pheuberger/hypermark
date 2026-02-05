@@ -62,10 +62,13 @@ export const InboxView = forwardRef(function InboxView({ bookmarks }, ref) {
 
   const selectPrev = useCallback(() => {
     setSelectedIndex((prev) => {
-      if (prev <= 0) return 0
+      const maxIndex = bookmarks.length - 1
+      if (maxIndex < 0) return -1
+      if (prev === -1) return maxIndex
+      if (prev === 0) return 0
       return prev - 1
     })
-  }, [])
+  }, [bookmarks.length])
 
   const handleEnter = useCallback(() => {
     if (selectedIndex >= 0 && selectedIndex < bookmarks.length) {

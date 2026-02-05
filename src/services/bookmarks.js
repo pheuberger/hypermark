@@ -228,6 +228,45 @@ export function deleteBookmark(id) {
 }
 
 /**
+ * Restore a deleted bookmark with its original data
+ * Used for manual undo of deletions to ensure proper persistence
+ * @param {Object} bookmarkData - Full bookmark data including _id, createdAt, updatedAt
+ */
+export function restoreBookmark(bookmarkData) {
+  const doc = getYdoc()
+  const bookmarksMap = doc.getMap('bookmarks')
+  const id = bookmarkData._id || bookmarkData.id
+
+  // Create Y.Array for tags and populate it
+  const tagsArray = new Y.Array()
+  const tags = Array.isArray(bookmarkData.tags) ? bookmarkData.tags : []
+  tagsArray.insert(0, tags)
+
+  // Create Y.Map for bookmark with original timestamps
+  const bookmark = new Y.Map([
+    ['id', id],
+    ['url', bookmarkData.url],
+    ['title', bookmarkData.title || ''],
+    ['description', bookmarkData.description || ''],
+    ['tags', tagsArray],
+    ['readLater', Boolean(bookmarkData.readLater)],
+    ['inbox', Boolean(bookmarkData.inbox)],
+    ['favicon', bookmarkData.favicon || null],
+    ['preview', bookmarkData.preview || null],
+    ['createdAt', bookmarkData.createdAt || Date.now()],
+    ['updatedAt', bookmarkData.updatedAt || Date.now()],
+  ])
+
+  // Add to bookmarks map
+  doc.transact(() => {
+    bookmarksMap.set(id, bookmark)
+  }, LOCAL_ORIGIN)
+
+  console.log('[Bookmarks] Restored:', id)
+  return bookmarkToObject(id, bookmark)
+}
+
+/**
  * Toggle read-later status
  */
 export function toggleReadLater(id) {

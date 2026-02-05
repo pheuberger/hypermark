@@ -17,6 +17,7 @@ import { PackageOpen } from '../ui/Icons'
 import {
   getAllBookmarks,
   deleteBookmark,
+  restoreBookmark,
 } from '../../services/bookmarks'
 
 export function BookmarkList() {
@@ -193,12 +194,13 @@ export function BookmarkList() {
   const confirmDelete = useCallback(() => {
     if (deleteConfirmBookmark) {
       const bookmarkTitle = deleteConfirmBookmark.title
+      const bookmarkToRestore = { ...deleteConfirmBookmark }
       try {
         deleteBookmark(deleteConfirmBookmark._id)
         addToast({
           message: `Deleted "${bookmarkTitle}"`,
           action: () => {
-            undo()
+            restoreBookmark(bookmarkToRestore)
           },
           actionLabel: 'Undo',
           duration: 5000,
@@ -270,12 +272,15 @@ export function BookmarkList() {
   const handleDelete = useCallback((bookmarkId) => {
     const bookmark = bookmarks.find(b => b._id === bookmarkId)
     const bookmarkTitle = bookmark?.title || 'Bookmark'
+    const bookmarkToRestore = bookmark ? { ...bookmark } : null
     try {
       deleteBookmark(bookmarkId)
       addToast({
         message: `Deleted "${bookmarkTitle}"`,
         action: () => {
-          undo()
+          if (bookmarkToRestore) {
+            restoreBookmark(bookmarkToRestore)
+          }
         },
         actionLabel: 'Undo',
         duration: 5000,

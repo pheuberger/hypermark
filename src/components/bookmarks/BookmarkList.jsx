@@ -8,6 +8,7 @@ import { BookmarkInlineCard } from './BookmarkInlineCard'
 import { InboxView } from './InboxView'
 import { TagSidebar } from './TagSidebar'
 import { FilterBar } from './FilterBar'
+import { SelectionActionBar } from './SelectionActionBar'
 import { SettingsView } from '../ui/SettingsView'
 import { HelpModal } from '../ui/HelpModal'
 import { ToastContainer } from '../ui/Toast'
@@ -15,6 +16,7 @@ import { PackageOpen } from '../ui/Icons'
 import {
   getAllBookmarks,
   deleteBookmark,
+  bulkDeleteBookmarks,
 } from '../../services/bookmarks'
 
 export function BookmarkList() {
@@ -51,6 +53,8 @@ export function BookmarkList() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isHelpOpen, setIsHelpOpen] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(-1)
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState(new Set())
   const selectedItemRef = useRef(null)
   const searchInputRef = useRef(null)
   const inboxViewRef = useRef(null)
@@ -211,15 +215,133 @@ export function BookmarkList() {
     }
   }, [addToast])
 
+  const toggleSelectionMode = useCallback(() => {
+    setSelectionMode(prev => {
+      if (prev) {
+        setSelectedIds(new Set())
+      }
+      return !prev
+    })
+  }, [])
+
+  const exitSelectionMode = useCallback(() => {
+    setSelectionMode(false)
+    setSelectedIds(new Set())
+  }, [])
+
+  const toggleSelectBookmark = useCallback((id, initiateSelection = false) => {
+    if (initiateSelection && !selectionMode) {
+      setSelectionMode(true)
+      setSelectedIds(new Set([id]))
+      return
+    }
+
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }, [selectionMode])
+
+  const toggleSelectCurrent = useCallback(() => {
+    if (!selectionMode) return
+    if (selectedIndex >= 0 && selectedIndex < filteredBookmarks.length) {
+      const bookmark = filteredBookmarks[selectedIndex]
+      toggleSelectBookmark(bookmark._id)
+    }
+  }, [selectionMode, selectedIndex, filteredBookmarks, toggleSelectBookmark])
+
+  const selectAllBookmarks = useCallback(() => {
+    if (!selectionMode) {
+      setSelectionMode(true)
+    }
+    setSelectedIds(new Set(filteredBookmarks.map(b => b._id)))
+  }, [selectionMode, filteredBookmarks])
+
+  const selectNextWithShift = useCallback(() => {
+    if (filteredBookmarks.length === 0) return
+
+    if (!selectionMode) {
+      setSelectionMode(true)
+    }
+
+    // Select current item before moving
+    if (selectedIndex >= 0 && selectedIndex < filteredBookmarks.length) {
+      const currentBookmark = filteredBookmarks[selectedIndex]
+      setSelectedIds(prev => new Set(prev).add(currentBookmark._id))
+    }
+
+    // Move to next and select it
+    setSelectedIndex(prev => {
+      const maxIndex = filteredBookmarks.length - 1
+      const nextIndex = prev < maxIndex ? prev + 1 : prev
+      if (nextIndex >= 0 && nextIndex < filteredBookmarks.length) {
+        const nextBookmark = filteredBookmarks[nextIndex]
+        setSelectedIds(p => new Set(p).add(nextBookmark._id))
+      }
+      return nextIndex
+    })
+  }, [selectionMode, selectedIndex, filteredBookmarks])
+
+  const selectPrevWithShift = useCallback(() => {
+    if (filteredBookmarks.length === 0) return
+
+    if (!selectionMode) {
+      setSelectionMode(true)
+    }
+
+    // Select current item before moving
+    if (selectedIndex >= 0 && selectedIndex < filteredBookmarks.length) {
+      const currentBookmark = filteredBookmarks[selectedIndex]
+      setSelectedIds(prev => new Set(prev).add(currentBookmark._id))
+    }
+
+    // Move to prev and select it
+    setSelectedIndex(prev => {
+      const prevIndex = prev > 0 ? prev - 1 : 0
+      if (prevIndex >= 0 && prevIndex < filteredBookmarks.length) {
+        const prevBookmark = filteredBookmarks[prevIndex]
+        setSelectedIds(p => new Set(p).add(prevBookmark._id))
+      }
+      return prevIndex
+    })
+  }, [selectionMode, selectedIndex, filteredBookmarks])
+
+  const handleBulkDelete = useCallback(() => {
+    if (selectedIds.size === 0) return
+
+    const count = selectedIds.size
+    try {
+      bulkDeleteBookmarks(Array.from(selectedIds))
+      addToast({
+        message: `Deleted ${count} bookmark${count > 1 ? 's' : ''}`,
+        action: () => {
+          undo()
+        },
+        actionLabel: 'Undo',
+        duration: 5000,
+      })
+      exitSelectionMode()
+    } catch (error) {
+      console.error('Failed to delete bookmarks:', error)
+      addToast({ message: 'Failed to delete bookmarks', duration: 3000 })
+    }
+  }, [selectedIds, addToast, exitSelectionMode])
+
   useEffect(() => {
     setSelectedIndex(-1)
   }, [filteredBookmarks.length, filterView, selectedTag, debouncedSearchQuery])
 
-  // Close inline card when view/filter changes
+  // Close inline card and exit selection mode when view/filter changes
   useEffect(() => {
     setIsAddingNew(false)
     setEditingBookmarkId(null)
-  }, [filterView, selectedTag, currentView])
+    exitSelectionMode()
+  }, [filterView, selectedTag, currentView, exitSelectionMode])
 
   useEffect(() => {
     if (selectedIndex >= 0 && selectedItemRef.current) {
@@ -236,13 +358,18 @@ export function BookmarkList() {
     'shift+?': showHelp,
     'j': selectNext,
     'k': selectPrev,
+    'shift+j': selectNextWithShift,
+    'shift+k': selectPrevWithShift,
     'enter': openSelected,
     'e': editSelected,
-    'd': deleteSelected,
+    'd': selectionMode && selectedIds.size > 0 ? handleBulkDelete : deleteSelected,
     'mod+k': focusSearch,
     'q': exitInbox,
     'mod+z': handleUndo,
     'mod+shift+z': handleRedo,
+    'escape': exitSelectionMode,
+    'space': toggleSelectCurrent,
+    'mod+a': selectAllBookmarks,
   })
 
   const handleAddNew = openNewBookmarkForm
@@ -338,6 +465,8 @@ export function BookmarkList() {
               onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
               onAddNew={handleAddNew}
               searchInputRef={searchInputRef}
+              selectionMode={selectionMode}
+              onToggleSelectionMode={toggleSelectionMode}
             />
 
             <div className="flex-1 overflow-y-auto bg-background">
@@ -389,9 +518,12 @@ export function BookmarkList() {
                               ref={index === selectedIndex ? selectedItemRef : null}
                               bookmark={bookmark}
                               isSelected={index === selectedIndex}
+                              isChecked={selectedIds.has(bookmark._id)}
+                              selectionMode={selectionMode}
                               onEdit={handleEdit}
                               onDelete={handleDelete}
                               onTagClick={handleTagClick}
+                              onToggleSelect={toggleSelectBookmark}
                             />
                           )
                         ))
@@ -411,6 +543,12 @@ export function BookmarkList() {
       </div>
 
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
+
+      <SelectionActionBar
+        selectedCount={selectedIds.size}
+        onDelete={handleBulkDelete}
+        onCancel={exitSelectionMode}
+      />
 
       <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>

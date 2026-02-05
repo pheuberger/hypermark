@@ -17,4 +17,7 @@ export {
   Smartphone,
   AlertCircle,
   Inbox,
+  Square,
+  CheckSquare,
+  ListChecks,
 } from 'lucide-react'

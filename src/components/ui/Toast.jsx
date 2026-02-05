@@ -31,8 +31,8 @@ export function Toast({ message, action, actionLabel = 'Undo', duration = 5000, 
   return (
     <div
       className={cn(
-        'fixed bottom-4 left-1/2 -translate-x-1/2 z-50',
-        'flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg',
+        'fixed bottom-4 right-4 z-50',
+        'flex items-center gap-4 px-4 py-3 rounded-lg shadow-lg',
         'bg-card border border-border text-foreground',
         'transition-all duration-150',
         isLeaving ? 'opacity-0 translate-y-2' : 'opacity-100 translate-y-0'
@@ -42,14 +42,14 @@ export function Toast({ message, action, actionLabel = 'Undo', duration = 5000, 
       {action && (
         <button
           onClick={handleAction}
-          className="text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+          className="text-sm font-medium text-primary hover:text-primary/80 transition-colors whitespace-nowrap"
         >
           {actionLabel}
         </button>
       )}
       <button
         onClick={handleClose}
-        className="ml-1 p-1 rounded hover:bg-muted transition-colors"
+        className="p-1 rounded hover:bg-muted transition-colors flex-shrink-0"
         aria-label="Dismiss"
       >
         <X className="w-4 h-4 text-muted-foreground" />
@@ -61,7 +61,7 @@ export function Toast({ message, action, actionLabel = 'Undo', duration = 5000, 
 // Toast container that manages multiple toasts
 export function ToastContainer({ toasts, onRemove }) {
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2">
+    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
       {toasts.map((toast) => (
         <Toast
           key={toast.id}

@@ -1,8 +1,9 @@
-import { forwardRef, useRef, useEffect, useState } from 'react'
+import { forwardRef, useRef, useEffect, useState, useCallback } from 'react'
 import { ExternalLink, Check, X } from 'lucide-react'
 import { TagInput } from '../ui/TagInput'
 import { Tag } from '../ui/Tag'
 import { getAllTags, createBookmark, updateBookmark } from '../../services/bookmarks'
+import { useHotkeys } from '../../hooks/useHotkeys'
 
 /**
  * BookmarkInlineCard - Inline card for adding/editing bookmarks
@@ -110,7 +111,7 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
   }
 
   // Auto-save logic
-  const saveChanges = () => {
+  const saveChanges = useCallback(() => {
     const normalizedUrl = normalizeUrl(localUrl)
 
     if (!validateUrl(localUrl)) {
@@ -143,7 +144,7 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
       console.error('Failed to save bookmark:', error)
       return false
     }
-  }
+  }, [localUrl, localTitle, localDesc, localTags, localReadLater, isEditing, bookmark, onFieldChange, isNew])
 
   const handleUrlBlur = () => {
     if (localUrl !== (bookmark?.url || '')) {
@@ -198,7 +199,7 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
     handleTagsChange(newTags)
   }
 
-  const handleDone = () => {
+  const handleDone = useCallback(() => {
     if (!validateUrl(localUrl)) {
       setUrlError('URL is required')
       urlInputRef.current?.focus()
@@ -208,23 +209,23 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
     if (saveChanges()) {
       onDone?.()
     }
-  }
+  }, [localUrl, saveChanges, onDone])
 
   const handleDiscard = () => {
     onDiscard?.()
   }
+
+  // Ctrl/Cmd+Enter to save from any field
+  useHotkeys(
+    { 'mod+enter': handleDone },
+    { enableOnInputs: true }
+  )
 
   const handleKeyDown = (e, currentField) => {
     if (e.key === 'Escape') {
       e.preventDefault()
       e.target.blur()
       onDiscard?.()
-      return
-    }
-
-    if (e.key === 'Enter' && currentField !== 'desc') {
-      e.preventDefault()
-      handleDone()
       return
     }
 
@@ -423,7 +424,7 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
         </div>
 
         <div className="text-[10px] text-muted-foreground/50 font-medium">
-          Enter to save · Esc to {isNew ? 'cancel' : 'close'}
+          Ctrl+Enter to save · Esc to {isNew ? 'cancel' : 'close'}
         </div>
       </div>
     </div>

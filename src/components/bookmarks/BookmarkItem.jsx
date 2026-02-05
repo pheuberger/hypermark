@@ -75,26 +75,25 @@ export const BookmarkItem = forwardRef(function BookmarkItem(
             {title}
           </a>
           <span className="text-xs text-muted-foreground truncate flex-shrink-0 font-normal">{domain}</span>
+          {tags && tags.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              {tags.map((tag) => (
+                <span
+                  key={tag}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (!selectionMode) {
+                      onTagClick && onTagClick(tag)
+                    }
+                  }}
+                  className="text-[10px] leading-none px-2 py-1 rounded-full bg-secondary text-secondary-foreground hover:text-primary hover:bg-accent cursor-pointer transition-colors font-medium"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
-
-        {tags && tags.length > 0 && (
-          <div className="flex gap-1.5 mt-1">
-            {tags.map((tag) => (
-              <span
-                key={tag}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  if (!selectionMode) {
-                    onTagClick && onTagClick(tag)
-                  }
-                }}
-                className="text-[10px] leading-tight px-1.5 py-0.5 rounded-[3px] bg-secondary text-secondary-foreground hover:text-primary hover:bg-accent cursor-pointer transition-colors"
-              >
-                #{tag}
-              </span>
-            ))}
-          </div>
-        )}
       </div>
 
       {!selectionMode && (

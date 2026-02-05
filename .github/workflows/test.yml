@@ -16,18 +16,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
-    strategy:
-      matrix:
-        node-version: [18.x, 20.x]
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js ${{ matrix.node-version }}
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: 22.x
           cache: "npm"
 
       - name: Install dependencies
@@ -38,7 +34,6 @@ jobs:
 
       - name: Run tests with coverage
         run: npm run test -- --run --coverage
-        if: matrix.node-version == '20.x'
 
       - name: Check coverage thresholds
         run: |
@@ -83,11 +78,9 @@ jobs:
               console.log('Coverage check skipped - no coverage data available');
             }
           "
-        if: matrix.node-version == '20.x'
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
-        if: matrix.node-version == '20.x'
         with:
           name: coverage-report
           path: coverage/
@@ -95,7 +88,7 @@ jobs:
 
       - name: Comment coverage on PR
         uses: romeovs/lcov-reporter-action@v0.3.1
-        if: github.event_name == 'pull_request' && matrix.node-version == '20.x'
+        if: github.event_name == 'pull_request'
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           lcov-file: ./coverage/lcov.info
@@ -108,7 +101,6 @@ jobs:
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           cat coverage/coverage-summary.json 2>/dev/null | jq '.' || echo "Coverage summary not available"
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-        if: matrix.node-version == '20.x'
 
   lint:
     name: Code Quality
@@ -122,7 +114,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20.x
+          node-version: 22.x
           cache: "npm"
 
       - name: Install dependencies
@@ -149,7 +141,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20.x
+          node-version: 22.x
           cache: "npm"
 
       - name: Install dependencies

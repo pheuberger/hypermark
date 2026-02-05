@@ -50,9 +50,16 @@ export function useHotkeys(hotkeyMap, options = {}) {
       if (!enableOnInputs && isInputElement(e.target)) return
 
       const normalizedKey = normalizeKey(e)
-      
+
+      // Handle escape specially - reset sequence and check for escape handler
       if (normalizedKey === 'esc') {
         resetSequence()
+        // Check for escape/esc handler and call it
+        const escapeHandler = hotkeyMap['escape'] || hotkeyMap['esc']
+        if (escapeHandler) {
+          e.preventDefault()
+          escapeHandler(e)
+        }
         return
       }
 

@@ -33,6 +33,9 @@ export function FilterBar({
           <Menu className="w-5 h-5" strokeWidth={1.5} />
         </button>
 
+        {/* Spacer to align search with bookmark titles (accounts for checkbox + gap) */}
+        <div className="hidden lg:block w-7 flex-shrink-0" />
+
         <div className="flex-1 relative">
           <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
             <Search className="w-4 h-4" strokeWidth={1.5} />

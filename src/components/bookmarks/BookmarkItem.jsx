@@ -1,5 +1,5 @@
 import { forwardRef } from 'react'
-import { Pencil, Trash, Square, CheckSquare } from '../ui/Icons'
+import { Pencil, Trash, Check } from '../ui/Icons'
 
 export const BookmarkItem = forwardRef(function BookmarkItem(
   { bookmark, isSelected, isChecked, selectionMode, keyboardNavActive, onEdit, onDelete, onTagClick, onToggleSelect, onMouseEnter },
@@ -26,6 +26,20 @@ export const BookmarkItem = forwardRef(function BookmarkItem(
     }
   }
 
+  const handleCheckboxClick = (e) => {
+    e.stopPropagation()
+    e.preventDefault()
+    // If not in selection mode, clicking checkbox initiates selection
+    if (!selectionMode) {
+      onToggleSelect?.(bookmark._id, true)
+    } else {
+      onToggleSelect?.(bookmark._id)
+    }
+  }
+
+  // Keyboard selection should be visible on top of checked state
+  const showKeyboardSelection = isSelected && keyboardNavActive
+
   return (
     <div
       ref={ref}
@@ -35,29 +49,31 @@ export const BookmarkItem = forwardRef(function BookmarkItem(
         selectionMode ? 'cursor-pointer' : 'cursor-default'
       } ${
         isChecked
-          ? 'bg-primary/10 ring-1 ring-primary/30'
-          : isSelected
-            ? 'bg-accent ring-1 ring-ring'
-            : keyboardNavActive
-              ? ''
-              : 'hover:bg-accent/50'
+          ? 'bg-primary/15'
+          : keyboardNavActive
+            ? ''
+            : 'hover:bg-accent/50'
+      } ${
+        showKeyboardSelection
+          ? 'ring-2 ring-ring ring-offset-1 ring-offset-background'
+          : ''
       }`}
     >
-      {selectionMode && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            onToggleSelect?.(bookmark._id)
-          }}
-          className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {isChecked ? (
-            <CheckSquare className="w-4 h-4 text-primary" strokeWidth={1.5} />
-          ) : (
-            <Square className="w-4 h-4" strokeWidth={1.5} />
-          )}
-        </button>
-      )}
+      {/* Always render checkbox area for consistent alignment */}
+      <button
+        onClick={handleCheckboxClick}
+        className={`flex-shrink-0 w-4 h-4 rounded border transition-all duration-150 flex items-center justify-center ${
+          isChecked
+            ? 'bg-primary border-primary'
+            : selectionMode
+              ? 'border-muted-foreground/40 hover:border-muted-foreground bg-transparent'
+              : 'border-transparent bg-transparent opacity-0 group-hover:opacity-100 group-hover:border-muted-foreground/30 hover:!border-muted-foreground/50'
+        }`}
+      >
+        {isChecked && (
+          <Check className="w-3 h-3 text-primary-foreground" strokeWidth={2.5} />
+        )}
+      </button>
 
       <img
         src={faviconUrl}
@@ -99,24 +115,26 @@ export const BookmarkItem = forwardRef(function BookmarkItem(
         </div>
       </div>
 
-      {!selectionMode && (
-        <div className="flex items-center gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-          <button
-            onClick={() => onEdit(bookmark)}
-            className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
-            title="Edit"
-          >
-            <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />
-          </button>
-          <button
-            onClick={() => onDelete(bookmark._id)}
-            className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
-            title="Delete"
-          >
-            <Trash className="w-3.5 h-3.5" strokeWidth={1.5} />
-          </button>
-        </div>
-      )}
+      <div className={`flex items-center gap-0.5 transition-opacity ${
+        selectionMode
+          ? 'opacity-0 pointer-events-none'
+          : 'opacity-100 md:opacity-0 md:group-hover:opacity-100'
+      }`}>
+        <button
+          onClick={() => onEdit(bookmark)}
+          className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
+          title="Edit"
+        >
+          <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />
+        </button>
+        <button
+          onClick={() => onDelete(bookmark._id)}
+          className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
+          title="Delete"
+        >
+          <Trash className="w-3.5 h-3.5" strokeWidth={1.5} />
+        </button>
+      </div>
     </div>
   )
 })

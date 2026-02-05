@@ -259,6 +259,10 @@ export function BookmarkList() {
       const next = new Set(prev)
       if (next.has(id)) {
         next.delete(id)
+        // Exit selection mode if no items remain selected
+        if (next.size === 0) {
+          setSelectionMode(false)
+        }
       } else {
         next.add(id)
       }

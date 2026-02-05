@@ -30,8 +30,11 @@ export function QuickTagModal({ isOpen, onClose, bookmark }) {
   const filteredOptions = useMemo(() => {
     const query = searchQuery.toLowerCase().trim()
 
-    // Filter existing tags
-    const matchingTags = allTags
+    // Combine store tags with any new tags in localTags
+    const allAvailableTags = [...new Set([...allTags, ...localTags])]
+
+    // Filter tags that match the query
+    const matchingTags = allAvailableTags
       .filter(tag => !query || tag.toLowerCase().includes(query))
       .map(tag => ({
         type: 'existing',
@@ -39,8 +42,8 @@ export function QuickTagModal({ isOpen, onClose, bookmark }) {
         isSelected: localTags.includes(tag),
       }))
 
-    // Add "create new" option if query doesn't match existing tag exactly
-    const exactMatch = allTags.some(tag => tag.toLowerCase() === query)
+    // Add "create new" option if query doesn't match any available tag exactly
+    const exactMatch = allAvailableTags.some(tag => tag.toLowerCase() === query)
     if (query && !exactMatch) {
       matchingTags.push({
         type: 'create',

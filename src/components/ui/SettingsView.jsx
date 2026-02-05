@@ -10,7 +10,7 @@ import { DiagnosticsView } from './DiagnosticsView'
 import { ServiceConfigView } from './ServiceConfigView'
 import { performFullReset, checkResetableData } from '../../services/reset'
 import { downloadExport, importFromFile } from '../../services/bookmark-io'
-import { isSuggestionsEnabled } from '../../services/content-suggestion'
+import { isSuggestionsEnabled, setSuggestionsEnabled } from '../../services/content-suggestion'
 
 export function SettingsView({ onBack }) {
   const [showPairing, setShowPairing] = useState(false)
@@ -21,6 +21,10 @@ export function SettingsView({ onBack }) {
   const [peerCount, setPeerCount] = useState(0)
   const [importStatus, setImportStatus] = useState(null)
   const fileInputRef = useRef(null)
+
+  // Suggestions toggle state
+  const [suggestEnabled, setSuggestEnabled] = useState(isSuggestionsEnabled())
+  const [showSuggestDisclosure, setShowSuggestDisclosure] = useState(false)
 
   // Reset state
   const [showResetConfirm, setShowResetConfirm] = useState(false)
@@ -301,7 +305,7 @@ const handleExport = () => {
   }
 
   if (showServiceConfig) {
-    return <ServiceConfigView onBack={() => setShowServiceConfig(false)} />
+    return <ServiceConfigView onBack={() => { setShowServiceConfig(false); setSuggestEnabled(isSuggestionsEnabled()) }} />
   }
 
   if (showRelayConfig) {
@@ -448,16 +452,65 @@ const handleExport = () => {
         <SettingCard>
           <SettingRow
             label="Content suggestions"
-            description={isSuggestionsEnabled() ? 'Enabled - suggests titles, descriptions, and tags' : 'Disabled - enable to auto-fill bookmark metadata'}
+            description={suggestEnabled ? 'Suggests titles, descriptions, and tags when adding bookmarks' : 'Enable to auto-fill bookmark metadata from URLs'}
           >
-            <div className="flex items-center gap-2">
-              <Sparkles className={cn("w-4 h-4", isSuggestionsEnabled() ? "text-primary" : "text-muted-foreground/50")} />
-              <div className={cn(
-                "w-2 h-2 rounded-full",
-                isSuggestionsEnabled() ? "bg-green-500" : "bg-muted-foreground/30"
-              )} />
-            </div>
+            <button
+              onClick={() => {
+                if (suggestEnabled) {
+                  setSuggestionsEnabled(false)
+                  setSuggestEnabled(false)
+                  setShowSuggestDisclosure(false)
+                } else {
+                  setShowSuggestDisclosure(true)
+                }
+              }}
+              className={cn(
+                "relative w-11 h-6 rounded-full transition-colors",
+                suggestEnabled ? "bg-primary" : "bg-muted-foreground/30"
+              )}
+            >
+              <span
+                className={cn(
+                  "absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform shadow-sm",
+                  suggestEnabled && "translate-x-5"
+                )}
+              />
+            </button>
           </SettingRow>
+          {showSuggestDisclosure && !suggestEnabled && (
+            <div className="px-4 pb-4 space-y-3">
+              <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-yellow-500 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-medium text-yellow-400 mb-1">Privacy Notice</p>
+                    <p className="text-xs text-muted-foreground">
+                      This sends bookmark URLs to the configured suggestion service for metadata extraction.
+                      The service is stateless — no identifiers, cookies, or logs. You can self-host for full control.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowSuggestDisclosure(false)}
+                  className="flex-1 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors rounded-md border border-border hover:bg-muted"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    setSuggestionsEnabled(true)
+                    setSuggestEnabled(true)
+                    setShowSuggestDisclosure(false)
+                  }}
+                  className="flex-1 px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                >
+                  Enable
+                </button>
+              </div>
+            </div>
+          )}
           <SettingRow
             label="Configure services"
             description="Set custom URLs for signaling and suggestion servers"

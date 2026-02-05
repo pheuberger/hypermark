@@ -6,6 +6,11 @@ import { Awareness } from 'y-protocols/awareness'
 import { retrieveLEK } from '../services/key-storage'
 import { deriveYjsPassword } from '../services/crypto'
 
+// ============================================================================
+// DEBUG FLAG - Set to true to enable verbose logging for bookmark persistence
+// ============================================================================
+const DEBUG_YJS = true
+
 let ydoc = null
 let webrtcProvider = null
 let indexeddbProvider = null
@@ -79,7 +84,18 @@ function initializeYjs(roomName = 'hypermark') {
   indexeddbProvider = new IndexeddbPersistence(roomName, ydoc)
 
   indexeddbProvider.on('synced', () => {
-    console.log('[Yjs] IndexedDB synced')
+    const bookmarksMap = ydoc.getMap('bookmarks')
+    const bookmarkCount = bookmarksMap.size
+    console.log('[Yjs] IndexedDB synced - loaded', bookmarkCount, 'bookmarks')
+
+    if (DEBUG_YJS && bookmarkCount > 0) {
+      console.log('[Yjs] IndexedDB bookmark summary:')
+      bookmarksMap.forEach((bookmark, id) => {
+        const updatedAt = bookmark?.get ? bookmark.get('updatedAt') : bookmark?.updatedAt
+        const title = bookmark?.get ? bookmark.get('title') : bookmark?.title
+        console.log(`  📖 ${id}: "${title}" (updatedAt: ${updatedAt} = ${updatedAt ? new Date(updatedAt).toISOString() : 'N/A'})`)
+      })
+    }
   })
 
   awareness = new Awareness(ydoc)
@@ -99,11 +115,33 @@ function initializeYjs(roomName = 'hypermark') {
 
   undoManager.on('stack-item-added', (event) => {
     console.log('[Yjs] Undo stack item added:', event.type)
+    if (DEBUG_YJS) {
+      // Log what changed
+      const meta = event.stackItem?.meta
+      const deletions = event.stackItem?.deletions
+      const insertions = event.stackItem?.insertions
+      console.log('[Yjs] Stack item details:', {
+        type: event.type,
+        meta: meta ? Object.fromEntries(meta) : {},
+        hasDeletions: deletions?.clients?.size > 0,
+        hasInsertions: insertions?.clients?.size > 0,
+      })
+    }
     notifyUndoManagerListeners({ type: 'stack-item-added', ...event })
   })
 
   undoManager.on('stack-item-popped', (event) => {
     console.log('[Yjs] Undo stack item popped:', event.type)
+    if (DEBUG_YJS) {
+      // Log state after undo/redo
+      console.log('[Yjs] After undo/redo - bookmark count:', bookmarksMap.size)
+      console.log('[Yjs] Bookmarks after', event.type + ':')
+      bookmarksMap.forEach((bookmark, id) => {
+        const updatedAt = bookmark?.get ? bookmark.get('updatedAt') : bookmark?.updatedAt
+        const title = bookmark?.get ? bookmark.get('title') : bookmark?.title
+        console.log(`  📖 ${id}: "${title}" (updatedAt: ${updatedAt} = ${updatedAt ? new Date(updatedAt).toISOString() : 'N/A'})`)
+      })
+    }
     notifyUndoManagerListeners({ type: 'stack-item-popped', ...event })
   })
 

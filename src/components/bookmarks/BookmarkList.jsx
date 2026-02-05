@@ -11,12 +11,14 @@ import { FilterBar } from './FilterBar'
 import { SelectionActionBar } from './SelectionActionBar'
 import { SettingsView } from '../ui/SettingsView'
 import { HelpModal } from '../ui/HelpModal'
+import { QuickTagModal } from '../ui/QuickTagModal'
 import { ToastContainer } from '../ui/Toast'
 import { PackageOpen } from '../ui/Icons'
 import {
   getAllBookmarks,
   deleteBookmark,
   bulkDeleteBookmarks,
+  toggleReadLater,
 } from '../../services/bookmarks'
 
 export function BookmarkList() {
@@ -52,6 +54,8 @@ export function BookmarkList() {
   const [searchQuery, setSearchQuery] = useState('')
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isHelpOpen, setIsHelpOpen] = useState(false)
+  const [isTagModalOpen, setIsTagModalOpen] = useState(false)
+  const [tagModalBookmark, setTagModalBookmark] = useState(null)
   const [selectedIndex, setSelectedIndex] = useState(-1)
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState(new Set())
@@ -335,6 +339,63 @@ export function BookmarkList() {
     }
   }, [selectedIds, addToast, exitSelectionMode])
 
+  // Get the currently selected bookmark
+  const getSelectedBookmark = useCallback(() => {
+    if (selectedIndex >= 0 && selectedIndex < filteredBookmarks.length) {
+      return filteredBookmarks[selectedIndex]
+    }
+    return null
+  }, [selectedIndex, filteredBookmarks])
+
+  // Shift+T: Open tag edit modal for selected bookmark
+  const openTagModal = useCallback(() => {
+    if (filterView === 'inbox') return
+    if (isAddingNew || editingBookmarkId) return
+    const bookmark = getSelectedBookmark()
+    if (bookmark) {
+      setTagModalBookmark(bookmark)
+      setIsTagModalOpen(true)
+    }
+  }, [filterView, isAddingNew, editingBookmarkId, getSelectedBookmark])
+
+  const closeTagModal = useCallback(() => {
+    setIsTagModalOpen(false)
+    setTagModalBookmark(null)
+  }, [])
+
+  // Shift+L: Toggle read later for selected bookmark
+  const toggleReadLaterSelected = useCallback(() => {
+    if (filterView === 'inbox') return
+    if (isAddingNew || editingBookmarkId) return
+    const bookmark = getSelectedBookmark()
+    if (bookmark) {
+      try {
+        const newValue = toggleReadLater(bookmark._id)
+        addToast({
+          message: newValue ? 'Added to Read Later' : 'Removed from Read Later',
+          duration: 2000,
+        })
+      } catch (error) {
+        console.error('Failed to toggle read later:', error)
+      }
+    }
+  }, [filterView, isAddingNew, editingBookmarkId, getSelectedBookmark, addToast])
+
+  // c: Copy URL to clipboard
+  const copySelectedUrl = useCallback(() => {
+    if (filterView === 'inbox') return
+    if (isAddingNew || editingBookmarkId) return
+    const bookmark = getSelectedBookmark()
+    if (bookmark) {
+      navigator.clipboard.writeText(bookmark.url).then(() => {
+        addToast({ message: 'URL copied to clipboard', duration: 2000 })
+      }).catch((error) => {
+        console.error('Failed to copy URL:', error)
+        addToast({ message: 'Failed to copy URL', duration: 2000 })
+      })
+    }
+  }, [filterView, isAddingNew, editingBookmarkId, getSelectedBookmark, addToast])
+
   useEffect(() => {
     setSelectedIndex(-1)
   }, [filteredBookmarks.length, filterView, selectedTag, debouncedSearchQuery])
@@ -364,8 +425,12 @@ export function BookmarkList() {
     'shift+j': selectNextWithShift,
     'shift+k': selectPrevWithShift,
     'enter': openSelected,
+    'o': openSelected,
     'e': editSelected,
     'd': selectionMode && selectedIds.size > 0 ? handleBulkDelete : deleteSelected,
+    'shift+t': openTagModal,
+    'shift+l': toggleReadLaterSelected,
+    'c': copySelectedUrl,
     'mod+k': focusSearch,
     'q': exitInbox,
     'mod+z': handleUndo,
@@ -546,6 +611,12 @@ export function BookmarkList() {
       </div>
 
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
+
+      <QuickTagModal
+        isOpen={isTagModalOpen}
+        onClose={closeTagModal}
+        bookmark={tagModalBookmark}
+      />
 
       <SelectionActionBar
         selectedCount={selectedIds.size}

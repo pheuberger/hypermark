@@ -485,10 +485,6 @@ const handleExport = () => {
             </div>
           </SettingRow>
         </SettingCard>
-        <p className="text-xs text-muted-foreground mt-2 px-1">
-          Content suggestions send bookmark URLs to a service for metadata extraction.
-          You can self-host the service for full privacy control.
-        </p>
       </SettingSection>
 
       <SettingSection title="Data">

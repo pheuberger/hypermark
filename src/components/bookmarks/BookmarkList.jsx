@@ -64,6 +64,7 @@ export function BookmarkList() {
   const selectedItemRef = useRef(null)
   const searchInputRef = useRef(null)
   const inboxViewRef = useRef(null)
+  const ignoreHoverRef = useRef(false)
 
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
   const searchedBookmarks = useSearch(bookmarks, debouncedSearchQuery)
@@ -372,6 +373,11 @@ export function BookmarkList() {
   const closeTagModal = useCallback(() => {
     setIsTagModalOpen(false)
     setTagModalBookmark(null)
+    // Ignore hover events briefly to prevent mouse position from disrupting keyboard selection
+    ignoreHoverRef.current = true
+    setTimeout(() => {
+      ignoreHoverRef.current = false
+    }, 100)
   }, [])
 
   // Shift+L: Toggle read later for selected bookmark
@@ -426,6 +432,9 @@ export function BookmarkList() {
   }, [filterView, filteredBookmarks.length])
 
   const handleBookmarkHover = useCallback((index) => {
+    // Ignore hover events right after modal closes to preserve keyboard selection
+    if (ignoreHoverRef.current) return
+
     if (keyboardNavActive) {
       // Mouse moved - cancel keyboard selection and return to hover mode
       setKeyboardNavActive(false)

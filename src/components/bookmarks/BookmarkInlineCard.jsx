@@ -222,7 +222,8 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
       return
     }
 
-    if (e.key === 'Enter' && currentField !== 'desc') {
+    // Ctrl/Cmd+Enter saves from any field
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault()
       handleDone()
       return

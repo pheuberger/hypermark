@@ -49,14 +49,15 @@
 
 **Implementation:** QR code or manual verification code
 
-### Layer 3: Application E2EE (Future/Optional)
+### Layer 3: Application E2EE (Implemented via Nostr Sync)
 
-**What it would provide:**
-- Zero-trust architecture (don't trust signaling server at all)
-- Content encryption at rest and in transit
-- Per-ledger encryption keys
+**What it provides:**
+- Zero-trust architecture (signaling server and Nostr relays never see plaintext)
+- Content encrypted with AES-256-GCM before leaving device
+- Ledger Encryption Key (LEK) shared across paired devices
+- Deterministic Nostr keypair derived from LEK for cross-device identity
 
-**Status:** Not implemented in MVP. WebRTC DTLS + pairing protocol is sufficient for stated threat model.
+**Status:** Fully implemented. All bookmark data is encrypted before publishing to Nostr relays. See [Nostr Sync Architecture](nostr-sync-architecture.md) for details.
 
 ---
 
@@ -259,11 +260,11 @@ localStorage.setItem('authorized-devices', JSON.stringify(authorizedDevices))
 
 ### What This Doesn't Achieve (By Design)
 
-❌ **Application-level E2EE** - Data is encrypted by WebRTC, not by app (sufficient for MVP)
-
-❌ **Perfect forward secrecy per-message** - WebRTC provides PFS, but app doesn't add another layer
+❌ **Perfect forward secrecy per-message** - WebRTC provides PFS, but Nostr events use static LEK-derived keys
 
 ❌ **Anonymous pairing** - Signaling server knows which peer IDs are connecting (metadata leak)
+
+❌ **Anonymous Nostr sync** - Relays see the same pubkey for all devices with same LEK (identity correlation)
 
 ❌ **Protection after device compromise** - If attacker steals device, they have access (use device lock screen)
 
@@ -419,28 +420,13 @@ connections.get(targetPeerId)?.close()
 
 ## Future Enhancements
 
-### Phase 2: Application-Level E2EE
+### ~~Phase 2: Application-Level E2EE~~ (Completed)
 
-When implementing the Raspberry Pi relay or for zero-trust requirements:
-
-**Add ledger encryption key (LEK) exchange:**
-```javascript
-// During pairing, Device A encrypts LEK with Device B's public key
-const encryptedLEK = await encryptWithPublicKey(LEK, deviceB.publicKey)
-
-connection.send({
-  type: 'pairing-handshake',
-  publicKey: myPublicKey,
-  encryptedLEK: encryptedLEK
-})
-```
-
-**Encrypt all documents before sync:**
-```javascript
-// Before sending
-const ciphertext = AES_GCM_256.encrypt(doc, LEK)
-connection.send({ type: 'sync', doc: ciphertext })
-```
+Application-level E2EE is now implemented via Nostr sync:
+- LEK is exchanged during pairing via ECDH-derived session key
+- All bookmark content is encrypted with AES-256-GCM before publishing
+- Nostr keypair is deterministically derived from LEK
+- See `src/services/nostr-sync.js` and `src/services/nostr-crypto.js`
 
 ### Phase 3: Device Signatures
 
@@ -476,27 +462,27 @@ Replace PeerJS with Raspberry Pi relay:
 
 ## Security Checklist
 
-**Before MVP launch:**
+**MVP (Completed):**
 
-- [ ] Implement QR code pairing with verification code display
-- [ ] Add manual text fallback for devices without cameras
-- [ ] Validate token timestamps (5 minute expiry)
-- [ ] Generate device keypairs using WebCrypto (non-extractable)
-- [ ] Store authorized devices in localStorage
-- [ ] Show clear "Verify this code" UI with large font
-- [ ] Add device removal (unpair) functionality
-- [ ] Test verification code mismatch scenario (manual test)
-- [ ] Ensure verification code is deterministic from token
-- [ ] Add user-facing device names for identification
+- [x] Implement QR code pairing with verification code display
+- [x] Add manual text fallback for devices without cameras
+- [x] Validate token timestamps (5 minute expiry)
+- [x] Generate device keypairs using WebCrypto (non-extractable)
+- [x] Store authorized devices in IndexedDB
+- [x] Show clear "Verify this code" UI with verification words
+- [x] Add device removal (unpair) functionality
+- [x] Test verification code mismatch scenario
+- [x] Ensure verification words are deterministic from session
+- [x] Add user-facing device names for identification
+- [x] Implement application-level E2EE via Nostr sync
 
-**Before production:**
+**Future work:**
 
 - [ ] Security audit of pairing protocol
 - [ ] Pen test MITM scenarios
 - [ ] Add rate limiting for pairing attempts
-- [ ] Implement device signature verification (optional but recommended)
-- [ ] Consider application-level E2EE for sensitive use cases
-- [ ] Document threat model clearly for users
+- [ ] Implement device signature verification
+- [ ] Perfect forward secrecy for Nostr events
 
 ---
 

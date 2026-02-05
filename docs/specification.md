@@ -1,5 +1,14 @@
 # Local-first, E2EE Bookmarking System
 
+> **Note:** This is the original MVP specification from project inception. The implementation has evolved significantly:
+> - **Storage**: Now uses Yjs CRDTs instead of Fireproof
+> - **Sync**: Hybrid WebRTC P2P + Nostr relay sync (not just same-LAN)
+> - **Framework**: React instead of Preact
+>
+> For current architecture, see [architecture.md](architecture.md) and [nostr-sync-architecture.md](nostr-sync-architecture.md).
+
+---
+
 ## 1) Goals and non-goals
 
 ### Goals (MVP)

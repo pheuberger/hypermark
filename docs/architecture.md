@@ -1,80 +1,113 @@
 # Technical Architecture
 
-Hypermark is designed as a local-first, privacy-focused Progressive Web App (PWA). It ensures that all bookmark data is encrypted on the device and synchronized directly between devices without ever exposing plaintext content to a server.
+Hypermark is a local-first, privacy-focused Progressive Web App (PWA). All bookmark data is encrypted on the device and synchronized via a hybrid system: real-time P2P sync (WebRTC) and asynchronous cloud sync (Nostr relays). No server ever sees plaintext content.
 
 ## System Overview
 
-The following diagram illustrates the high-level data flow and component interaction:
-
 ```text
-       ┌─────────────────────────────────────────────────────────┐
-       │                  Browser / PWA Context                  │
-       │                                                         │
-       │  ┌──────────────────┐          ┌─────────────────────┐  │
-       │  │ Preact UI Layer  │◄────────►│   Service Layer     │  │
-       │  └──────────────────┘          │ (Business Logic)    │  │
-       │                                └──────────┬──────────┘  │
-       │                                           │             │
-       │                 ┌─────────────────────────┼─────────────┤
-       │                 │                         │             │
-       │        ┌────────▼────────┐       ┌────────▼──────────┐  │
-       │        │  Yjs Document   │       │  Web Crypto API   │  │
-       │        │     (CRDT)      │       │ (AES-GCM / ECDH)  │  │
-       │        └────────┬────────┘       └───────────────────┘  │
-       │                 │                                       │
-       │        ┌────────▼────────┐       ┌───────────────────┐  │
-       │        │   IndexedDB     │       │  WebRTC (y-webrtc)│  │
-       │        │ (Persistence)   │       │   (P2P Sync)      │  │
-       │        └─────────────────┘       └─────────┬─────────┘  │
-       │                                            │            │
-       └────────────────────────────────────────────┼────────────┘
-                                                    │
-                                           ┌────────▼────────┐
-                                           │ Signaling Server│
-                                           │ (Metadata Only) │
-                                           └─────────────────┘
+       ┌─────────────────────────────────────────────────────────────┐
+       │                   Browser / PWA Context                     │
+       │                                                             │
+       │  ┌──────────────────┐          ┌──────────────────────────┐ │
+       │  │  React UI Layer  │◄────────►│     Service Layer        │ │
+       │  └──────────────────┘          │   (Business Logic)       │ │
+       │                                └───────────┬──────────────┘ │
+       │                                            │                │
+       │                 ┌──────────────────────────┼────────────────┤
+       │                 │                          │                │
+       │        ┌────────▼────────┐        ┌───────▼──────────┐     │
+       │        │  Yjs Document   │        │  Web Crypto API  │     │
+       │        │     (CRDT)      │        │ (AES-GCM / ECDH) │     │
+       │        └────────┬────────┘        └──────────────────┘     │
+       │                 │                                          │
+       │    ┌────────────┼────────────┬──────────────────┐          │
+       │    │            │            │                  │          │
+       │    ▼            ▼            ▼                  ▼          │
+       │ ┌──────────┐ ┌──────────┐ ┌──────────────┐ ┌────────────┐  │
+       │ │IndexedDB │ │ WebRTC   │ │NostrSyncSvc  │ │nostr-crypto│  │
+       │ │(persist) │ │(P2P sync)│ │(cloud sync)  │ │(secp256k1) │  │
+       │ └──────────┘ └────┬─────┘ └──────┬───────┘ └────────────┘  │
+       │                   │              │                         │
+       └───────────────────┼──────────────┼─────────────────────────┘
+                           │              │
+                  ┌────────▼────────┐     │
+                  │ Signaling Server│     │
+                  │ (WebRTC only)   │     │
+                  └─────────────────┘     │
+                                         │
+                           ┌─────────────▼─────────────┐
+                           │      Nostr Relays         │
+                           │  (encrypted events only)  │
+                           │  - relay.damus.io         │
+                           │  - nos.lol                │
+                           │  - relay.nostr.band       │
+                           └───────────────────────────┘
 ```
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|------------|
-| UI Framework | Preact + Vite |
+| UI Framework | React + Vite |
 | State Management | Yjs (CRDT) |
 | Local Storage | IndexedDB (via y-indexeddb) |
 | P2P Transport | WebRTC Data Channels (via y-webrtc) |
-| Encryption | Web Crypto API (AES-256-GCM) |
-| Search | MiniSearch (Client-side) |
-| Styling | Tailwind CSS + DaisyUI |
+| Cloud Sync | Nostr protocol (kind 30053 events) |
+| Encryption | Web Crypto API (AES-256-GCM) + secp256k1 |
+| Search | MiniSearch (client-side) |
+| Styling | Tailwind CSS v4 + Radix UI primitives |
+
+## Hybrid Sync Architecture
+
+Hypermark uses two complementary sync mechanisms:
+
+### 1. WebRTC P2P Sync (Real-time)
+- Sub-second latency when both devices are online
+- Direct peer-to-peer, no server sees data
+- Uses y-webrtc provider for Yjs
+- Room password derived from LEK via HKDF
+
+### 2. Nostr Cloud Sync (Asynchronous)
+- Works when devices are not online simultaneously
+- Encrypted events stored on decentralized relays
+- Uses parameterized replaceable events (kind 30053)
+- Keypair deterministically derived from LEK
+- 1.5s debounce to batch rapid changes
+
+Both sync to the same Yjs document - changes merge via CRDT.
 
 ## Data Flow
 
 1. **User Action**: User adds or modifies a bookmark in the UI.
 2. **Service Layer**: The `bookmarks.js` service validates the input.
 3. **CRDT Update**: The change is applied to the local Yjs document.
-4. **Local Persistence**: `y-indexeddb` automatically persists the change to IndexedDB.
-5. **P2P Sync**: If other devices are connected via `y-webrtc`, the delta is broadcast over an encrypted WebRTC data channel.
-6. **Background Indexing**: `useSearch` hook detects changes in the Yjs document and updates the local MiniSearch index.
+4. **Local Persistence**: `y-indexeddb` automatically persists to IndexedDB.
+5. **P2P Sync**: If devices connected via `y-webrtc`, delta broadcasts immediately.
+6. **Cloud Sync**: `NostrSyncService` publishes encrypted event to Nostr relays (debounced).
+7. **Background Indexing**: `useSearch` hook updates the MiniSearch index.
 
 ## Key Concepts
 
 ### Ledger Encryption Key (LEK)
-The LEK is a symmetric AES-256 key generated on the first device. It is used to encrypt all bookmark content. During pairing, the LEK is securely transferred to the new device via an ECDH key exchange.
+The LEK is a symmetric AES-256 key generated on the first device. It encrypts all bookmark content. During pairing, the LEK is securely transferred via ECDH key exchange.
+
+### Derived Keys
+From the LEK, we derive:
+- **Yjs room password** (HKDF) - for WebRTC encryption
+- **Nostr keypair** (secp256k1) - deterministic, same on all devices
 
 ### Yjs CRDTs
-Hypermark uses Yjs to manage its data. CRDTs (Conflict-free Replicated Data Types) ensure that concurrent edits from different devices merge deterministically without a central authority.
+CRDTs ensure concurrent edits merge deterministically without a central authority.
 
-### WebRTC P2P Sync
-Devices sync directly with each other. The signaling server is only used to help devices discover each other and negotiate the initial connection. Once the WebRTC channel is open, all traffic is peer-to-peer and end-to-end encrypted.
-
-### Derived Passwords
-To protect the LEK, the password for the WebRTC "room" is derived from the LEK using HKDF. This ensures that even if the signaling server or the WebRTC layer is compromised, the raw LEK is never exposed.
+### Nostr Events
+Bookmarks are published as kind 30053 (parameterized replaceable) events. Content is always AES-256-GCM encrypted before publishing. The `d` tag enables efficient querying and replacement.
 
 ## Component Overview
 
-- **`src/components/`**: Divided into feature domains (bookmarks, pairing, sync, ui).
-- **`src/services/`**: Pure logic services for bookmarks, crypto, device registry, and signaling.
-- **`src/hooks/`**: React-style hooks that bridge Yjs and search functionality into the UI.
-- **`src/utils/`**: Shared utilities for device identification and QR processing.
+- **`src/components/`**: Feature domains (bookmarks, pairing, ui)
+- **`src/services/`**: Core logic (bookmarks, crypto, nostr-sync, nostr-crypto, key-storage)
+- **`src/hooks/`**: React hooks (useYjs, useNostrSync, useSearch)
+- **`src/utils/`**: Shared utilities
 
 For detailed security implementation, see [Security](security.md).
+For Nostr sync details, see [Nostr Sync Architecture](nostr-sync-architecture.md).

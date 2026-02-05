@@ -59,6 +59,7 @@ const MESSAGE_TYPES = {
 }
 
 const SESSION_TIMEOUT_MS = 300000
+const STEP_TIMEOUT_MS = 30000 // 30s timeout for any single pairing step
 
 export default function PairingFlow() {
   const [pairingState, setPairingState] = useState(STATES.INITIAL)
@@ -75,6 +76,8 @@ export default function PairingFlow() {
   const peerDeviceInfoRef = useRef(null)
   const roomRef = useRef(null)
   const timeoutRef = useRef(null)
+  const stepTimeoutRef = useRef(null)
+  const pairingStateRef = useRef(STATES.INITIAL)
   const mountedRef = useRef(true)
 
   useEffect(() => {
@@ -101,11 +104,16 @@ export default function PairingFlow() {
       clearTimeout(timeoutRef.current)
       timeoutRef.current = null
     }
+    if (stepTimeoutRef.current) {
+      clearTimeout(stepTimeoutRef.current)
+      stepTimeoutRef.current = null
+    }
   }, [])
 
   const reset = useCallback(() => {
     console.log('[Pairing] Resetting')
     cleanupPairingState()
+    pairingStateRef.current = STATES.INITIAL
     setPairingState(STATES.INITIAL)
     setRole(null)
     roleRef.current = null
@@ -114,10 +122,33 @@ export default function PairingFlow() {
     setError(null)
   }, [cleanupPairingState])
 
+  const updatePairingState = useCallback((state) => {
+    pairingStateRef.current = state
+    setPairingState(state)
+    // Reset step timeout on every state transition (except terminal states)
+    if (stepTimeoutRef.current) {
+      clearTimeout(stepTimeoutRef.current)
+      stepTimeoutRef.current = null
+    }
+    const activeStates = [STATES.CONNECTING, STATES.KEY_EXCHANGE, STATES.TRANSFERRING, STATES.IMPORTING]
+    if (activeStates.includes(state)) {
+      stepTimeoutRef.current = setTimeout(() => {
+        if (!mountedRef.current) return
+        if (activeStates.includes(pairingStateRef.current)) {
+          console.error('[Pairing] Step timeout in state:', pairingStateRef.current)
+          setError('Connection timed out. Please try again.')
+          pairingStateRef.current = STATES.ERROR
+          setPairingState(STATES.ERROR)
+        }
+      }, STEP_TIMEOUT_MS)
+    }
+  }, [])
+
   const handleError = useCallback((err) => {
     console.error('[Pairing] Error:', err)
     if (!mountedRef.current) return
     setError(err.message || String(err))
+    pairingStateRef.current = STATES.ERROR
     setPairingState(STATES.ERROR)
   }, [])
 
@@ -203,7 +234,7 @@ export default function PairingFlow() {
     })
 
     if (!mountedRef.current) return
-    setPairingState(STATES.TRANSFERRING)
+    updatePairingState(STATES.TRANSFERRING)
     await transferLEK(sessionId)
   }
 
@@ -225,7 +256,7 @@ export default function PairingFlow() {
     sessionKeyRef.current = sk
 
     if (!mountedRef.current) return
-    setPairingState(STATES.IMPORTING)
+    updatePairingState(STATES.IMPORTING)
   }
 
   const handleLEKTransfer = async (message) => {
@@ -273,7 +304,7 @@ export default function PairingFlow() {
       })
 
       if (!mountedRef.current) return
-      setPairingState(STATES.COMPLETE)
+      updatePairingState(STATES.COMPLETE)
     } catch (err) {
       console.error('[Pairing] Failed to import LEK:', err)
       handleError(new Error(`Failed to import LEK: ${err.message}`))
@@ -297,7 +328,7 @@ export default function PairingFlow() {
     reconnectYjsWebRTC(yjsPassword)
 
     if (!mountedRef.current) return
-    setPairingState(STATES.COMPLETE)
+    updatePairingState(STATES.COMPLETE)
   }
 
   const handleRemoteError = (message) => {
@@ -341,7 +372,7 @@ export default function PairingFlow() {
     try {
       setRole('initiator')
       roleRef.current = 'initiator'
-      setPairingState(STATES.GENERATING)
+      updatePairingState(STATES.GENERATING)
 
       let lek = await retrieveLEK()
       if (!lek) {
@@ -374,7 +405,7 @@ export default function PairingFlow() {
 
       timeoutRef.current = setTimeout(() => {
         if (!mountedRef.current) return
-        if (pairingState === STATES.GENERATING) {
+        if (pairingStateRef.current !== STATES.COMPLETE && pairingStateRef.current !== STATES.ERROR && pairingStateRef.current !== STATES.INITIAL) {
           handleError(new Error('Session expired. Please try again.'))
         }
       }, SESSION_TIMEOUT_MS)
@@ -389,7 +420,7 @@ export default function PairingFlow() {
   const startAsResponder = () => {
     setRole('responder')
     roleRef.current = 'responder'
-    setPairingState(STATES.ENTERING_CODE)
+    updatePairingState(STATES.ENTERING_CODE)
   }
 
   const handleCodeSubmit = async (e) => {
@@ -399,7 +430,7 @@ export default function PairingFlow() {
       const { room, words } = parsePairingCode(codeInput)
 
       if (!mountedRef.current) return
-      setPairingState(STATES.CONNECTING)
+      updatePairingState(STATES.CONNECTING)
       roomRef.current = getRoomName(room)
 
       const psk = await derivePSK(words)
@@ -423,7 +454,16 @@ export default function PairingFlow() {
       })
 
       if (!mountedRef.current) return
-      setPairingState(STATES.KEY_EXCHANGE)
+      updatePairingState(STATES.KEY_EXCHANGE)
+
+      // Session-level timeout for responder (initiator has its own in startAsInitiator)
+      timeoutRef.current = setTimeout(() => {
+        if (!mountedRef.current) return
+        if (pairingStateRef.current !== STATES.COMPLETE && pairingStateRef.current !== STATES.ERROR && pairingStateRef.current !== STATES.INITIAL) {
+          handleError(new Error('Session expired. Please try again.'))
+        }
+      }, SESSION_TIMEOUT_MS)
+
       console.log('[Pairing] Responder connected, sent key exchange')
     } catch (err) {
       console.error('[Pairing] Code submit failed:', err)
@@ -527,6 +567,7 @@ export default function PairingFlow() {
               autoFocus
               autoComplete="off"
               autoCapitalize="off"
+              autoCorrect="off"
               spellCheck="false"
             />
             

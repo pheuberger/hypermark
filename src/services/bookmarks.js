@@ -1,9 +1,11 @@
 /**
  * Bookmark Service
  * CRUD operations for bookmarks using Yjs
+ *
+ * Bookmarks are stored as plain objects in a Y.Map for simplicity.
+ * This gives us sync + undo/redo without the complexity of nested Yjs types.
  */
 
-import * as Y from 'yjs'
 import { getYdocInstance, LOCAL_ORIGIN } from '../hooks/useYjs'
 
 // Helper to get ydoc instance
@@ -139,24 +141,20 @@ export function createBookmark(bookmarkData) {
   const id = `bookmark:${generateId()}`
   const now = Date.now()
 
-  // Create Y.Array for tags and populate it
-  const tagsArray = new Y.Array()
-  tagsArray.insert(0, validated.tags)
-
-  // Create Y.Map for bookmark
-  const bookmark = new Y.Map([
-    ['id', id],
-    ['url', validated.url],
-    ['title', validated.title],
-    ['description', validated.description],
-    ['tags', tagsArray],
-    ['readLater', validated.readLater],
-    ['inbox', validated.inbox],
-    ['favicon', validated.favicon],
-    ['preview', validated.preview],
-    ['createdAt', now],
-    ['updatedAt', now],
-  ])
+  // Create plain object for bookmark
+  const bookmark = {
+    id,
+    url: validated.url,
+    title: validated.title,
+    description: validated.description,
+    tags: validated.tags,
+    readLater: validated.readLater,
+    inbox: validated.inbox,
+    favicon: validated.favicon,
+    preview: validated.preview,
+    createdAt: now,
+    updatedAt: now,
+  }
 
   // Add to bookmarks map (wrapped in transaction for undo support)
   const doc = getYdoc()
@@ -175,39 +173,40 @@ export function createBookmark(bookmarkData) {
 export function updateBookmark(id, updates) {
   const doc = getYdoc()
   const bookmarksMap = doc.getMap('bookmarks')
-  const bookmark = bookmarksMap.get(id)
+  const raw = bookmarksMap.get(id)
 
-  if (!bookmark) {
+  if (!raw) {
     throw new Error(`Bookmark not found: ${id}`)
   }
 
+  // Convert to plain object (handles Y.Map migration)
+  const existing = toPlainObject(id, raw)
+
   // Merge with existing for validation
-  const existing = bookmarkToObject(id, bookmark)
   const merged = { ...existing, ...updates }
   const validated = validateBookmark(merged)
 
-  // Wrap all updates in a single transaction for undo support
+  // Create updated bookmark object
+  const updated = {
+    ...existing,
+    url: validated.url,
+    title: validated.title,
+    description: validated.description,
+    tags: validated.tags,
+    readLater: validated.readLater,
+    inbox: validated.inbox,
+    favicon: validated.favicon,
+    preview: validated.preview,
+    updatedAt: Date.now(),
+  }
+
+  // Replace entire bookmark (wrapped in transaction for undo support)
   doc.transact(() => {
-    if (updates.title !== undefined) bookmark.set('title', validated.title)
-    if (updates.url !== undefined) bookmark.set('url', validated.url)
-    if (updates.description !== undefined) bookmark.set('description', validated.description)
-    if (updates.readLater !== undefined) bookmark.set('readLater', validated.readLater)
-    if (updates.inbox !== undefined) bookmark.set('inbox', validated.inbox)
-    if (updates.favicon !== undefined) bookmark.set('favicon', validated.favicon)
-    if (updates.preview !== undefined) bookmark.set('preview', validated.preview)
-
-    // Update tags (replace entire array)
-    if (updates.tags !== undefined) {
-      const tagsArray = bookmark.get('tags')
-      tagsArray.delete(0, tagsArray.length) // Clear
-      tagsArray.insert(0, validated.tags) // Insert new
-    }
-
-    bookmark.set('updatedAt', Date.now())
+    bookmarksMap.set(id, updated)
   }, LOCAL_ORIGIN)
 
   console.log('[Bookmarks] Updated:', id)
-  return bookmarkToObject(id, bookmark)
+  return bookmarkToObject(id, updated)
 }
 
 /**
@@ -233,20 +232,26 @@ export function deleteBookmark(id) {
 export function toggleReadLater(id) {
   const doc = getYdoc()
   const bookmarksMap = doc.getMap('bookmarks')
-  const bookmark = bookmarksMap.get(id)
+  const raw = bookmarksMap.get(id)
 
-  if (!bookmark) {
+  if (!raw) {
     throw new Error(`Bookmark not found: ${id}`)
   }
 
-  const current = bookmark.get('readLater')
+  const bookmark = toPlainObject(id, raw)
+  const newValue = !bookmark.readLater
+  const updated = {
+    ...bookmark,
+    readLater: newValue,
+    updatedAt: Date.now(),
+  }
+
   doc.transact(() => {
-    bookmark.set('readLater', !current)
-    bookmark.set('updatedAt', Date.now())
+    bookmarksMap.set(id, updated)
   }, LOCAL_ORIGIN)
 
-  console.log('[Bookmarks] Toggled read-later:', id, !current)
-  return !current
+  console.log('[Bookmarks] Toggled read-later:', id, newValue)
+  return newValue
 }
 
 /**
@@ -255,24 +260,28 @@ export function toggleReadLater(id) {
 export function addTag(id, tag) {
   const doc = getYdoc()
   const bookmarksMap = doc.getMap('bookmarks')
-  const bookmark = bookmarksMap.get(id)
+  const raw = bookmarksMap.get(id)
 
-  if (!bookmark) {
+  if (!raw) {
     throw new Error(`Bookmark not found: ${id}`)
   }
 
+  const bookmark = toPlainObject(id, raw)
   const normalized = tag.toLowerCase().trim()
   if (!normalized) {
     throw new Error('Tag cannot be empty')
   }
 
-  const tags = bookmark.get('tags')
-  const existingTags = tags.toArray()
+  const tags = bookmark.tags || []
+  if (!tags.includes(normalized)) {
+    const updated = {
+      ...bookmark,
+      tags: [...tags, normalized],
+      updatedAt: Date.now(),
+    }
 
-  if (!existingTags.includes(normalized)) {
     doc.transact(() => {
-      tags.push([normalized])
-      bookmark.set('updatedAt', Date.now())
+      bookmarksMap.set(id, updated)
     }, LOCAL_ORIGIN)
     console.log('[Bookmarks] Added tag:', id, normalized)
   }
@@ -284,20 +293,26 @@ export function addTag(id, tag) {
 export function removeTag(id, tag) {
   const doc = getYdoc()
   const bookmarksMap = doc.getMap('bookmarks')
-  const bookmark = bookmarksMap.get(id)
+  const raw = bookmarksMap.get(id)
 
-  if (!bookmark) {
+  if (!raw) {
     throw new Error(`Bookmark not found: ${id}`)
   }
 
+  const bookmark = toPlainObject(id, raw)
   const normalized = tag.toLowerCase().trim()
-  const tags = bookmark.get('tags')
-  const index = tags.toArray().indexOf(normalized)
+  const tags = bookmark.tags || []
+  const index = tags.indexOf(normalized)
 
   if (index !== -1) {
+    const updated = {
+      ...bookmark,
+      tags: tags.filter(t => t !== normalized),
+      updatedAt: Date.now(),
+    }
+
     doc.transact(() => {
-      tags.delete(index, 1)
-      bookmark.set('updatedAt', Date.now())
+      bookmarksMap.set(id, updated)
     }, LOCAL_ORIGIN)
     console.log('[Bookmarks] Removed tag:', id, normalized)
   }
@@ -390,15 +405,21 @@ export function createInboxItem(url) {
 export function moveFromInbox(id) {
   const doc = getYdoc()
   const bookmarksMap = doc.getMap('bookmarks')
-  const bookmark = bookmarksMap.get(id)
+  const raw = bookmarksMap.get(id)
 
-  if (!bookmark) {
+  if (!raw) {
     throw new Error(`Bookmark not found: ${id}`)
   }
 
+  const bookmark = toPlainObject(id, raw)
+  const updated = {
+    ...bookmark,
+    inbox: false,
+    updatedAt: Date.now(),
+  }
+
   doc.transact(() => {
-    bookmark.set('inbox', false)
-    bookmark.set('updatedAt', Date.now())
+    bookmarksMap.set(id, updated)
   }, LOCAL_ORIGIN)
 
   console.log('[Bookmarks] Moved from inbox:', id)
@@ -411,11 +432,10 @@ export function getAllTags() {
   const bookmarksMap = getYdoc().getMap('bookmarks')
   const tagsSet = new Set()
 
-  for (const [_, bookmark] of bookmarksMap.entries()) {
-    const tags = bookmark.get('tags')
-    if (tags) {
-      tags.toArray().forEach(tag => tagsSet.add(tag))
-    }
+  for (const [id, raw] of bookmarksMap.entries()) {
+    const bookmark = toPlainObject(id, raw)
+    const tags = bookmark.tags || []
+    tags.forEach(tag => tagsSet.add(tag))
   }
 
   return Array.from(tagsSet).sort()
@@ -444,20 +464,71 @@ function generateId() {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 }
 
-function bookmarkToObject(id, ymap) {
+/**
+ * Normalize bookmark data to plain object (handles Y.Map migration)
+ */
+function toPlainObject(id, bookmark) {
+  const isYMap = typeof bookmark.get === 'function'
+
+  if (isYMap) {
+    const tags = bookmark.get('tags')
+    return {
+      id: bookmark.get('id') || id,
+      url: bookmark.get('url'),
+      title: bookmark.get('title'),
+      description: bookmark.get('description') || '',
+      tags: tags?.toArray?.() || tags || [],
+      readLater: bookmark.get('readLater') || false,
+      inbox: bookmark.get('inbox') || false,
+      favicon: bookmark.get('favicon') || null,
+      preview: bookmark.get('preview') || null,
+      createdAt: bookmark.get('createdAt'),
+      updatedAt: bookmark.get('updatedAt'),
+    }
+  }
+
+  return bookmark
+}
+
+function bookmarkToObject(id, bookmark) {
+  // Handle both old Y.Map format and new plain object format
+  // This enables migration from the old nested Yjs types
+  const isYMap = typeof bookmark.get === 'function'
+
+  if (isYMap) {
+    // Old format: Y.Map with nested Y.Array for tags
+    const tags = bookmark.get('tags')
+    return {
+      _id: id,
+      id: bookmark.get('id') || id,
+      type: 'bookmark',
+      url: bookmark.get('url'),
+      title: bookmark.get('title'),
+      description: bookmark.get('description') || '',
+      tags: tags?.toArray?.() || tags || [],
+      readLater: bookmark.get('readLater') || false,
+      inbox: bookmark.get('inbox') || false,
+      favicon: bookmark.get('favicon') || null,
+      preview: bookmark.get('preview') || null,
+      createdAt: bookmark.get('createdAt'),
+      updatedAt: bookmark.get('updatedAt'),
+    }
+  }
+
+  // New format: plain object
   return {
     _id: id,
-    id: id,
+    id: bookmark.id || id,
     type: 'bookmark',
-    url: ymap.get('url'),
-    title: ymap.get('title'),
-    description: ymap.get('description') || '',
-    tags: ymap.get('tags')?.toArray() || [],
-    readLater: ymap.get('readLater') || false,
-    inbox: ymap.get('inbox') || false,
-    favicon: ymap.get('favicon') || null,
-    preview: ymap.get('preview') || null,
-    createdAt: ymap.get('createdAt'),
-    updatedAt: ymap.get('updatedAt'),
+    url: bookmark.url,
+    title: bookmark.title,
+    description: bookmark.description || '',
+    tags: bookmark.tags || [],
+    readLater: bookmark.readLater || false,
+    inbox: bookmark.inbox || false,
+    favicon: bookmark.favicon || null,
+    preview: bookmark.preview || null,
+    createdAt: bookmark.createdAt,
+    updatedAt: bookmark.updatedAt,
   }
 }

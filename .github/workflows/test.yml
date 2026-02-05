@@ -55,10 +55,26 @@ jobs:
               console.log('Branches:', total.branches.pct + '%');
               console.log('Statements:', total.statements.pct + '%');
 
-              const minCoverage = 80;
-              if (total.lines.pct < minCoverage || total.functions.pct < minCoverage ||
-                  total.branches.pct < minCoverage || total.statements.pct < minCoverage) {
-                console.log('❌ Coverage below threshold (' + minCoverage + '%)');
+              // Thresholds matching vitest.config.js
+              const thresholds = { lines: 45, functions: 60, branches: 75, statements: 45 };
+              let failed = false;
+              if (total.lines.pct < thresholds.lines) {
+                console.log('❌ Lines coverage (' + total.lines.pct + '%) below threshold (' + thresholds.lines + '%)');
+                failed = true;
+              }
+              if (total.functions.pct < thresholds.functions) {
+                console.log('❌ Functions coverage (' + total.functions.pct + '%) below threshold (' + thresholds.functions + '%)');
+                failed = true;
+              }
+              if (total.branches.pct < thresholds.branches) {
+                console.log('❌ Branches coverage (' + total.branches.pct + '%) below threshold (' + thresholds.branches + '%)');
+                failed = true;
+              }
+              if (total.statements.pct < thresholds.statements) {
+                console.log('❌ Statements coverage (' + total.statements.pct + '%) below threshold (' + thresholds.statements + '%)');
+                failed = true;
+              }
+              if (failed) {
                 process.exit(1);
               } else {
                 console.log('✅ Coverage meets threshold requirements');

@@ -86,7 +86,8 @@ export const TagInput = forwardRef(function TagInput({
         setSelectedIndex((prev) => (prev > 0 ? prev - 1 : options.length - 1))
         return
       }
-      if (e.key === 'Enter') {
+      // Don't select tag on Ctrl/Cmd+Enter - let it bubble up for save action
+      if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
         e.preventDefault()
         const selected = options[selectedIndex]
         if (selected) {
@@ -96,7 +97,8 @@ export const TagInput = forwardRef(function TagInput({
       }
     }
 
-    if (e.key === 'Enter' && inputValue.trim() && !options.length) {
+    // Don't create tag on Ctrl/Cmd+Enter - let it bubble up for save action
+    if (e.key === 'Enter' && inputValue.trim() && !options.length && !e.ctrlKey && !e.metaKey) {
       e.preventDefault()
       selectTag(inputValue.trim().toLowerCase())
       return

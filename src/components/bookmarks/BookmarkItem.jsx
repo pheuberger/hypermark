@@ -2,7 +2,7 @@ import { forwardRef } from 'react'
 import { Pencil, Trash, Square, CheckSquare } from '../ui/Icons'
 
 export const BookmarkItem = forwardRef(function BookmarkItem(
-  { bookmark, isSelected, isChecked, selectionMode, onEdit, onDelete, onTagClick, onToggleSelect },
+  { bookmark, isSelected, isChecked, selectionMode, keyboardNavActive, onEdit, onDelete, onTagClick, onToggleSelect, onMouseEnter },
   ref
 ) {
   const { title, url, tags } = bookmark
@@ -30,6 +30,7 @@ export const BookmarkItem = forwardRef(function BookmarkItem(
     <div
       ref={ref}
       onClick={handleClick}
+      onMouseEnter={onMouseEnter}
       className={`group flex items-center gap-3 px-3 py-2.5 rounded-md transition-all duration-200 ${
         selectionMode ? 'cursor-pointer' : 'cursor-default'
       } ${
@@ -37,7 +38,9 @@ export const BookmarkItem = forwardRef(function BookmarkItem(
           ? 'bg-primary/10 ring-1 ring-primary/30'
           : isSelected
             ? 'bg-accent ring-1 ring-ring'
-            : 'hover:bg-accent/50'
+            : keyboardNavActive
+              ? ''
+              : 'hover:bg-accent/50'
       }`}
     >
       {selectionMode && (

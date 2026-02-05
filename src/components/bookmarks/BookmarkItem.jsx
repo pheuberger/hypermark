@@ -115,24 +115,26 @@ export const BookmarkItem = forwardRef(function BookmarkItem(
         </div>
       </div>
 
-      {!selectionMode && (
-        <div className="flex items-center gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-          <button
-            onClick={() => onEdit(bookmark)}
-            className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
-            title="Edit"
-          >
-            <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />
-          </button>
-          <button
-            onClick={() => onDelete(bookmark._id)}
-            className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
-            title="Delete"
-          >
-            <Trash className="w-3.5 h-3.5" strokeWidth={1.5} />
-          </button>
-        </div>
-      )}
+      <div className={`flex items-center gap-0.5 transition-opacity ${
+        selectionMode
+          ? 'opacity-0 pointer-events-none'
+          : 'opacity-100 md:opacity-0 md:group-hover:opacity-100'
+      }`}>
+        <button
+          onClick={() => onEdit(bookmark)}
+          className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
+          title="Edit"
+        >
+          <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />
+        </button>
+        <button
+          onClick={() => onDelete(bookmark._id)}
+          className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
+          title="Delete"
+        >
+          <Trash className="w-3.5 h-3.5" strokeWidth={1.5} />
+        </button>
+      </div>
     </div>
   )
 })

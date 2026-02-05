@@ -3,10 +3,11 @@ import PairingFlow from '../pairing/PairingFlow'
 import { cn } from '@/utils/cn'
 import { subscribeToWebrtcProvider } from '../../hooks/useYjs'
 import { useNostrSync } from '../../hooks/useNostrSync'
-import { ChevronLeft, Cloud, CloudOff, RefreshCw, Settings2, ChevronRight, Activity, Smartphone } from 'lucide-react'
+import { ChevronLeft, Cloud, CloudOff, RefreshCw, Settings2, ChevronRight, Activity, Smartphone, AlertTriangle, Trash2 } from 'lucide-react'
 import { SettingSection, SettingRow, SettingCard, SettingsContainer } from './SettingsLayout'
 import { RelayConfigurationView } from './RelayConfigurationView'
 import { DiagnosticsView } from './DiagnosticsView'
+import { performFullReset, checkResetableData } from '../../services/reset'
 
 export function SettingsView({ onBack }) {
   const [showPairing, setShowPairing] = useState(false)
@@ -14,6 +15,12 @@ export function SettingsView({ onBack }) {
   const [showDiagnostics, setShowDiagnostics] = useState(false)
   const [connected, setConnected] = useState(false)
   const [peerCount, setPeerCount] = useState(0)
+
+  // Reset state
+  const [showResetConfirm, setShowResetConfirm] = useState(false)
+  const [resetProgress, setResetProgress] = useState(null)
+  const [resetData, setResetData] = useState(null)
+  const [confirmText, setConfirmText] = useState('')
 
   // Nostr sync hook
   const {
@@ -95,6 +102,149 @@ export function SettingsView({ onBack }) {
     if (seconds < 60) return 'Just now'
     if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
     return `${Math.floor(seconds / 3600)}h ago`
+  }
+
+  const handleResetClick = async () => {
+    const data = await checkResetableData()
+    setResetData(data)
+    setShowResetConfirm(true)
+    setConfirmText('')
+    setResetProgress(null)
+  }
+
+  const handleResetConfirm = async () => {
+    if (confirmText !== 'RESET') return
+
+    setResetProgress({ step: 0, total: 6, message: 'Starting reset...' })
+
+    await performFullReset({
+      reloadAfter: true,
+      onProgress: (progress) => {
+        setResetProgress(progress)
+      },
+    })
+  }
+
+  const handleResetCancel = () => {
+    setShowResetConfirm(false)
+    setConfirmText('')
+    setResetProgress(null)
+  }
+
+  if (showResetConfirm) {
+    return (
+      <SettingsContainer>
+        <button
+          onClick={handleResetCancel}
+          disabled={resetProgress !== null}
+          className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground -ml-1 transition-colors disabled:opacity-50"
+        >
+          <ChevronLeft className="w-4 h-4" />
+          Back
+        </button>
+        <h1 className="text-2xl font-semibold mb-4 mt-2 text-red-500 flex items-center gap-2">
+          <AlertTriangle className="w-6 h-6" />
+          Reset All Data
+        </h1>
+
+        {resetProgress ? (
+          <div className="space-y-4">
+            <div className="p-4 bg-muted rounded-lg">
+              <p className="text-sm font-medium mb-2">
+                Step {resetProgress.step} of {resetProgress.total}
+              </p>
+              <p className="text-sm text-muted-foreground">{resetProgress.message}</p>
+              <div className="mt-3 h-2 bg-background rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-red-500 transition-all duration-300"
+                  style={{ width: `${(resetProgress.step / resetProgress.total) * 100}%` }}
+                />
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Please wait... The page will reload when complete.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+              <p className="text-sm text-red-400 font-medium mb-2">
+                This action cannot be undone!
+              </p>
+              <p className="text-sm text-muted-foreground">
+                This will permanently delete all data on this device:
+              </p>
+              <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
+                <li className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-red-500 rounded-full" />
+                  All bookmarks ({resetData?.details?.bookmarkCount || 0} stored locally)
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-red-500 rounded-full" />
+                  Encryption keys (LEK) - you will need to re-pair
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-red-500 rounded-full" />
+                  Device identity and pairing information
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-red-500 rounded-full" />
+                  Sync history and diagnostic logs
+                </li>
+              </ul>
+            </div>
+
+            <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+              <p className="text-sm text-yellow-400 font-medium mb-2">
+                About other devices
+              </p>
+              <p className="text-sm text-muted-foreground">
+                This only resets THIS device. Other paired devices will keep their data.
+                To reset all devices, perform this action on each device, or start fresh
+                by generating a new encryption key on one device and re-pairing the others.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Type <span className="font-mono text-red-500">RESET</span> to confirm
+              </label>
+              <input
+                type="text"
+                value={confirmText}
+                onChange={(e) => setConfirmText(e.target.value)}
+                placeholder="Type RESET to confirm"
+                className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                autoComplete="off"
+                autoCapitalize="characters"
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={handleResetCancel}
+                className="flex-1 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors rounded-lg border border-border hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleResetConfirm}
+                disabled={confirmText !== 'RESET'}
+                className={cn(
+                  "flex-1 px-4 py-2 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2",
+                  confirmText === 'RESET'
+                    ? "bg-red-500 text-white hover:bg-red-600"
+                    : "bg-red-500/20 text-red-500/50 cursor-not-allowed"
+                )}
+              >
+                <Trash2 className="w-4 h-4" />
+                Reset All Data
+              </button>
+            </div>
+          </div>
+        )}
+      </SettingsContainer>
+    )
   }
 
   if (showRelayConfig) {
@@ -275,6 +425,27 @@ export function SettingsView({ onBack }) {
             <span className="text-sm text-muted-foreground">v0.1.0</span>
           </SettingRow>
         </SettingCard>
+      </SettingSection>
+
+      <SettingSection title="Danger Zone">
+        <SettingCard className="border-red-500/20">
+          <SettingRow
+            label="Reset all data"
+            description="Delete all bookmarks, keys, and settings on this device"
+            isLast
+            onClick={handleResetClick}
+            className="cursor-pointer hover:bg-red-500/5"
+          >
+            <div className="flex items-center gap-1 text-red-500">
+              <Trash2 className="w-4 h-4" />
+              <ChevronRight className="w-4 h-4" />
+            </div>
+          </SettingRow>
+        </SettingCard>
+        <p className="text-xs text-muted-foreground mt-2 px-1">
+          Use this to start fresh if you have sync issues or corrupted data.
+          This only affects this device - other paired devices keep their data.
+        </p>
       </SettingSection>
     </SettingsContainer>
   )

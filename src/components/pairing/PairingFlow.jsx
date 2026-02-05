@@ -78,6 +78,8 @@ export default function PairingFlow() {
   const timeoutRef = useRef(null)
   const stepTimeoutRef = useRef(null)
   const pairingStateRef = useRef(STATES.INITIAL)
+  const messageQueueRef = useRef([])
+  const processingRef = useRef(false)
   const mountedRef = useRef(true)
 
   useEffect(() => {
@@ -94,6 +96,8 @@ export default function PairingFlow() {
     sessionKeyRef.current = null
     peerDeviceInfoRef.current = null
     roomRef.current = null
+    messageQueueRef.current = []
+    processingRef.current = false
     
     if (signalingClientRef.current) {
       signalingClientRef.current.close()
@@ -167,45 +171,58 @@ export default function PairingFlow() {
     })
   }, [])
 
-  const handleSignalingMessage = useCallback(async (data) => {
-    try {
-      if (!data.encrypted || !pskRef.current) {
-        console.log('[Pairing] Ignoring unencrypted or pre-PSK message')
-        return
-      }
-      
-      let message
-      try {
-        message = await decryptMessage(pskRef.current, data.ciphertext, data.iv)
-      } catch (decryptError) {
-        console.warn('[Pairing] Failed to decrypt - wrong code or MITM attempt')
-        return
-      }
-      
-      console.log('[Pairing] Received:', message.type)
+  const processNextMessage = useCallback(async () => {
+    if (processingRef.current) return
+    processingRef.current = true
 
-      switch (message.type) {
-        case MESSAGE_TYPES.KEY_EXCHANGE:
-          await handleKeyExchange(message)
-          break
-        case MESSAGE_TYPES.KEY_EXCHANGE_RESPONSE:
-          await handleKeyExchangeResponse(message)
-          break
-        case MESSAGE_TYPES.LEK_TRANSFER:
-          await handleLEKTransfer(message)
-          break
-        case MESSAGE_TYPES.ACK:
-          await handleAck(message)
-          break
-        case MESSAGE_TYPES.ERROR:
-          handleRemoteError(message)
-          break
+    while (messageQueueRef.current.length > 0) {
+      const data = messageQueueRef.current.shift()
+      try {
+        if (!data.encrypted || !pskRef.current) {
+          console.log('[Pairing] Ignoring unencrypted or pre-PSK message')
+          continue
+        }
+
+        let message
+        try {
+          message = await decryptMessage(pskRef.current, data.ciphertext, data.iv)
+        } catch (decryptError) {
+          console.warn('[Pairing] Failed to decrypt - wrong code or MITM attempt')
+          continue
+        }
+
+        console.log('[Pairing] Received:', message.type)
+
+        switch (message.type) {
+          case MESSAGE_TYPES.KEY_EXCHANGE:
+            await handleKeyExchange(message)
+            break
+          case MESSAGE_TYPES.KEY_EXCHANGE_RESPONSE:
+            await handleKeyExchangeResponse(message)
+            break
+          case MESSAGE_TYPES.LEK_TRANSFER:
+            await handleLEKTransfer(message)
+            break
+          case MESSAGE_TYPES.ACK:
+            await handleAck(message)
+            break
+          case MESSAGE_TYPES.ERROR:
+            handleRemoteError(message)
+            break
+        }
+      } catch (err) {
+        console.error('[Pairing] Message handling error:', err)
+        handleError(err)
       }
-    } catch (err) {
-      console.error('[Pairing] Message handling error:', err)
-      handleError(err)
     }
+
+    processingRef.current = false
   }, [handleError])
+
+  const handleSignalingMessage = useCallback((data) => {
+    messageQueueRef.current.push(data)
+    processNextMessage()
+  }, [processNextMessage])
 
   const handleKeyExchange = async (message) => {
     if (roleRef.current !== 'initiator') return

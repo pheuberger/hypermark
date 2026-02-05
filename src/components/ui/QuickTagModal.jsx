@@ -7,8 +7,8 @@ import { cn } from '@/utils/cn'
  * Linear-style tag selector modal
  * - Shows bookmark title at top
  * - Search/filter input
- * - List of tags with checkmarks for selected, number keys for quick select
- * - Keyboard navigation (j/k, arrows, numbers 1-9)
+ * - List of tags with checkboxes for selected
+ * - Keyboard navigation: Ctrl+j/k or arrows, Space to toggle, 1-9 for quick select
  */
 export function QuickTagModal({ isOpen, onClose, bookmark }) {
   const [searchQuery, setSearchQuery] = useState('')
@@ -84,40 +84,48 @@ export function QuickTagModal({ isOpen, onClose, bookmark }) {
   }, [bookmark?._id, currentTags])
 
   const handleKeyDown = useCallback((e) => {
-    switch (e.key) {
-      case 'ArrowDown':
-      case 'j':
+    const isModified = e.ctrlKey || e.metaKey
+
+    // Ctrl+j / Ctrl+k or Arrow keys for navigation
+    if (e.key === 'ArrowDown' || (isModified && e.key === 'j')) {
+      e.preventDefault()
+      setSelectedIndex(prev =>
+        prev < filteredOptions.length - 1 ? prev + 1 : 0
+      )
+      return
+    }
+
+    if (e.key === 'ArrowUp' || (isModified && e.key === 'k')) {
+      e.preventDefault()
+      setSelectedIndex(prev =>
+        prev > 0 ? prev - 1 : filteredOptions.length - 1
+      )
+      return
+    }
+
+    // Space or Enter to toggle selected tag
+    if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault()
+      if (filteredOptions[selectedIndex]) {
+        toggleTag(filteredOptions[selectedIndex].value)
+      }
+      return
+    }
+
+    // Escape to close
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      onClose()
+      return
+    }
+
+    // Number keys 1-9 for quick toggle
+    if (e.key >= '1' && e.key <= '9' && !isModified) {
+      const index = parseInt(e.key) - 1
+      if (index < filteredOptions.length) {
         e.preventDefault()
-        setSelectedIndex(prev =>
-          prev < filteredOptions.length - 1 ? prev + 1 : 0
-        )
-        break
-      case 'ArrowUp':
-      case 'k':
-        e.preventDefault()
-        setSelectedIndex(prev =>
-          prev > 0 ? prev - 1 : filteredOptions.length - 1
-        )
-        break
-      case 'Enter':
-        e.preventDefault()
-        if (filteredOptions[selectedIndex]) {
-          toggleTag(filteredOptions[selectedIndex].value)
-        }
-        break
-      case 'Escape':
-        e.preventDefault()
-        onClose()
-        break
-      default:
-        // Number keys 1-9 for quick selection
-        if (e.key >= '1' && e.key <= '9') {
-          const index = parseInt(e.key) - 1
-          if (index < filteredOptions.length) {
-            e.preventDefault()
-            toggleTag(filteredOptions[index].value)
-          }
-        }
+        toggleTag(filteredOptions[index].value)
+      }
     }
   }, [filteredOptions, selectedIndex, toggleTag, onClose])
 
@@ -179,6 +187,18 @@ export function QuickTagModal({ isOpen, onClose, bookmark }) {
                     : 'hover:bg-accent/50'
                 )}
               >
+                {/* Checkbox */}
+                <div className={cn(
+                  'w-4 h-4 rounded border flex items-center justify-center flex-shrink-0',
+                  option.isSelected
+                    ? 'bg-primary border-primary'
+                    : 'border-muted-foreground/40'
+                )}>
+                  {option.isSelected && (
+                    <Check className="w-3 h-3 text-primary-foreground" strokeWidth={3} />
+                  )}
+                </div>
+
                 {/* Icon */}
                 <div className="w-5 h-5 flex items-center justify-center text-muted-foreground">
                   {option.type === 'create' ? (
@@ -196,11 +216,6 @@ export function QuickTagModal({ isOpen, onClose, bookmark }) {
                     option.value
                   )}
                 </span>
-
-                {/* Checkmark for selected */}
-                {option.isSelected && (
-                  <Check className="w-4 h-4 text-muted-foreground" />
-                )}
 
                 {/* Number key hint (1-9) */}
                 {index < 9 && (
@@ -220,7 +235,7 @@ export function QuickTagModal({ isOpen, onClose, bookmark }) {
             navigate
           </span>
           <span className="flex items-center gap-1">
-            <kbd className="px-1 py-0.5 bg-muted border border-border rounded text-[10px]">Enter</kbd>
+            <kbd className="px-1 py-0.5 bg-muted border border-border rounded text-[10px]">Space</kbd>
             toggle
           </span>
           <span className="flex items-center gap-1">

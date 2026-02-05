@@ -36,6 +36,7 @@ import {
 import { getDeviceInfo } from '../../utils/device-id'
 import { addPairedDevice } from '../../services/device-registry'
 import { reconnectYjsWebRTC } from '../../hooks/useYjs'
+import { initializeNostrSync, publishAllExistingBookmarks } from '../../hooks/useNostrSync'
 import { SignalingClient, getSignalingUrl } from '../../services/signaling'
 
 const STATES = {
@@ -311,6 +312,12 @@ export default function PairingFlow() {
       const yjsPassword = await deriveYjsPassword(lek)
       reconnectYjsWebRTC(yjsPassword)
 
+      // Initialize Nostr sync so this device can receive bookmarks from relays
+      // (the useNostrSync hook will detect this and set up subscriptions)
+      initializeNostrSync(lek).catch(err => {
+        console.warn('[Pairing] Nostr sync initialization failed (non-fatal):', err)
+      })
+
       let deviceKeypair = await retrieveDeviceKeypair()
       if (!deviceKeypair) {
         deviceKeypair = await generateDeviceKeypair()
@@ -349,6 +356,14 @@ export default function PairingFlow() {
     const lek = await retrieveLEK()
     const yjsPassword = await deriveYjsPassword(lek)
     reconnectYjsWebRTC(yjsPassword)
+
+    // Initialize Nostr sync and publish all existing bookmarks to relays
+    // so the newly-paired device can pull them even if WebRTC sync fails
+    initializeNostrSync(lek).then(() => {
+      return publishAllExistingBookmarks()
+    }).catch(err => {
+      console.warn('[Pairing] Nostr sync post-pairing publish failed (non-fatal):', err)
+    })
 
     if (!mountedRef.current) return
     updatePairingState(STATES.COMPLETE)

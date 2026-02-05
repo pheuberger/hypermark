@@ -428,7 +428,7 @@ export function useNostrSync(options = {}) {
    * Initialize the Nostr sync service
    */
   const initialize = useCallback(async () => {
-    if (nostrSyncService?.isInitialized) {
+    if (nostrSyncService?.isInitialized && bookmarkSubscriptionRef.current) {
       updateStatus()
       return
     }
@@ -865,13 +865,18 @@ export function useNostrSync(options = {}) {
     }
   }, [autoInitialize, initialize])
 
-  // Subscribe to service changes
+  // Subscribe to service changes - also trigger initialization after pairing
   useEffect(() => {
-    const unsubscribe = subscribeToNostrSync(() => {
+    const unsubscribe = subscribeToNostrSync((service) => {
       updateStatus()
+      // When service becomes initialized (e.g., after pairing calls initializeNostrSync),
+      // trigger full hook initialization to set up subscriptions and observers
+      if (service?.isInitialized && !bookmarkSubscriptionRef.current) {
+        initialize()
+      }
     })
     return unsubscribe
-  }, [updateStatus])
+  }, [updateStatus, initialize])
 
   // Compute error message for display
   const errorRelayUrls = Object.keys(relayErrors)
@@ -915,6 +920,50 @@ export function useNostrSync(options = {}) {
     getService: () => nostrSyncService,
     getPerformanceManager: () => performanceManager,
   }
+}
+
+/**
+ * Publish all existing bookmarks in the Yjs document to Nostr relays.
+ *
+ * Called after initial pairing so the responder device can pull bookmarks
+ * from Nostr relays even if WebRTC sync fails (e.g., iOS Safari).
+ *
+ * @returns {Promise<number>} Number of bookmarks queued for publishing
+ */
+export async function publishAllExistingBookmarks() {
+  if (!nostrSyncService?.isInitialized) {
+    console.warn('[useNostrSync] Cannot publish bookmarks - service not initialized')
+    return 0
+  }
+
+  const ydoc = getYdocInstance()
+  if (!ydoc) return 0
+
+  const bookmarksMap = ydoc.getMap('bookmarks')
+  let count = 0
+
+  bookmarksMap.forEach((bookmark, id) => {
+    const bookmarkData = bookmark.get ? {
+      url: bookmark.get('url'),
+      title: bookmark.get('title'),
+      description: bookmark.get('description') || '',
+      tags: bookmark.get('tags')?.toArray?.() || [],
+      readLater: bookmark.get('readLater') || false,
+      inbox: bookmark.get('inbox') || false,
+      favicon: bookmark.get('favicon') || null,
+      preview: bookmark.get('preview') || null,
+      createdAt: bookmark.get('createdAt'),
+      updatedAt: bookmark.get('updatedAt'),
+    } : { ...bookmark }
+
+    if (bookmarkData.url && bookmarkData.title) {
+      nostrSyncService.queueBookmarkUpdate(id, bookmarkData)
+      count++
+    }
+  })
+
+  console.log(`[useNostrSync] Queued ${count} existing bookmarks for Nostr publishing`)
+  return count
 }
 
 // Re-export performance utilities for external use

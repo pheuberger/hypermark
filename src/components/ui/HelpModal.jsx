@@ -12,8 +12,18 @@ const HOTKEY_GROUPS = [
       { keys: ['j'], description: 'Select next bookmark' },
       { keys: ['k'], description: 'Select previous bookmark' },
       { keys: ['Enter'], description: 'Open selected bookmark' },
+      { keys: ['o'], description: 'Open selected bookmark' },
       { keys: ['e'], description: 'Edit selected bookmark' },
+      { keys: ['d'], description: 'Delete selected bookmark' },
       { keys: ['Ctrl', 'k'], description: 'Focus search bar', modifier: true },
+    ],
+  },
+  {
+    title: 'Quick Actions',
+    hotkeys: [
+      { keys: ['t'], description: 'Edit tags' },
+      { keys: ['l'], description: 'Toggle read later' },
+      { keys: ['c'], description: 'Copy URL' },
     ],
   },
   {
@@ -21,6 +31,7 @@ const HOTKEY_GROUPS = [
     hotkeys: [
       { keys: ['g', 'a'], description: 'All bookmarks' },
       { keys: ['g', 'l'], description: 'Read later' },
+      { keys: ['g', 'i'], description: 'Inbox' },
       { keys: ['g', 's'], description: 'Settings' },
       { keys: ['g', 'n'], description: 'New bookmark' },
     ],
@@ -28,6 +39,8 @@ const HOTKEY_GROUPS = [
   {
     title: 'General',
     hotkeys: [
+      { keys: ['Ctrl', 'z'], description: 'Undo', modifier: true },
+      { keys: ['Ctrl', 'Shift', 'z'], description: 'Redo', modifier: true },
       { keys: ['Ctrl', 'Enter'], description: 'Submit form', modifier: true },
       { keys: ['?'], description: 'Show this help' },
       { keys: ['Esc'], description: 'Close modal / Cancel' },

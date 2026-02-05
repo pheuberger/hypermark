@@ -10,8 +10,6 @@ import { TagSidebar } from './TagSidebar'
 import { FilterBar } from './FilterBar'
 import { SettingsView } from '../ui/SettingsView'
 import { HelpModal } from '../ui/HelpModal'
-import { Modal } from '../ui/Modal'
-import { Button } from '../ui/Button'
 import { ToastContainer } from '../ui/Toast'
 import { PackageOpen } from '../ui/Icons'
 import {
@@ -53,7 +51,6 @@ export function BookmarkList() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isHelpOpen, setIsHelpOpen] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(-1)
-  const [deleteConfirmBookmark, setDeleteConfirmBookmark] = useState(null)
   const selectedItemRef = useRef(null)
   const searchInputRef = useRef(null)
   const inboxViewRef = useRef(null)
@@ -182,21 +179,14 @@ export function BookmarkList() {
     }
   }, [selectedIndex, filteredBookmarks, filterView])
 
-  const promptDeleteSelected = useCallback(() => {
+  const deleteSelected = useCallback(() => {
     if (filterView === 'inbox') return
     if (selectedIndex >= 0 && selectedIndex < filteredBookmarks.length) {
       const bookmark = filteredBookmarks[selectedIndex]
-      setDeleteConfirmBookmark(bookmark)
-    }
-  }, [selectedIndex, filteredBookmarks, filterView])
-
-  const confirmDelete = useCallback(() => {
-    if (deleteConfirmBookmark) {
-      const bookmarkTitle = deleteConfirmBookmark.title
       try {
-        deleteBookmark(deleteConfirmBookmark._id)
+        deleteBookmark(bookmark._id)
         addToast({
-          message: `Deleted "${bookmarkTitle}"`,
+          message: `Deleted "${bookmark.title}"`,
           action: () => {
             undo()
           },
@@ -206,9 +196,8 @@ export function BookmarkList() {
       } catch (error) {
         console.error('Failed to delete bookmark:', error)
       }
-      setDeleteConfirmBookmark(null)
     }
-  }, [deleteConfirmBookmark, addToast])
+  }, [selectedIndex, filteredBookmarks, filterView, addToast])
 
   const handleUndo = useCallback(() => {
     if (undo()) {
@@ -249,7 +238,7 @@ export function BookmarkList() {
     'k': selectPrev,
     'enter': openSelected,
     'e': editSelected,
-    'd': promptDeleteSelected,
+    'd': deleteSelected,
     'mod+k': focusSearch,
     'q': exitInbox,
     'mod+z': handleUndo,
@@ -422,24 +411,6 @@ export function BookmarkList() {
       </div>
 
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
-
-      <Modal
-        isOpen={!!deleteConfirmBookmark}
-        onClose={() => setDeleteConfirmBookmark(null)}
-        title="Delete bookmark?"
-      >
-        <p className="text-sm text-muted-foreground mb-4">
-          Delete "{deleteConfirmBookmark?.title}"? You can undo this action.
-        </p>
-        <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={() => setDeleteConfirmBookmark(null)}>
-            Cancel
-          </Button>
-          <Button variant="danger" onClick={confirmDelete}>
-            Delete
-          </Button>
-        </div>
-      </Modal>
 
       <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>

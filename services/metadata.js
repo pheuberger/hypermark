@@ -12,6 +12,19 @@ const FETCH_TIMEOUT = 10000
 const MAX_BODY_SIZE = 2 * 1024 * 1024 // 2MB limit for HTML
 const USER_AGENT = 'Mozilla/5.0 (compatible; Hypermark/1.0; +https://hypermark.app)'
 
+// Cache: domain -> { result, expiresAt }
+const metadataCache = new Map()
+const CACHE_TTL = 60 * 60 * 1000 // 1 hour
+const CACHE_MAX_SIZE = 500
+
+// Common title separators, ordered by specificity
+const TITLE_SEPARATORS = [' · ', ' | ', ' — ', ' – ', ' - ', ' : ']
+
+// og:type values that are too generic to be useful tags
+const USELESS_OG_TYPES = new Set([
+  'website', 'webpage', 'object', 'article:section',
+])
+
 /**
  * Private/reserved IP ranges that must not be fetched (SSRF protection)
  */
@@ -90,29 +103,58 @@ export async function validateHostname(hostname) {
 }
 
 /**
- * Fetch a URL and extract metadata
+ * Fetch a URL and extract metadata.
+ * Uses a domain-level cache for homepage requests (path = /).
  * @param {string} url - The URL to analyze
  * @returns {Promise<{title: string, description: string, suggestedTags: string[], favicon: string|null}>}
  */
 export async function extractMetadata(url) {
   const parsedUrl = new URL(url)
 
+  // Check cache for homepage requests (domain-level caching)
+  const isHomepage = parsedUrl.pathname === '/' || parsedUrl.pathname === ''
+  const cacheKey = isHomepage ? parsedUrl.hostname : null
+
+  if (cacheKey) {
+    const cached = metadataCache.get(cacheKey)
+    if (cached && Date.now() < cached.expiresAt) {
+      return cached.result
+    }
+  }
+
   // SSRF check before fetching
   await validateHostname(parsedUrl.hostname)
 
   const html = await fetchPage(url)
 
-  const title = extractTitle(html)
+  const title = extractTitle(html, parsedUrl)
   const description = extractDescription(html)
   const suggestedTags = extractTags(html, parsedUrl)
   const favicon = extractFavicon(html, parsedUrl)
 
-  return {
-    title: title || parsedUrl.hostname,
+  const result = {
+    title: title || parsedUrl.hostname.replace(/^www\./, ''),
     description: description || '',
-    suggestedTags: [...new Set(suggestedTags)].slice(0, 8),
+    suggestedTags: suggestedTags.slice(0, 8),
     favicon,
   }
+
+  // Cache homepage results
+  if (cacheKey) {
+    // Evict oldest entries if cache is full
+    if (metadataCache.size >= CACHE_MAX_SIZE) {
+      const oldest = metadataCache.keys().next().value
+      metadataCache.delete(oldest)
+    }
+    metadataCache.set(cacheKey, { result, expiresAt: Date.now() + CACHE_TTL })
+  }
+
+  return result
+}
+
+/** Clear the metadata cache (exported for testing) */
+export function clearMetadataCache() {
+  metadataCache.clear()
 }
 
 /**
@@ -164,9 +206,9 @@ async function fetchPage(url) {
 }
 
 /**
- * Extract page title (prefers OG title, falls back to <title>)
+ * Extract raw page title (prefers OG title, falls back to <title>)
  */
-export function extractTitle(html) {
+export function extractRawTitle(html) {
   const ogTitle = getMetaContent(html, 'og:title', 'property')
   if (ogTitle) return ogTitle
 
@@ -177,6 +219,58 @@ export function extractTitle(html) {
   if (titleMatch) return decodeEntities(titleMatch[1].trim())
 
   return null
+}
+
+/**
+ * Extract and clean page title.
+ * Strips marketing taglines, handles separator patterns, and
+ * falls back to a clean hostname for homepages with only slogans.
+ */
+export function extractTitle(html, parsedUrl) {
+  const raw = extractRawTitle(html)
+  if (!raw) return null
+  return cleanTitle(raw, parsedUrl)
+}
+
+/**
+ * Clean a raw title string:
+ * - Split on common separators (· | — – - :)
+ * - For homepages (/): prefer the short site-name segment
+ * - For subpages: prefer the longest (most specific) segment
+ * - Discard segments that look like pure marketing slogans
+ */
+export function cleanTitle(raw, parsedUrl) {
+  if (!raw) return raw
+
+  const isHomepage = !parsedUrl || parsedUrl.pathname === '/' || parsedUrl.pathname === ''
+
+  // Try each separator — use the first one found
+  for (const sep of TITLE_SEPARATORS) {
+    if (!raw.includes(sep)) continue
+
+    const parts = raw.split(sep).map(p => p.trim()).filter(Boolean)
+    if (parts.length < 2) continue
+
+    if (isHomepage) {
+      // For homepages, the shortest part is usually the site name
+      // e.g. "GitHub · Build and ship software on a single platform" → "GitHub"
+      const shortest = parts.reduce((a, b) => a.length <= b.length ? a : b)
+      if (shortest.length >= 2) return shortest
+    } else {
+      // For subpages, the longest part is usually the page-specific title
+      // e.g. "How to use React Hooks - DEV Community" → "How to use React Hooks"
+      const longest = parts.reduce((a, b) => a.length >= b.length ? a : b)
+      return longest
+    }
+  }
+
+  // No separators found — if it's a homepage and the title is very long
+  // (likely a slogan), fall back to hostname
+  if (isHomepage && raw.length > 60 && parsedUrl) {
+    return parsedUrl.hostname.replace(/^www\./, '')
+  }
+
+  return raw
 }
 
 /**
@@ -196,7 +290,10 @@ export function extractDescription(html) {
 }
 
 /**
- * Extract suggested tags from various sources
+ * Extract suggested tags from multiple sources:
+ * 1. HTML meta tags (keywords, article:tag, article:section)
+ * 2. og:type (filtered for usefulness)
+ * 3. URL path segments
  */
 export function extractTags(html, parsedUrl) {
   const tags = []
@@ -219,16 +316,18 @@ export function extractTags(html, parsedUrl) {
   if (section) tags.push(section.trim().toLowerCase())
 
   const ogType = getMetaContent(html, 'og:type', 'property')
-  if (ogType && ogType !== 'website' && ogType !== 'webpage') {
+  if (ogType && !USELESS_OG_TYPES.has(ogType.toLowerCase())) {
     tags.push(ogType.toLowerCase())
   }
 
   const pathTags = extractPathTags(parsedUrl.pathname)
   pathTags.forEach(t => tags.push(t))
 
-  return tags
-    .map(t => t.replace(/[^\w\s-]/g, '').trim())
-    .filter(t => t.length > 1 && t.length < 30)
+  return [...new Set(
+    tags
+      .map(t => t.replace(/[^\w\s-]/g, '').trim())
+      .filter(t => t.length > 1 && t.length < 30)
+  )]
 }
 
 /**

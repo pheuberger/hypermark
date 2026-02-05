@@ -2,6 +2,8 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   extractTitle,
+  extractRawTitle,
+  cleanTitle,
   extractDescription,
   extractTags,
   extractPathTags,
@@ -14,43 +16,165 @@ import {
   ipToInt,
   isBlockedIP,
   validateHostname,
+  clearMetadataCache,
 } from '../metadata.js'
 
-// ---- Title Extraction ----
+// ---- Raw Title Extraction ----
 
-describe('extractTitle', () => {
+describe('extractRawTitle', () => {
   it('extracts og:title', () => {
     const html = '<meta property="og:title" content="OG Title">'
-    assert.equal(extractTitle(html), 'OG Title')
+    assert.equal(extractRawTitle(html), 'OG Title')
   })
 
   it('extracts twitter:title', () => {
     const html = '<meta name="twitter:title" content="Twitter Title">'
-    assert.equal(extractTitle(html), 'Twitter Title')
+    assert.equal(extractRawTitle(html), 'Twitter Title')
   })
 
   it('extracts <title> tag', () => {
     const html = '<html><head><title>Page Title</title></head></html>'
-    assert.equal(extractTitle(html), 'Page Title')
+    assert.equal(extractRawTitle(html), 'Page Title')
   })
 
   it('prefers og:title over <title>', () => {
     const html = '<meta property="og:title" content="OG"><title>HTML Title</title>'
-    assert.equal(extractTitle(html), 'OG')
+    assert.equal(extractRawTitle(html), 'OG')
   })
 
   it('returns null when no title found', () => {
-    assert.equal(extractTitle('<html><body>No title here</body></html>'), null)
+    assert.equal(extractRawTitle('<html><body>No title here</body></html>'), null)
   })
 
   it('decodes HTML entities in title', () => {
     const html = '<title>Tom &amp; Jerry&#39;s &quot;Adventure&quot;</title>'
-    assert.equal(extractTitle(html), 'Tom & Jerry\'s "Adventure"')
+    assert.equal(extractRawTitle(html), 'Tom & Jerry\'s "Adventure"')
   })
 
   it('trims whitespace from title', () => {
     const html = '<title>  Spaced Title  </title>'
-    assert.equal(extractTitle(html), 'Spaced Title')
+    assert.equal(extractRawTitle(html), 'Spaced Title')
+  })
+})
+
+// ---- Title Extraction (with cleaning) ----
+
+describe('extractTitle', () => {
+  it('extracts and cleans title for homepage', () => {
+    const html = '<meta property="og:title" content="GitHub · Build and ship software">'
+    const url = new URL('https://github.com/')
+    assert.equal(extractTitle(html, url), 'GitHub')
+  })
+
+  it('extracts and cleans title for subpage', () => {
+    const html = '<title>How to use React Hooks - DEV Community</title>'
+    const url = new URL('https://dev.to/post/react-hooks')
+    assert.equal(extractTitle(html, url), 'How to use React Hooks')
+  })
+
+  it('returns null when no title found', () => {
+    assert.equal(extractTitle('<html></html>', new URL('https://example.com')), null)
+  })
+})
+
+// ---- Clean Title ----
+
+describe('cleanTitle', () => {
+  it('extracts site name from homepage with · separator', () => {
+    const url = new URL('https://github.com/')
+    assert.equal(
+      cleanTitle('GitHub · Build and ship software on a single platform', url),
+      'GitHub'
+    )
+  })
+
+  it('extracts site name from homepage with | separator', () => {
+    const url = new URL('https://example.com/')
+    assert.equal(
+      cleanTitle('Notion | Your connected workspace', url),
+      'Notion'
+    )
+  })
+
+  it('extracts site name from homepage with - separator', () => {
+    const url = new URL('https://example.com/')
+    assert.equal(
+      cleanTitle('Vercel - Build and deploy the best web experiences', url),
+      'Vercel'
+    )
+  })
+
+  it('extracts site name from homepage with — separator', () => {
+    const url = new URL('https://example.com/')
+    assert.equal(
+      cleanTitle('Figma — The Collaborative Interface Design Tool', url),
+      'Figma'
+    )
+  })
+
+  it('extracts page title from subpage with | separator', () => {
+    const url = new URL('https://example.com/blog/post')
+    assert.equal(
+      cleanTitle('Understanding CRDT Algorithms | My Blog', url),
+      'Understanding CRDT Algorithms'
+    )
+  })
+
+  it('extracts page title from subpage with - separator', () => {
+    const url = new URL('https://dev.to/post/123')
+    assert.equal(
+      cleanTitle('How to use React Hooks - DEV Community', url),
+      'How to use React Hooks'
+    )
+  })
+
+  it('extracts page title from subpage with : separator', () => {
+    const url = new URL('https://docs.example.com/api/auth')
+    assert.equal(
+      cleanTitle('Auth : Example Documentation', url),
+      'Example Documentation'
+    )
+  })
+
+  it('falls back to hostname for long homepage titles without separators', () => {
+    const url = new URL('https://www.example.com/')
+    const longTitle = 'This is a very long marketing slogan that goes on and on about how amazing the product is'
+    assert.equal(cleanTitle(longTitle, url), 'example.com')
+  })
+
+  it('keeps short homepage titles without separators', () => {
+    const url = new URL('https://example.com/')
+    assert.equal(cleanTitle('Example', url), 'Example')
+  })
+
+  it('keeps subpage titles without separators', () => {
+    const url = new URL('https://example.com/page')
+    assert.equal(cleanTitle('A Regular Page Title', url), 'A Regular Page Title')
+  })
+
+  it('returns null/falsy for null input', () => {
+    assert.equal(cleanTitle(null, new URL('https://example.com')), null)
+  })
+
+  it('returns empty string for empty input', () => {
+    assert.equal(cleanTitle('', new URL('https://example.com')), '')
+  })
+
+  it('handles title with multiple separators (uses first match)', () => {
+    const url = new URL('https://example.com/')
+    // · is checked before |
+    assert.equal(
+      cleanTitle('Site · Tagline | More stuff', url),
+      'Site'
+    )
+  })
+
+  it('handles subpage with multiple separators', () => {
+    const url = new URL('https://example.com/blog/post')
+    assert.equal(
+      cleanTitle('My Great Post | Blog | Example.com', url),
+      'My Great Post'
+    )
   })
 })
 
@@ -129,6 +253,18 @@ describe('extractTags', () => {
     assert.ok(!tags.includes('website'))
   })
 
+  it('ignores og:type "object"', () => {
+    const html = '<meta property="og:type" content="object">'
+    const tags = extractTags(html, new URL('https://example.com'))
+    assert.ok(!tags.includes('object'))
+  })
+
+  it('ignores og:type "webpage"', () => {
+    const html = '<meta property="og:type" content="webpage">'
+    const tags = extractTags(html, new URL('https://example.com'))
+    assert.ok(!tags.includes('webpage'))
+  })
+
   it('filters tags by length', () => {
     const html = '<meta name="keywords" content="a, valid-tag, ' + 'x'.repeat(40) + '">'
     const tags = extractTags(html, new URL('https://example.com'))
@@ -140,6 +276,12 @@ describe('extractTags', () => {
   it('returns empty array when no tags found', () => {
     const tags = extractTags('<html></html>', new URL('https://example.com'))
     assert.deepEqual(tags, [])
+  })
+
+  it('deduplicates tags', () => {
+    const html = '<meta name="keywords" content="react, react, javascript">'
+    const tags = extractTags(html, new URL('https://example.com'))
+    assert.equal(tags.filter(t => t === 'react').length, 1)
   })
 })
 

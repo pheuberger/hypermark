@@ -45,7 +45,7 @@ export default defineConfig({
         "src/main.jsx",
         "dist/",
         "public/",
-        "signaling-server/",
+        "services/",
       ],
       // Coverage thresholds
       thresholds: {

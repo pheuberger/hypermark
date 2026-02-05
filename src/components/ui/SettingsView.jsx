@@ -3,17 +3,20 @@ import PairingFlow from '../pairing/PairingFlow'
 import { cn } from '@/utils/cn'
 import { subscribeToWebrtcProvider } from '../../hooks/useYjs'
 import { useNostrSync } from '../../hooks/useNostrSync'
-import { ChevronLeft, Cloud, CloudOff, RefreshCw, Settings2, ChevronRight, Activity, Smartphone, AlertTriangle, Trash2, Download, Upload } from 'lucide-react'
+import { ChevronLeft, Cloud, CloudOff, RefreshCw, Settings2, ChevronRight, Activity, Smartphone, AlertTriangle, Trash2, Download, Upload, Sparkles, Server, ExternalLink } from 'lucide-react'
 import { SettingSection, SettingRow, SettingCard, SettingsContainer } from './SettingsLayout'
 import { RelayConfigurationView } from './RelayConfigurationView'
 import { DiagnosticsView } from './DiagnosticsView'
+import { ServiceConfigView } from './ServiceConfigView'
 import { performFullReset, checkResetableData } from '../../services/reset'
 import { downloadExport, importFromFile } from '../../services/bookmark-io'
+import { isSuggestionsEnabled } from '../../services/content-suggestion'
 
 export function SettingsView({ onBack }) {
   const [showPairing, setShowPairing] = useState(false)
   const [showRelayConfig, setShowRelayConfig] = useState(false)
   const [showDiagnostics, setShowDiagnostics] = useState(false)
+  const [showServiceConfig, setShowServiceConfig] = useState(false)
   const [connected, setConnected] = useState(false)
   const [peerCount, setPeerCount] = useState(0)
   const [importStatus, setImportStatus] = useState(null)
@@ -297,6 +300,10 @@ const handleExport = () => {
     )
   }
 
+  if (showServiceConfig) {
+    return <ServiceConfigView onBack={() => setShowServiceConfig(false)} />
+  }
+
   if (showRelayConfig) {
     return <RelayConfigurationView onBack={() => setShowRelayConfig(false)} />
   }
@@ -434,6 +441,39 @@ const handleExport = () => {
         <p className="text-xs text-muted-foreground mt-2 px-1">
           Nostr sync enables bookmark synchronization even when devices aren't online simultaneously.
           Your bookmarks are encrypted before being stored on relays.
+        </p>
+      </SettingSection>
+
+      <SettingSection title="Services">
+        <SettingCard>
+          <SettingRow
+            label="Content suggestions"
+            description={isSuggestionsEnabled() ? 'Enabled - suggests titles, descriptions, and tags' : 'Disabled - enable to auto-fill bookmark metadata'}
+          >
+            <div className="flex items-center gap-2">
+              <Sparkles className={cn("w-4 h-4", isSuggestionsEnabled() ? "text-primary" : "text-muted-foreground/50")} />
+              <div className={cn(
+                "w-2 h-2 rounded-full",
+                isSuggestionsEnabled() ? "bg-green-500" : "bg-muted-foreground/30"
+              )} />
+            </div>
+          </SettingRow>
+          <SettingRow
+            label="Configure services"
+            description="Set custom URLs for signaling and suggestion servers"
+            isLast
+            onClick={() => setShowServiceConfig(true)}
+            className="cursor-pointer hover:bg-muted/50"
+          >
+            <div className="flex items-center gap-1 text-muted-foreground">
+              <Server className="w-4 h-4" />
+              <ChevronRight className="w-4 h-4" />
+            </div>
+          </SettingRow>
+        </SettingCard>
+        <p className="text-xs text-muted-foreground mt-2 px-1">
+          Content suggestions send bookmark URLs to a service for metadata extraction.
+          You can self-host the service for full privacy control.
         </p>
       </SettingSection>
 

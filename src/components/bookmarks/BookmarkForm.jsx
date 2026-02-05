@@ -6,6 +6,7 @@ import { Tag } from '../ui/Tag'
 import { TagInput } from '../ui/TagInput'
 import { getAllTags } from '../../services/bookmarks'
 import { useHotkeys } from '../../hooks/useHotkeys'
+import { useContentSuggestion } from '../../hooks/useContentSuggestion'
 
 export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
   const isEditing = Boolean(initialData)
@@ -22,6 +23,8 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
   const [allTags, setAllTags] = useState([])
+
+  const { suggestions, loading: suggesting, error: suggestError, suggest, clear: clearSuggestions, enabled: suggestionsEnabled } = useContentSuggestion()
 
   useEffect(() => {
     if (initialData) {
@@ -42,7 +45,8 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
       })
     }
     setErrors({})
-  }, [initialData, isOpen])
+    clearSuggestions()
+  }, [initialData, isOpen, clearSuggestions])
 
   useEffect(() => {
     if (isOpen) {
@@ -53,6 +57,17 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
       }
     }
   }, [isOpen])
+
+  // Apply suggestions to empty fields when they arrive
+  useEffect(() => {
+    if (!suggestions) return
+    setFormData((prev) => ({
+      ...prev,
+      title: prev.title || suggestions.title || prev.title,
+      description: prev.description || suggestions.description || prev.description,
+      tags: prev.tags.length > 0 ? prev.tags : suggestions.suggestedTags || prev.tags,
+    }))
+  }, [suggestions])
 
   const submitForm = useCallback(() => {
     if (formRef.current && !loading) {
@@ -132,6 +147,12 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
     }
   }
 
+  const handleSuggest = () => {
+    if (formData.url.trim()) {
+      suggest(formData.url.trim())
+    }
+  }
+
   return (
     <Modal
       isOpen={isOpen}
@@ -139,16 +160,39 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
       title={isEditing ? 'Edit Bookmark' : 'Add Bookmark'}
     >
       <form ref={formRef} onSubmit={handleSubmit}>
-        <Input
-          label="URL"
-          type="url"
-          value={formData.url}
-          onChange={(value) => updateField('url', value)}
-          placeholder="https://example.com"
-          required
-          error={errors.url}
-          disabled={loading}
-        />
+        <div className="flex items-end gap-2">
+          <div className="flex-1">
+            <Input
+              label="URL"
+              type="url"
+              value={formData.url}
+              onChange={(value) => updateField('url', value)}
+              placeholder="https://example.com"
+              required
+              error={errors.url}
+              disabled={loading}
+            />
+          </div>
+          {suggestionsEnabled && !isEditing && (
+            <div className="mb-4">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={handleSuggest}
+                disabled={loading || suggesting || !formData.url.trim()}
+                className="text-xs whitespace-nowrap"
+              >
+                {suggesting ? 'Fetching...' : 'Suggest'}
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {suggestError && (
+          <p className="text-xs text-muted-foreground -mt-2 mb-3">
+            Could not fetch suggestions
+          </p>
+        )}
 
         <Input
           label="Title"

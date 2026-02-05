@@ -1,9 +1,9 @@
-# fly.toml app configuration file generated for hypermark-signaling on 2026-01-24T10:45:55+02:00
+# fly.toml - Hypermark services (signaling + suggestion API)
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'hypermark-signaling'
+app = 'hypermark-services'
 primary_region = 'sjc'
 
 [build]

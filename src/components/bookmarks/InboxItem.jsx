@@ -1,12 +1,13 @@
 import { forwardRef, useRef, useEffect, useState } from 'react'
-import { ExternalLink, Check, Trash2 } from 'lucide-react'
+import { ExternalLink, Check, Trash2, Sparkles, Loader2 } from 'lucide-react'
 import { TagInput } from '../ui/TagInput'
 import { Tag } from '../ui/Tag'
 import { getAllTags } from '../../services/bookmarks'
+import { useContentSuggestion } from '../../hooks/useContentSuggestion'
 
 /**
  * InboxItem - Bookmark item for inbox triage with inline editing
- * 
+ *
  * Visual states:
  * - Normal: Compact display (URL, title)
  * - Selected: Highlighted border/background
@@ -20,11 +21,13 @@ export const InboxItem = forwardRef(function InboxItem(
   const titleInputRef = useRef(null)
   const tagsInputRef = useRef(null)
   const descInputRef = useRef(null)
-  
+
   const [localTitle, setLocalTitle] = useState(title)
   const [localTags, setLocalTags] = useState(tags)
   const [localDesc, setLocalDesc] = useState(description)
   const [allTags, setAllTags] = useState([])
+
+  const { suggestions, loading: suggesting, suggest, clear: clearSuggestions, enabled: suggestionsEnabled } = useContentSuggestion()
 
   // Extract domain from URL
   let domain = ''
@@ -50,13 +53,34 @@ export const InboxItem = forwardRef(function InboxItem(
         setAllTags([])
       }
     }
-  }, [isFocusMode, isSelected])
+    if (!isFocusMode || !isSelected) {
+      clearSuggestions()
+    }
+  }, [isFocusMode, isSelected, clearSuggestions])
 
   useEffect(() => {
     setLocalTitle(title)
     setLocalTags(tags)
     setLocalDesc(description)
   }, [title, tags, description])
+
+  // Apply suggestions to empty/default fields
+  useEffect(() => {
+    if (!suggestions) return
+    const isDomainTitle = localTitle === domain || !localTitle
+    if (isDomainTitle && suggestions.title) {
+      setLocalTitle(suggestions.title)
+      onFieldChange?.('title', suggestions.title)
+    }
+    if (!localDesc && suggestions.description) {
+      setLocalDesc(suggestions.description)
+      onFieldChange?.('description', suggestions.description)
+    }
+    if (localTags.length === 0 && suggestions.suggestedTags?.length > 0) {
+      setLocalTags(suggestions.suggestedTags)
+      onFieldChange?.('tags', suggestions.suggestedTags)
+    }
+  }, [suggestions])
 
   // Handle blur events - save changes
   const handleTitleBlur = () => {
@@ -137,6 +161,10 @@ export const InboxItem = forwardRef(function InboxItem(
     }
   }
 
+  const handleSuggest = () => {
+    if (url) suggest(url)
+  }
+
   // Expanded editing view (focus mode + selected)
   if (isFocusMode && isSelected) {
     return (
@@ -145,11 +173,11 @@ export const InboxItem = forwardRef(function InboxItem(
         className="relative bg-card shadow-lg ring-1 ring-border rounded-lg p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150"
       >
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <img 
-            src={faviconUrl} 
-            alt="" 
-            className="w-4 h-4 rounded-[3px] opacity-70 flex-shrink-0" 
-            onError={(e) => { e.target.style.opacity = 0 }} 
+          <img
+            src={faviconUrl}
+            alt=""
+            className="w-4 h-4 rounded-[3px] opacity-70 flex-shrink-0"
+            onError={(e) => { e.target.style.opacity = 0 }}
           />
           <a
             href={url}
@@ -220,7 +248,7 @@ export const InboxItem = forwardRef(function InboxItem(
 
         <div className="pt-3 flex items-center justify-between border-t border-border/40">
            <div className="flex items-center gap-3">
-             <button 
+             <button
                onClick={() => onDone()}
                className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
              >
@@ -229,7 +257,21 @@ export const InboxItem = forwardRef(function InboxItem(
                </div>
                Done
              </button>
-             <button 
+             {suggestionsEnabled && (
+               <button
+                 onClick={handleSuggest}
+                 disabled={suggesting}
+                 className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-primary transition-colors disabled:opacity-50"
+               >
+                 {suggesting ? (
+                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                 ) : (
+                   <Sparkles className="w-3.5 h-3.5" />
+                 )}
+                 {suggesting ? 'Suggesting...' : 'Suggest'}
+               </button>
+             )}
+             <button
                onClick={() => onDiscard?.()}
                className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-destructive transition-colors"
              >
@@ -237,7 +279,7 @@ export const InboxItem = forwardRef(function InboxItem(
                Discard
              </button>
            </div>
-           
+
            <div className="text-[10px] text-muted-foreground/50 font-medium">
               {editMode ? 'Esc to navigate' : 'Enter to edit'}
            </div>
@@ -260,11 +302,11 @@ export const InboxItem = forwardRef(function InboxItem(
          {isSelected && <div className="w-1 h-4 rounded-full bg-primary/50" />}
       </div>
 
-      <img 
-        src={faviconUrl} 
-        alt="" 
-        className="w-4 h-4 rounded-[3px] flex-shrink-0 opacity-70 group-hover:opacity-100 transition-opacity" 
-        onError={(e) => { e.target.style.opacity = 0 }} 
+      <img
+        src={faviconUrl}
+        alt=""
+        className="w-4 h-4 rounded-[3px] flex-shrink-0 opacity-70 group-hover:opacity-100 transition-opacity"
+        onError={(e) => { e.target.style.opacity = 0 }}
       />
 
       <div className="flex-1 min-w-0 overflow-hidden">
@@ -275,7 +317,7 @@ export const InboxItem = forwardRef(function InboxItem(
           <span className="text-xs text-muted-foreground truncate flex-shrink-0 font-normal opacity-70">{domain}</span>
         </div>
       </div>
-      
+
       {tags && tags.length > 0 && (
           <div className="flex gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
             {tags.slice(0, 2).map((tag) => (

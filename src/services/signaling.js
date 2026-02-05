@@ -7,10 +7,14 @@
 const RECONNECT_DELAYS = [1000, 2000, 5000, 10000, 30000] // Exponential backoff
 
 /**
- * Get the signaling server URL from environment
+ * Get the signaling server URL
+ * Priority: user-configured (localStorage) > env var > default
  * @returns {string}
  */
 export function getSignalingUrl() {
+  const custom = typeof localStorage !== 'undefined'
+    && localStorage.getItem('hypermark_signaling_url')
+  if (custom) return custom
   return import.meta.env.VITE_SIGNALING_URL || 'ws://localhost:4444'
 }
 

@@ -1,81 +1,234 @@
-import { useEffect, useRef, useCallback } from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './dialog'
-import { TagInput } from './TagInput'
-import { Tag } from './Tag'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { Hash, Check, Plus } from './Icons'
 import { getAllTags, updateBookmark } from '../../services/bookmarks'
+import { cn } from '@/utils/cn'
 
+/**
+ * Linear-style tag selector modal
+ * - Shows bookmark title at top
+ * - Search/filter input
+ * - List of tags with checkmarks for selected, number keys for quick select
+ * - Keyboard navigation (j/k, arrows, numbers 1-9)
+ */
 export function QuickTagModal({ isOpen, onClose, bookmark }) {
-  const tagInputRef = useRef(null)
-  const allTags = getAllTags()
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedIndex, setSelectedIndex] = useState(0)
+  const inputRef = useRef(null)
+  const listRef = useRef(null)
 
-  // Focus tag input when modal opens
+  const allTags = getAllTags()
+  const currentTags = bookmark?.tags || []
+
+  // Filter tags based on search, and include "create new" option
+  const filteredOptions = useMemo(() => {
+    const query = searchQuery.toLowerCase().trim()
+
+    // Filter existing tags
+    const matchingTags = allTags
+      .filter(tag => !query || tag.toLowerCase().includes(query))
+      .map(tag => ({
+        type: 'existing',
+        value: tag,
+        isSelected: currentTags.includes(tag),
+      }))
+
+    // Add "create new" option if query doesn't match existing tag exactly
+    const exactMatch = allTags.some(tag => tag.toLowerCase() === query)
+    if (query && !exactMatch) {
+      matchingTags.push({
+        type: 'create',
+        value: query,
+        isSelected: false,
+      })
+    }
+
+    return matchingTags
+  }, [allTags, currentTags, searchQuery])
+
+  // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
-      // Small delay to ensure dialog is rendered
-      setTimeout(() => {
-        tagInputRef.current?.focus()
-      }, 50)
+      setSearchQuery('')
+      setSelectedIndex(0)
+      setTimeout(() => inputRef.current?.focus(), 50)
     }
   }, [isOpen])
 
-  const handleTagsChange = useCallback((newTags) => {
+  // Keep selected index in bounds
+  useEffect(() => {
+    if (selectedIndex >= filteredOptions.length) {
+      setSelectedIndex(Math.max(0, filteredOptions.length - 1))
+    }
+  }, [filteredOptions.length, selectedIndex])
+
+  // Scroll selected item into view
+  useEffect(() => {
+    if (listRef.current && filteredOptions.length > 0) {
+      const selectedItem = listRef.current.children[selectedIndex]
+      selectedItem?.scrollIntoView({ block: 'nearest' })
+    }
+  }, [selectedIndex, filteredOptions.length])
+
+  const toggleTag = useCallback((tagValue) => {
     if (!bookmark?._id) return
+
+    const newTags = currentTags.includes(tagValue)
+      ? currentTags.filter(t => t !== tagValue)
+      : [...currentTags, tagValue.toLowerCase()]
+
     try {
       updateBookmark(bookmark._id, { tags: newTags })
     } catch (error) {
       console.error('Failed to update tags:', error)
     }
-  }, [bookmark?._id])
+  }, [bookmark?._id, currentTags])
 
-  const handleRemoveTag = useCallback((tagToRemove) => {
-    if (!bookmark?._id) return
-    const newTags = (bookmark.tags || []).filter(t => t !== tagToRemove)
-    handleTagsChange(newTags)
-  }, [bookmark?._id, bookmark?.tags, handleTagsChange])
+  const handleKeyDown = useCallback((e) => {
+    switch (e.key) {
+      case 'ArrowDown':
+      case 'j':
+        e.preventDefault()
+        setSelectedIndex(prev =>
+          prev < filteredOptions.length - 1 ? prev + 1 : 0
+        )
+        break
+      case 'ArrowUp':
+      case 'k':
+        e.preventDefault()
+        setSelectedIndex(prev =>
+          prev > 0 ? prev - 1 : filteredOptions.length - 1
+        )
+        break
+      case 'Enter':
+        e.preventDefault()
+        if (filteredOptions[selectedIndex]) {
+          toggleTag(filteredOptions[selectedIndex].value)
+        }
+        break
+      case 'Escape':
+        e.preventDefault()
+        onClose()
+        break
+      default:
+        // Number keys 1-9 for quick selection
+        if (e.key >= '1' && e.key <= '9') {
+          const index = parseInt(e.key) - 1
+          if (index < filteredOptions.length) {
+            e.preventDefault()
+            toggleTag(filteredOptions[index].value)
+          }
+        }
+    }
+  }, [filteredOptions, selectedIndex, toggleTag, onClose])
 
-  if (!bookmark) return null
-
-  const currentTags = bookmark.tags || []
+  if (!isOpen || !bookmark) return null
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="text-base font-medium truncate pr-8">
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh]"
+      onClick={onClose}
+    >
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/50" />
+
+      {/* Modal */}
+      <div
+        className="relative w-full max-w-md mx-4 bg-popover border border-border rounded-lg shadow-2xl overflow-hidden"
+        onClick={e => e.stopPropagation()}
+        onKeyDown={handleKeyDown}
+      >
+        {/* Header - Bookmark title */}
+        <div className="px-3 py-2 border-b border-border bg-muted/30">
+          <span className="text-sm text-muted-foreground truncate block">
             {bookmark.title}
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-4">
-          {/* Current tags */}
-          {currentTags.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {currentTags.map((tag) => (
-                <Tag key={tag} onRemove={() => handleRemoveTag(tag)}>
-                  {tag}
-                </Tag>
-              ))}
-            </div>
-          )}
-
-          {/* Tag input */}
-          <div>
-            <TagInput
-              ref={tagInputRef}
-              value={currentTags}
-              onChange={handleTagsChange}
-              allTags={allTags}
-              placeholder="Add tag..."
-              onEscapeWhenClosed={onClose}
-            />
-          </div>
-
-          {/* Keyboard hint */}
-          <p className="text-xs text-muted-foreground text-center">
-            Press <kbd className="px-1.5 py-0.5 text-xs bg-muted border border-border rounded">Esc</kbd> to close
-          </p>
+          </span>
         </div>
-      </DialogContent>
-    </Dialog>
+
+        {/* Search input */}
+        <div className="p-2 border-b border-border">
+          <input
+            ref={inputRef}
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Change tags..."
+            className="w-full bg-transparent text-foreground placeholder:text-muted-foreground text-sm outline-none"
+            autoComplete="off"
+          />
+        </div>
+
+        {/* Options list */}
+        <div
+          ref={listRef}
+          className="max-h-80 overflow-y-auto py-1"
+        >
+          {filteredOptions.length === 0 ? (
+            <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+              No tags found
+            </div>
+          ) : (
+            filteredOptions.map((option, index) => (
+              <div
+                key={option.type === 'create' ? `create-${option.value}` : option.value}
+                onClick={() => toggleTag(option.value)}
+                onMouseEnter={() => setSelectedIndex(index)}
+                className={cn(
+                  'flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors',
+                  index === selectedIndex
+                    ? 'bg-accent'
+                    : 'hover:bg-accent/50'
+                )}
+              >
+                {/* Icon */}
+                <div className="w-5 h-5 flex items-center justify-center text-muted-foreground">
+                  {option.type === 'create' ? (
+                    <Plus className="w-4 h-4" />
+                  ) : (
+                    <Hash className="w-4 h-4" />
+                  )}
+                </div>
+
+                {/* Label */}
+                <span className="flex-1 text-sm text-foreground truncate">
+                  {option.type === 'create' ? (
+                    <>Create "<span className="text-muted-foreground">{option.value}</span>"</>
+                  ) : (
+                    option.value
+                  )}
+                </span>
+
+                {/* Checkmark for selected */}
+                {option.isSelected && (
+                  <Check className="w-4 h-4 text-muted-foreground" />
+                )}
+
+                {/* Number key hint (1-9) */}
+                {index < 9 && (
+                  <kbd className="min-w-[1.5rem] h-6 px-1.5 flex items-center justify-center text-xs text-muted-foreground bg-muted border border-border rounded">
+                    {index + 1}
+                  </kbd>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Footer hints */}
+        <div className="px-3 py-2 border-t border-border bg-muted/30 flex items-center justify-center gap-4 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <kbd className="px-1 py-0.5 bg-muted border border-border rounded text-[10px]">↑↓</kbd>
+            navigate
+          </span>
+          <span className="flex items-center gap-1">
+            <kbd className="px-1 py-0.5 bg-muted border border-border rounded text-[10px]">Enter</kbd>
+            toggle
+          </span>
+          <span className="flex items-center gap-1">
+            <kbd className="px-1 py-0.5 bg-muted border border-border rounded text-[10px]">Esc</kbd>
+            close
+          </span>
+        </div>
+      </div>
+    </div>
   )
 }

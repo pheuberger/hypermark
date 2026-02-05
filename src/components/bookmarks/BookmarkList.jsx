@@ -59,6 +59,7 @@ export function BookmarkList() {
   const [selectedIndex, setSelectedIndex] = useState(-1)
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState(new Set())
+  const [hoveredIndex, setHoveredIndex] = useState(-1)
   const selectedItemRef = useRef(null)
   const searchInputRef = useRef(null)
   const inboxViewRef = useRef(null)
@@ -146,10 +147,14 @@ export function BookmarkList() {
       setSelectedIndex((prev) => {
         const maxIndex = filteredBookmarks.length - 1
         if (maxIndex < 0) return -1
+        // If no selection, start from hovered index or top
+        if (prev === -1) {
+          return hoveredIndex >= 0 ? hoveredIndex : 0
+        }
         return prev < maxIndex ? prev + 1 : prev
       })
     }
-  }, [filteredBookmarks.length, filterView])
+  }, [filteredBookmarks.length, filterView, hoveredIndex])
 
   const selectPrev = useCallback(() => {
     if (filterView === 'inbox') {
@@ -158,12 +163,15 @@ export function BookmarkList() {
       setSelectedIndex((prev) => {
         const maxIndex = filteredBookmarks.length - 1
         if (maxIndex < 0) return -1
-        if (prev === -1) return maxIndex
-        if (prev === 0) return 0
+        // If no selection, start from hovered index or bottom
+        if (prev === -1) {
+          return hoveredIndex >= 0 ? hoveredIndex : maxIndex
+        }
+        if (prev <= 0) return 0
         return prev - 1
       })
     }
-  }, [filterView, filteredBookmarks.length])
+  }, [filterView, filteredBookmarks.length, hoveredIndex])
 
   const openSelected = useCallback(() => {
     // Don't open URL if we're adding/editing
@@ -396,8 +404,29 @@ export function BookmarkList() {
     }
   }, [filterView, isAddingNew, editingBookmarkId, getSelectedBookmark, addToast])
 
+  const goToTop = useCallback(() => {
+    if (filterView === 'inbox') {
+      inboxViewRef.current?.goToTop?.()
+    } else if (filteredBookmarks.length > 0) {
+      setSelectedIndex(0)
+    }
+  }, [filterView, filteredBookmarks.length])
+
+  const goToBottom = useCallback(() => {
+    if (filterView === 'inbox') {
+      inboxViewRef.current?.goToBottom?.()
+    } else if (filteredBookmarks.length > 0) {
+      setSelectedIndex(filteredBookmarks.length - 1)
+    }
+  }, [filterView, filteredBookmarks.length])
+
+  const handleBookmarkHover = useCallback((index) => {
+    setHoveredIndex(index)
+  }, [])
+
   useEffect(() => {
     setSelectedIndex(-1)
+    setHoveredIndex(-1)
   }, [filteredBookmarks.length, filterView, selectedTag, debouncedSearchQuery])
 
   // Close inline card and exit selection mode when view/filter changes
@@ -419,6 +448,8 @@ export function BookmarkList() {
     'g i': goToInbox,
     'g l': goToReadLater,
     'g s': goToSettings,
+    'g g': goToTop,
+    'shift+g': goToBottom,
     'shift+?': showHelp,
     'j': selectNext,
     'k': selectPrev,
@@ -592,6 +623,7 @@ export function BookmarkList() {
                               onDelete={handleDelete}
                               onTagClick={handleTagClick}
                               onToggleSelect={toggleSelectBookmark}
+                              onMouseEnter={() => handleBookmarkHover(index)}
                             />
                           )
                         ))

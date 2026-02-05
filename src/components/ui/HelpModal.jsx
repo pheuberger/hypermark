@@ -11,6 +11,8 @@ const HOTKEY_GROUPS = [
     hotkeys: [
       { keys: ['j'], description: 'Select next bookmark' },
       { keys: ['k'], description: 'Select previous bookmark' },
+      { keys: ['g', 'g'], description: 'Go to top' },
+      { keys: ['Shift', 'G'], description: 'Go to bottom', modifier: true },
       { keys: ['Enter'], description: 'Open selected bookmark' },
       { keys: ['o'], description: 'Open selected bookmark' },
       { keys: ['e'], description: 'Edit selected bookmark' },

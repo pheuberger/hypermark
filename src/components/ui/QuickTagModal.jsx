@@ -128,10 +128,26 @@ export function QuickTagModal({ isOpen, onClose, bookmark }) {
       return
     }
 
-    // Enter to save and close
+    // Enter to save and close (also adds the tag if "Create" option is selected)
     if (e.key === 'Enter') {
       e.preventDefault()
-      saveAndClose()
+      const selectedOption = filteredOptions[selectedIndex]
+      if (selectedOption?.type === 'create') {
+        // Add the new tag before saving
+        const newTags = [...localTags, selectedOption.value.toLowerCase()]
+        setLocalTags(newTags)
+        // Save with the new tag included
+        if (bookmark?._id) {
+          try {
+            updateBookmark(bookmark._id, { tags: newTags })
+          } catch (error) {
+            console.error('Failed to update tags:', error)
+          }
+        }
+        onClose()
+      } else {
+        saveAndClose()
+      }
       return
     }
 

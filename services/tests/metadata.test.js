@@ -8,7 +8,6 @@ import {
   extractTags,
   extractPathTags,
   extractFavicon,
-  getDomainTags,
   getMetaContent,
   getAllMetaContent,
   decodeEntities,
@@ -215,38 +214,6 @@ describe('extractDescription', () => {
   })
 })
 
-// ---- Domain Tags ----
-
-describe('getDomainTags', () => {
-  it('returns tags for known domains', () => {
-    assert.deepEqual(getDomainTags('github.com'), ['developer-tools', 'git', 'open-source'])
-  })
-
-  it('strips www. prefix', () => {
-    assert.deepEqual(getDomainTags('www.github.com'), ['developer-tools', 'git', 'open-source'])
-  })
-
-  it('falls back to parent domain for subdomains', () => {
-    assert.deepEqual(getDomainTags('api.github.com'), ['developer-tools', 'git', 'open-source'])
-  })
-
-  it('returns exact match for subdomains in the map', () => {
-    assert.deepEqual(getDomainTags('developer.mozilla.org'), ['documentation', 'web-development'])
-  })
-
-  it('returns empty array for unknown domains', () => {
-    assert.deepEqual(getDomainTags('totally-unknown-site.example'), [])
-  })
-
-  it('returns tags for news sites', () => {
-    assert.deepEqual(getDomainTags('news.ycombinator.com'), ['tech-news', 'forum'])
-  })
-
-  it('returns tags for social media', () => {
-    assert.deepEqual(getDomainTags('reddit.com'), ['social-media', 'forum'])
-  })
-})
-
 // ---- Tag Extraction ----
 
 describe('extractTags', () => {
@@ -307,32 +274,14 @@ describe('extractTags', () => {
   })
 
   it('returns empty array when no tags found', () => {
-    const tags = extractTags('<html></html>', new URL('https://unknown-example.com'))
+    const tags = extractTags('<html></html>', new URL('https://example.com'))
     assert.deepEqual(tags, [])
   })
 
-  it('includes domain tags for known sites', () => {
-    const tags = extractTags('<html></html>', new URL('https://github.com'))
-    assert.ok(tags.includes('developer-tools'))
-    assert.ok(tags.includes('git'))
-    assert.ok(tags.includes('open-source'))
-  })
-
-  it('merges domain tags with meta tags without duplicates', () => {
-    const html = '<meta name="keywords" content="git, coding">'
-    const tags = extractTags(html, new URL('https://github.com'))
-    assert.ok(tags.includes('developer-tools'))
-    assert.ok(tags.includes('git'))
-    assert.ok(tags.includes('coding'))
-    // git should not appear twice
-    assert.equal(tags.filter(t => t === 'git').length, 1)
-  })
-
-  it('domain tags come first in the list', () => {
-    const html = '<meta name="keywords" content="coding">'
-    const tags = extractTags(html, new URL('https://github.com'))
-    // domain tags should precede meta tags
-    assert.equal(tags[0], 'developer-tools')
+  it('deduplicates tags', () => {
+    const html = '<meta name="keywords" content="react, react, javascript">'
+    const tags = extractTags(html, new URL('https://example.com'))
+    assert.equal(tags.filter(t => t === 'react').length, 1)
   })
 })
 

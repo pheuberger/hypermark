@@ -26,115 +26,6 @@ const USELESS_OG_TYPES = new Set([
 ])
 
 /**
- * Well-known domains mapped to useful tags.
- * Covers the most commonly bookmarked sites.
- */
-const DOMAIN_TAG_MAP = {
-  // Developer tools & code
-  'github.com':            ['developer-tools', 'git', 'open-source'],
-  'gitlab.com':            ['developer-tools', 'git', 'open-source'],
-  'bitbucket.org':         ['developer-tools', 'git'],
-  'stackoverflow.com':     ['programming', 'q&a'],
-  'stackexchange.com':     ['q&a'],
-  'npmjs.com':             ['javascript', 'package-manager'],
-  'pypi.org':              ['python', 'package-manager'],
-  'crates.io':             ['rust', 'package-manager'],
-  'hub.docker.com':        ['docker', 'containers'],
-  'codepen.io':            ['frontend', 'playground'],
-  'codesandbox.io':        ['frontend', 'playground'],
-  'jsfiddle.net':          ['frontend', 'playground'],
-  'replit.com':            ['programming', 'playground'],
-  'vercel.com':            ['hosting', 'frontend'],
-  'netlify.com':           ['hosting', 'frontend'],
-  'heroku.com':            ['hosting', 'paas'],
-  'fly.io':                ['hosting', 'infrastructure'],
-  'render.com':            ['hosting', 'paas'],
-
-  // Documentation & learning
-  'developer.mozilla.org': ['documentation', 'web-development'],
-  'docs.github.com':       ['documentation', 'github'],
-  'devdocs.io':            ['documentation', 'reference'],
-  'w3schools.com':         ['tutorial', 'web-development'],
-  'freecodecamp.org':      ['tutorial', 'programming'],
-  'codecademy.com':        ['tutorial', 'programming'],
-  'udemy.com':             ['courses', 'education'],
-  'coursera.org':          ['courses', 'education'],
-  'edx.org':               ['courses', 'education'],
-  'khanacademy.org':       ['education'],
-  'arxiv.org':             ['research', 'academic-papers'],
-  'scholar.google.com':    ['research', 'academic-papers'],
-
-  // Design
-  'figma.com':             ['design', 'ui'],
-  'dribbble.com':          ['design', 'inspiration'],
-  'behance.net':           ['design', 'portfolio'],
-  'canva.com':             ['design', 'graphics'],
-  'unsplash.com':          ['photography', 'stock-images'],
-  'pexels.com':            ['photography', 'stock-images'],
-
-  // Social & content
-  'twitter.com':           ['social-media'],
-  'x.com':                 ['social-media'],
-  'reddit.com':            ['social-media', 'forum'],
-  'news.ycombinator.com':  ['tech-news', 'forum'],
-  'lobste.rs':             ['tech-news', 'forum'],
-  'mastodon.social':       ['social-media', 'fediverse'],
-  'linkedin.com':          ['professional', 'social-media'],
-  'facebook.com':          ['social-media'],
-  'instagram.com':         ['social-media', 'photography'],
-  'threads.net':           ['social-media'],
-  'bsky.app':              ['social-media'],
-
-  // Media
-  'youtube.com':           ['video'],
-  'youtu.be':              ['video'],
-  'vimeo.com':             ['video'],
-  'twitch.tv':             ['streaming', 'gaming'],
-  'spotify.com':           ['music', 'podcast'],
-  'soundcloud.com':        ['music', 'audio'],
-
-  // News & media
-  'medium.com':            ['blog', 'articles'],
-  'dev.to':                ['blog', 'programming'],
-  'hashnode.dev':          ['blog', 'programming'],
-  'substack.com':          ['newsletter', 'articles'],
-  'techcrunch.com':        ['tech-news'],
-  'theverge.com':          ['tech-news'],
-  'arstechnica.com':       ['tech-news'],
-  'wired.com':             ['tech-news', 'magazine'],
-  'nytimes.com':           ['news'],
-  'theguardian.com':       ['news'],
-  'bbc.com':               ['news'],
-  'bbc.co.uk':             ['news'],
-  'washingtonpost.com':    ['news'],
-  'reuters.com':           ['news'],
-
-  // Productivity & tools
-  'notion.so':             ['productivity', 'notes'],
-  'obsidian.md':           ['productivity', 'notes'],
-  'trello.com':            ['productivity', 'project-management'],
-  'airtable.com':          ['productivity', 'database'],
-  'miro.com':              ['productivity', 'whiteboard'],
-  'docs.google.com':       ['productivity', 'documents'],
-  'sheets.google.com':     ['productivity', 'spreadsheets'],
-
-  // Cloud providers
-  'aws.amazon.com':        ['cloud', 'aws'],
-  'cloud.google.com':      ['cloud', 'gcp'],
-  'azure.microsoft.com':   ['cloud', 'azure'],
-
-  // AI
-  'openai.com':            ['ai', 'machine-learning'],
-  'anthropic.com':         ['ai', 'machine-learning'],
-  'huggingface.co':        ['ai', 'machine-learning', 'open-source'],
-
-  // Reference
-  'en.wikipedia.org':      ['reference', 'encyclopedia'],
-  'wikimedia.org':         ['reference'],
-}
-
-
-/**
  * Private/reserved IP ranges that must not be fetched (SSRF protection)
  */
 const BLOCKED_IP_RANGES = [
@@ -399,67 +290,41 @@ export function extractDescription(html) {
 }
 
 /**
- * Look up domain tags from the knowledge map.
- * Matches exact domain, then tries stripping 'www.' and subdomain.
- */
-export function getDomainTags(hostname) {
-  // Exact match first
-  if (DOMAIN_TAG_MAP[hostname]) return [...DOMAIN_TAG_MAP[hostname]]
-
-  // Strip www.
-  const noWww = hostname.replace(/^www\./, '')
-  if (DOMAIN_TAG_MAP[noWww]) return [...DOMAIN_TAG_MAP[noWww]]
-
-  // Try parent domain (e.g. "docs.github.com" → "github.com")
-  const parts = noWww.split('.')
-  if (parts.length > 2) {
-    const parent = parts.slice(-2).join('.')
-    if (DOMAIN_TAG_MAP[parent]) return [...DOMAIN_TAG_MAP[parent]]
-  }
-
-  return []
-}
-
-/**
- * Extract suggested tags from multiple sources (hybrid approach):
- * 1. Domain knowledge map (most reliable)
- * 2. HTML meta tags (keywords, article:tag, article:section)
- * 3. og:type (filtered for usefulness)
- * 4. URL path segments
+ * Extract suggested tags from multiple sources:
+ * 1. HTML meta tags (keywords, article:tag, article:section)
+ * 2. og:type (filtered for usefulness)
+ * 3. URL path segments
  */
 export function extractTags(html, parsedUrl) {
-  const domainTags = getDomainTags(parsedUrl.hostname)
-  const metaTags = []
+  const tags = []
 
   const keywords = getMetaContent(html, 'keywords', 'name')
   if (keywords) {
     keywords.split(',')
       .map(k => k.trim().toLowerCase())
       .filter(k => k.length > 1 && k.length < 30)
-      .forEach(k => metaTags.push(k))
+      .forEach(k => tags.push(k))
   }
 
   const articleTags = getAllMetaContent(html, 'article:tag', 'property')
   articleTags
     .map(t => t.trim().toLowerCase())
     .filter(t => t.length > 1 && t.length < 30)
-    .forEach(t => metaTags.push(t))
+    .forEach(t => tags.push(t))
 
   const section = getMetaContent(html, 'article:section', 'property')
-  if (section) metaTags.push(section.trim().toLowerCase())
+  if (section) tags.push(section.trim().toLowerCase())
 
   const ogType = getMetaContent(html, 'og:type', 'property')
   if (ogType && !USELESS_OG_TYPES.has(ogType.toLowerCase())) {
-    metaTags.push(ogType.toLowerCase())
+    tags.push(ogType.toLowerCase())
   }
 
   const pathTags = extractPathTags(parsedUrl.pathname)
-
-  // Merge: domain tags first (highest quality), then meta, then path
-  const merged = [...domainTags, ...metaTags, ...pathTags]
+  pathTags.forEach(t => tags.push(t))
 
   return [...new Set(
-    merged
+    tags
       .map(t => t.replace(/[^\w\s-]/g, '').trim())
       .filter(t => t.length > 1 && t.length < 30)
   )]

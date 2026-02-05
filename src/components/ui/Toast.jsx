@@ -31,7 +31,7 @@ export function Toast({ message, action, actionLabel = 'Undo', duration = 5000, 
   return (
     <div
       className={cn(
-        'fixed bottom-4 left-1/2 -translate-x-1/2 z-50',
+        'fixed bottom-4 right-4 z-50',
         'flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg',
         'bg-card border border-border text-foreground',
         'transition-all duration-150',
@@ -61,7 +61,7 @@ export function Toast({ message, action, actionLabel = 'Undo', duration = 5000, 
 // Toast container that manages multiple toasts
 export function ToastContainer({ toasts, onRemove }) {
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2">
+    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
       {toasts.map((toast) => (
         <Toast
           key={toast.id}

@@ -1,4 +1,4 @@
-import { X, ChevronDown, Menu, Search, Plus } from '../ui/Icons'
+import { X, ChevronDown, Menu, Search, Plus, ListChecks } from '../ui/Icons'
 
 export function FilterBar({
   searchQuery,
@@ -9,6 +9,8 @@ export function FilterBar({
   onToggleSidebar,
   onAddNew,
   searchInputRef,
+  selectionMode,
+  onToggleSelectionMode,
 }) {
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') {
@@ -70,8 +72,22 @@ export function FilterBar({
         </div>
 
         <button
+          onClick={onToggleSelectionMode}
+          className={`h-9 px-3 rounded-md font-medium text-sm inline-flex items-center gap-1.5 transition-colors ${
+            selectionMode
+              ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+              : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+          }`}
+          aria-label={selectionMode ? 'Exit selection mode' : 'Select bookmarks'}
+          title={selectionMode ? 'Exit selection mode' : 'Select multiple bookmarks'}
+        >
+          <ListChecks className="w-4 h-4" strokeWidth={1.5} />
+          <span className="hidden sm:inline">{selectionMode ? 'Done' : 'Select'}</span>
+        </button>
+
+        <button
           onClick={onAddNew}
-          className="ml-auto h-9 px-4 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm font-medium text-sm inline-flex items-center gap-1.5 transition-colors"
+          className="h-9 px-4 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm font-medium text-sm inline-flex items-center gap-1.5 transition-colors"
           aria-label="Add bookmark"
         >
           <Plus className="w-4 h-4" strokeWidth={2} />

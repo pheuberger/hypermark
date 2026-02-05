@@ -227,6 +227,33 @@ export function deleteBookmark(id) {
 }
 
 /**
+ * Delete multiple bookmarks in a single transaction (for undo support)
+ * @param {string[]} ids - Array of bookmark IDs to delete
+ * @returns {number} - Number of bookmarks deleted
+ */
+export function bulkDeleteBookmarks(ids) {
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return 0
+  }
+
+  const doc = getYdoc()
+  const bookmarksMap = doc.getMap('bookmarks')
+
+  let deletedCount = 0
+  doc.transact(() => {
+    for (const id of ids) {
+      if (bookmarksMap.has(id)) {
+        bookmarksMap.delete(id)
+        deletedCount++
+      }
+    }
+  }, LOCAL_ORIGIN)
+
+  console.log('[Bookmarks] Bulk deleted:', deletedCount, 'bookmarks')
+  return deletedCount
+}
+
+/**
  * Toggle read-later status
  */
 export function toggleReadLater(id) {

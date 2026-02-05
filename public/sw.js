@@ -1,7 +1,7 @@
 // Service Worker for Hypermark PWA
 // Version: 1.0.0
 
-const CACHE_NAME = 'hypermark-v1'
+const CACHE_NAME = 'hypermark-v2'
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -34,7 +34,12 @@ self.addEventListener('activate', (event) => {
 })
 
 self.addEventListener('fetch', (event) => {
-  // Network-first strategy for API calls, cache-first for assets
+  // Only intercept same-origin GET requests. In iOS PWA standalone mode,
+  // calling event.respondWith() on WebSocket upgrade requests or cross-origin
+  // requests can silently break connections (e.g. signaling server WebSocket).
+  if (event.request.method !== 'GET') return
+  if (!event.request.url.startsWith(self.location.origin)) return
+
   event.respondWith(
     fetch(event.request)
       .then((response) => {

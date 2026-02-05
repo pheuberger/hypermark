@@ -72,11 +72,7 @@ export const BookmarkItem = forwardRef(function BookmarkItem(
           <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />
         </button>
         <button
-          onClick={() => {
-             if (confirm(`Delete "${title}"?`)) {
-               onDelete(bookmark._id)
-             }
-          }}
+          onClick={() => onDelete(bookmark._id)}
           className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
           title="Delete"
         >

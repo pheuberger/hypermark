@@ -1,13 +1,14 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import PairingFlow from '../pairing/PairingFlow'
 import { cn } from '@/utils/cn'
 import { subscribeToWebrtcProvider } from '../../hooks/useYjs'
 import { useNostrSync } from '../../hooks/useNostrSync'
-import { ChevronLeft, Cloud, CloudOff, RefreshCw, Settings2, ChevronRight, Activity, Smartphone, AlertTriangle, Trash2 } from 'lucide-react'
+import { ChevronLeft, Cloud, CloudOff, RefreshCw, Settings2, ChevronRight, Activity, Smartphone, AlertTriangle, Trash2, Download, Upload } from 'lucide-react'
 import { SettingSection, SettingRow, SettingCard, SettingsContainer } from './SettingsLayout'
 import { RelayConfigurationView } from './RelayConfigurationView'
 import { DiagnosticsView } from './DiagnosticsView'
 import { performFullReset, checkResetableData } from '../../services/reset'
+import { downloadExport, importFromFile } from '../../services/bookmark-io'
 
 export function SettingsView({ onBack }) {
   const [showPairing, setShowPairing] = useState(false)
@@ -15,6 +16,8 @@ export function SettingsView({ onBack }) {
   const [showDiagnostics, setShowDiagnostics] = useState(false)
   const [connected, setConnected] = useState(false)
   const [peerCount, setPeerCount] = useState(0)
+  const [importStatus, setImportStatus] = useState(null)
+  const fileInputRef = useRef(null)
 
   // Reset state
   const [showResetConfirm, setShowResetConfirm] = useState(false)
@@ -102,6 +105,53 @@ export function SettingsView({ onBack }) {
     if (seconds < 60) return 'Just now'
     if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
     return `${Math.floor(seconds / 3600)}h ago`
+  }
+
+const handleExport = () => {
+    try {
+      downloadExport()
+    } catch (err) {
+      console.error('[Settings] Export failed:', err)
+    }
+  }
+
+  const handleImportClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setImportStatus({ type: 'loading', message: 'Importing...' })
+
+    try {
+      const result = await importFromFile(file)
+      if (result.imported > 0) {
+        setImportStatus({
+          type: 'success',
+          message: `Imported ${result.imported} bookmark${result.imported === 1 ? '' : 's'}${result.skipped > 0 ? `, ${result.skipped} skipped (duplicates)` : ''}`,
+        })
+      } else if (result.skipped > 0) {
+        setImportStatus({
+          type: 'info',
+          message: `All ${result.skipped} bookmark${result.skipped === 1 ? '' : 's'} already exist`,
+        })
+      } else {
+        setImportStatus({
+          type: 'error',
+          message: 'No bookmarks found in file',
+        })
+      }
+    } catch (err) {
+      setImportStatus({ type: 'error', message: `Import failed: ${err.message}` })
+    }
+
+    // Clear file input so same file can be selected again
+    e.target.value = ''
+
+    // Clear status after 5 seconds
+    setTimeout(() => setImportStatus(null), 5000)
   }
 
   const handleResetClick = async () => {
@@ -391,28 +441,48 @@ export function SettingsView({ onBack }) {
         <SettingCard>
           <SettingRow
             label="Export bookmarks"
-            description="Download all your bookmarks as a JSON file"
+            description="Download all bookmarks as an HTML file (browser-compatible format)"
           >
             <button
-              disabled
-              className="text-sm font-medium text-muted-foreground/50 cursor-not-allowed"
+              onClick={handleExport}
+              className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
-              Coming soon
+              <Download className="w-4 h-4" />
+              Export
             </button>
           </SettingRow>
           <SettingRow
             label="Import bookmarks"
-            description="Import bookmarks from a JSON or HTML file"
+            description="Import bookmarks from a browser export file (HTML)"
             isLast
           >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".html,.htm"
+              onChange={handleFileChange}
+              className="hidden"
+            />
             <button
-              disabled
-              className="text-sm font-medium text-muted-foreground/50 cursor-not-allowed"
+              onClick={handleImportClick}
+              className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
-              Coming soon
+              <Upload className="w-4 h-4" />
+              Import
             </button>
           </SettingRow>
         </SettingCard>
+        {importStatus && (
+          <p className={cn(
+            "text-xs mt-2 px-1",
+            importStatus.type === 'success' && "text-green-600 dark:text-green-400",
+            importStatus.type === 'error' && "text-red-600 dark:text-red-400",
+            importStatus.type === 'info' && "text-muted-foreground",
+            importStatus.type === 'loading' && "text-muted-foreground"
+          )}>
+            {importStatus.message}
+          </p>
+        )}
       </SettingSection>
 
       <SettingSection title="About">

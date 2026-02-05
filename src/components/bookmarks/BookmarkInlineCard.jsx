@@ -199,6 +199,27 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
     handleTagsChange(newTags)
   }
 
+  const handleReadLaterChange = (checked) => {
+    setLocalReadLater(checked)
+    if (isEditing) {
+      setTimeout(() => {
+        const data = {
+          url: normalizeUrl(localUrl),
+          title: localTitle.trim() || normalizeUrl(localUrl),
+          description: localDesc,
+          tags: localTags,
+          readLater: checked,
+        }
+        try {
+          updateBookmark(bookmark._id, data)
+          onFieldChange?.(data)
+        } catch (error) {
+          console.error('Failed to save read later:', error)
+        }
+      }, 0)
+    }
+  }
+
   const handleDone = useCallback(() => {
     if (!validateUrl(localUrl)) {
       setUrlError('URL is required')
@@ -389,12 +410,7 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
             <input
               type="checkbox"
               checked={localReadLater}
-              onChange={(e) => {
-                setLocalReadLater(e.target.checked)
-                if (isEditing) {
-                  setTimeout(() => saveChanges(), 0)
-                }
-              }}
+              onChange={(e) => handleReadLaterChange(e.target.checked)}
               className="h-3.5 w-3.5 rounded border-input bg-background"
             />
             <span className="text-xs">Read later</span>

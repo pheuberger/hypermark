@@ -2,12 +2,11 @@
 
 ## Overview
 
-Hypermark employs a comprehensive testing strategy that ensures privacy, security, and reliability across all components. Our testing infrastructure includes unit tests, integration tests, end-to-end tests, and security validation.
+Hypermark employs a comprehensive testing strategy that ensures privacy, security, and reliability across all components. Our testing infrastructure includes unit tests, integration tests, and security validation.
 
 ## Testing Stack
 
 - **Unit/Integration Testing**: [Vitest](https://vitest.dev/) with jsdom environment
-- **E2E Testing**: [Playwright](https://playwright.dev/) with multi-browser support
 - **Coverage**: V8 coverage with 80% minimum thresholds
 - **Security Testing**: Dedicated workflows for cryptographic components
 - **CI/CD**: GitHub Actions with parallel execution and automated reporting
@@ -25,13 +24,7 @@ Hypermark employs a comprehensive testing strategy that ensures privacy, securit
 - Storage and persistence validation
 - Cryptographic workflow testing
 
-### 3. End-to-End Tests (`e2e/tests/*.spec.js`)
-- Complete user workflow validation
-- Multi-device pairing and synchronization
-- Cross-browser compatibility testing
-- Performance and memory usage validation
-
-### 4. Security Tests
+### 3. Security Tests
 - Cryptographic operation validation
 - Key management testing
 - Pairing protocol security verification
@@ -45,9 +38,6 @@ npm test
 
 # Run tests with coverage
 npm run test:coverage
-
-# Run E2E tests
-npm run test:e2e
 
 # Run security-focused tests
 npm run test:security
@@ -64,15 +54,10 @@ npm run test:ui
 ```
 hypermark/
 ├── docs/testing/           # Testing documentation
-├── e2e/                   # End-to-end tests
-│   ├── fixtures/          # Test data and setup
-│   ├── tests/             # E2E test suites
-│   └── utils/             # Test helpers
 ├── src/                   # Application source
 │   ├── **/*.test.js       # Unit/integration tests
 │   └── test-utils/        # Test utilities
 ├── vitest.config.js       # Vitest configuration
-├── playwright.config.js   # Playwright configuration
 └── .github/workflows/     # CI/CD pipelines
 ```
 
@@ -102,24 +87,10 @@ Security-critical files requiring 95% coverage:
    - Enforces 95% coverage on critical components
    - Notifies security team on failures
 
-3. **E2E Testing** (`.github/workflows/e2e-tests.yml`)
-   - Comprehensive browser testing (Chromium, Firefox, WebKit)
-   - Mobile device simulation
-   - Performance and visual regression testing
-   - Parallel execution with sharding
-
-4. **Performance Testing** (`.github/workflows/performance.yml`)
+3. **Performance Testing** (`.github/workflows/performance.yml`)
    - Weekly performance benchmarking
    - Memory usage monitoring
    - Large dataset handling validation
-
-## Browser Support
-
-E2E tests run across:
-- **Desktop**: Chrome, Firefox, Safari/WebKit
-- **Mobile**: Chrome Mobile, Safari Mobile
-- **Performance**: Chromium (primary testing browser)
-- **Visual Regression**: Chromium for consistency
 
 ## Key Testing Principles
 
@@ -171,15 +142,6 @@ test('service functionality', async () => {
 
   const result = await cryptoService.operation();
   expect(result).toBe('expected');
-});
-```
-
-### E2E Testing
-```javascript
-test('user workflow', async ({ page }) => {
-  await page.goto('/');
-  await page.click('[data-testid="action-button"]');
-  await expect(page.locator('[data-testid="result"]')).toBeVisible();
 });
 ```
 

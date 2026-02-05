@@ -71,79 +71,6 @@ test('slow operation', async () => {
 }, 10000); // 10 second timeout
 ```
 
-### E2E Test Issues
-
-#### ❌ `browserType.launch: Executable doesn't exist`
-**Problem**: Playwright browsers not installed.
-
-**Solution**:
-```bash
-# Install all browsers
-npx playwright install
-
-# Or install specific browser
-npx playwright install chromium
-
-# Install with system dependencies (Linux)
-npx playwright install --with-deps
-```
-
-#### ❌ `page.goto: net::ERR_CONNECTION_REFUSED`
-**Problem**: Application not running during E2E tests.
-
-**Solution**:
-```bash
-# Start dev server in separate terminal
-npm run dev
-
-# Or use webServer in playwright.config.js:
-webServer: {
-  command: 'npm run dev',
-  port: 5173,
-  reuseExistingServer: !process.env.CI
-}
-```
-
-#### ❌ Element not found or timing issues
-**Problem**: Tests failing due to race conditions.
-
-**Solution**:
-```javascript
-// ❌ Wrong - no waiting
-await page.click('[data-testid="button"]');
-
-// ✅ Correct - wait for element
-await page.waitForSelector('[data-testid="button"]');
-await page.click('[data-testid="button"]');
-
-// Or use auto-waiting
-await page.locator('[data-testid="button"]').click();
-
-// Wait for network idle
-await page.waitForLoadState('networkidle');
-```
-
-#### ❌ Test flakiness in multi-device scenarios
-**Problem**: Device pairing tests sometimes fail.
-
-**Solution**:
-```javascript
-// Add proper sync waiting
-const waitForPairingComplete = async (page, timeout = 30000) => {
-  await page.waitForSelector('[data-testid="pairing-success"]', { timeout });
-
-  // Additional verification
-  await page.waitForFunction(
-    () => window.localStorage.getItem('pairing-status') === 'connected',
-    { timeout: 5000 }
-  );
-};
-
-// Use in tests
-await waitForPairingComplete(device1);
-await waitForPairingComplete(device2);
-```
-
 ### Coverage Issues
 
 #### ❌ Coverage thresholds not met
@@ -230,41 +157,6 @@ export default {
 }
 ```
 
-#### ❌ E2E tests hanging in CI
-**Problem**: Tests don't complete in headless mode.
-
-**Solution**:
-```javascript
-// playwright.config.js - ensure proper CI configuration
-use: {
-  headless: true,
-  viewport: { width: 1280, height: 720 },
-  ignoreHTTPSErrors: true,
-  video: process.env.CI ? 'retain-on-failure' : 'off',
-  trace: process.env.CI ? 'retain-on-failure' : 'off'
-}
-```
-
-#### ❌ Signaling server connection issues
-**Problem**: WebRTC tests fail due to signaling server.
-
-**Solution**:
-```bash
-# Check if signaling server is accessible
-curl -I http://localhost:4444
-
-# Start signaling server in background
-PORT=4444 node node_modules/y-webrtc/bin/server.js &
-
-# Add to GitHub Actions:
-services:
-  signaling:
-    image: node:18
-    ports:
-      - 4444:4444
-    command: npx y-webrtc-signaling --port 4444
-```
-
 ### File System Issues
 
 #### ❌ `ENXIO: no such device or address`
@@ -302,69 +194,12 @@ afterEach(async () => {
 });
 ```
 
-### Network and Timing Issues
-
-#### ❌ WebRTC connection failures
-**Problem**: Device pairing tests fail sporadically.
-
-**Solution**:
-```javascript
-// Mock WebRTC for faster tests
-const mockRTCPeerConnection = class MockRTCPeerConnection {
-  constructor() {
-    this.connectionState = 'connected';
-    this.ondatachannel = null;
-  }
-
-  createDataChannel() {
-    return {
-      send: vi.fn(),
-      close: vi.fn(),
-      addEventListener: vi.fn()
-    };
-  }
-};
-
-global.RTCPeerConnection = mockRTCPeerConnection;
-```
-
-#### ❌ Race conditions in sync tests
-**Problem**: Cross-device sync tests sometimes fail.
-
-**Solution**:
-```javascript
-// Implement proper sync waiting
-const waitForSyncComplete = async (page, maxWait = 10000) => {
-  const startTime = Date.now();
-
-  while (Date.now() - startTime < maxWait) {
-    const syncStatus = await page.evaluate(() => {
-      return window.hypermark?.syncStatus || 'unknown';
-    });
-
-    if (syncStatus === 'synced') {
-      return;
-    }
-
-    await page.waitForTimeout(100);
-  }
-
-  throw new Error(`Sync did not complete within ${maxWait}ms`);
-};
-```
-
 ## Debug Commands
 
 ### Get detailed test output
 ```bash
 # Verbose unit test output
 npm test -- --reporter=verbose
-
-# E2E test with debug info
-DEBUG=pw:api npm run test:e2e
-
-# Show browser console in tests
-npm run test:e2e -- --headed --debug
 ```
 
 ### Check system requirements
@@ -375,12 +210,8 @@ node --version
 # Check available memory
 node -e "console.log(process.memoryUsage())"
 
-# Verify browser installations
-npx playwright install --dry-run
-
 # Check port availability
 netstat -tulpn | grep :5173
-netstat -tulpn | grep :4444
 ```
 
 ### Reset test environment
@@ -388,16 +219,10 @@ netstat -tulpn | grep :4444
 # Clear all caches
 npm run test -- --no-cache
 rm -rf coverage/
-rm -rf test-results/
-rm -rf playwright-report/
 
 # Reinstall dependencies
 rm -rf node_modules/
 npm install
-
-# Reinstall browsers
-npx playwright uninstall --all
-npx playwright install --with-deps
 ```
 
 ## Getting Help
@@ -409,20 +234,14 @@ When reporting issues, include:
 # System information
 node --version
 npm --version
-npx playwright --version
 
 # Test output with debug info
 npm test -- --reporter=verbose > test-output.log 2>&1
-npm run test:e2e -- --reporter=json > e2e-results.json 2>&1
-
-# Browser information (for E2E issues)
-npx playwright install --dry-run
 ```
 
 ### Common Environment Variables
 ```bash
 # Enable debug output
-DEBUG=pw:api,pw:browser
 DEBUG=vitest:*
 
 # CI environment simulation
@@ -439,7 +258,6 @@ Contact the team when:
 - Issues persist after following this guide
 - Performance significantly degrades
 - Security test failures that might indicate real vulnerabilities
-- New browser compatibility issues
 - CI/CD pipeline consistently failing
 
 Include in your report:

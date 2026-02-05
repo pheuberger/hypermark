@@ -200,152 +200,6 @@ test('shows validation errors for invalid input', async () => {
 });
 ```
 
-### E2E Testing Guidelines
-
-#### Page Object Pattern
-Organize E2E tests using page objects:
-
-```javascript
-// e2e/pages/BookmarkPage.js
-export class BookmarkPage {
-  constructor(page) {
-    this.page = page;
-  }
-
-  async addBookmark({ title, url, description, tags = [] }) {
-    await this.page.click('[data-testid="add-bookmark"]');
-    await this.page.fill('[data-testid="bookmark-title"]', title);
-    await this.page.fill('[data-testid="bookmark-url"]', url);
-
-    if (description) {
-      await this.page.fill('[data-testid="bookmark-description"]', description);
-    }
-
-    if (tags.length > 0) {
-      await this.page.fill('[data-testid="bookmark-tags"]', tags.join(', '));
-    }
-
-    await this.page.click('[data-testid="save-bookmark"]');
-
-    // Wait for save to complete
-    await this.page.waitForSelector('[data-testid="bookmark-saved"]');
-  }
-
-  async searchBookmarks(query) {
-    await this.page.fill('[data-testid="search-input"]', query);
-    await this.page.waitForTimeout(300); // Debounce
-  }
-
-  async getBookmarkCount() {
-    return await this.page.locator('.bookmark-item').count();
-  }
-}
-```
-
-#### Multi-Device Testing
-For cross-device scenarios:
-
-```javascript
-// e2e/fixtures/device-pair.js
-export const devicePairFixture = base.extend({
-  devicePair: async ({ browser }, use) => {
-    const context1 = await browser.newContext();
-    const context2 = await browser.newContext();
-
-    const device1 = await context1.newPage();
-    const device2 = await context2.newPage();
-
-    await device1.goto('/');
-    await device2.goto('/');
-
-    await use({ device1, device2 });
-
-    await context1.close();
-    await context2.close();
-  }
-});
-```
-
-#### Network Condition Testing
-Test various network scenarios:
-
-```javascript
-test('handles intermittent connectivity', async ({ page }) => {
-  // Simulate slow network
-  await page.route('**/*', route => {
-    setTimeout(() => route.continue(), 1000);
-  });
-
-  // Perform action that requires network
-  await page.click('[data-testid="sync-now"]');
-
-  // Should show loading state
-  await expect(page.locator('[data-testid="syncing"]')).toBeVisible();
-
-  // Should eventually complete
-  await expect(page.locator('[data-testid="sync-complete"]'))
-    .toBeVisible({ timeout: 10000 });
-});
-```
-
-### Performance Testing
-
-#### Benchmarking Guidelines
-```javascript
-test('search performance with large dataset', async ({ page }) => {
-  // Setup large dataset
-  await page.evaluate(() => {
-    const bookmarks = Array.from({ length: 1000 }, (_, i) => ({
-      id: i,
-      title: `Bookmark ${i}`,
-      url: `https://example.com/${i}`,
-      tags: [`tag${i % 10}`]
-    }));
-    localStorage.setItem('bookmarks', JSON.stringify(bookmarks));
-  });
-
-  await page.reload();
-
-  // Measure search performance
-  const searchStart = performance.now();
-  await page.fill('[data-testid="search-input"]', 'bookmark');
-  await page.waitForSelector('.bookmark-item:first-child');
-  const searchTime = performance.now() - searchStart;
-
-  // Performance assertion
-  expect(searchTime).toBeLessThan(500); // Under 500ms
-
-  console.log(`Search completed in ${searchTime}ms`);
-});
-```
-
-#### Memory Leak Detection
-```javascript
-test('no memory leaks during navigation', async ({ page }) => {
-  const getMemoryUsage = () => page.evaluate(() => performance.memory?.usedJSHeapSize);
-
-  const initialMemory = await getMemoryUsage();
-
-  // Perform actions that could cause leaks
-  for (let i = 0; i < 10; i++) {
-    await page.goto('/bookmarks');
-    await page.goto('/settings');
-    await page.goto('/');
-  }
-
-  // Force garbage collection if available
-  await page.evaluate(() => {
-    if (window.gc) window.gc();
-  });
-
-  const finalMemory = await getMemoryUsage();
-  const memoryIncrease = finalMemory - initialMemory;
-
-  // Memory increase should be reasonable
-  expect(memoryIncrease).toBeLessThan(10 * 1024 * 1024); // 10MB
-});
-```
-
 ### Mock and Stub Guidelines
 
 #### Service Mocking
@@ -485,8 +339,7 @@ Every pull request must:
 1. Pass all existing tests
 2. Add tests for new functionality
 3. Maintain coverage thresholds
-4. Include E2E tests for user-facing features
-5. Update documentation if needed
+4. Update documentation if needed
 
 ### Test Maintenance
 
@@ -494,7 +347,6 @@ Every pull request must:
 - Review and update test data
 - Remove obsolete tests
 - Refactor duplicated test code
-- Update E2E selectors when UI changes
 - Monitor and fix flaky tests
 
 #### Flaky Test Management
@@ -538,7 +390,6 @@ When reviewing:
 ## Resources
 
 - [Vitest Documentation](https://vitest.dev/)
-- [Playwright Documentation](https://playwright.dev/)
 - [Testing Library Documentation](https://testing-library.com/)
 - [Web Accessibility Guidelines](https://www.w3.org/WAI/WCAG21/quickref/)
 - [Security Testing Guidelines](https://owasp.org/www-project-web-security-testing-guide/)

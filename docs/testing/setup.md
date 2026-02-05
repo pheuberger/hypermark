@@ -13,35 +13,13 @@
 ```bash
 # Install all dependencies including testing tools
 npm install
-
-# Verify installation
-npm run test --version
-npx playwright --version
 ```
 
-### 2. Playwright Setup
-
-Playwright requires browser binaries to be installed:
-
-```bash
-# Install all browsers (Chrome, Firefox, Safari)
-npx playwright install
-
-# Install only Chromium (fastest for development)
-npx playwright install chromium
-
-# Install browsers with system dependencies
-npx playwright install --with-deps
-```
-
-### 3. Verify Setup
+### 2. Verify Setup
 
 ```bash
 # Run unit tests to verify Vitest setup
 npm test
-
-# Run a simple E2E test to verify Playwright
-npm run test:e2e -- --grep "basic navigation"
 
 # Check coverage setup
 npm run test:coverage
@@ -57,7 +35,6 @@ Recommended extensions:
 {
   "recommendations": [
     "ms-vscode.vscode-json",
-    "ms-playwright.playwright",
     "ZixuanChen.vitest-explorer",
     "bradlc.vscode-tailwindcss"
   ]
@@ -66,7 +43,6 @@ Recommended extensions:
 
 #### WebStorm
 - Enable Vitest support in Settings → Languages & Frameworks → Node.js → Vitest
-- Configure Playwright support via the Playwright plugin
 
 ### Environment Variables
 
@@ -80,24 +56,9 @@ VITE_APP_ENV=test
 # Test database settings (if applicable)
 TEST_DATABASE_URL=memory
 
-# Signaling server for E2E tests
-VITE_SIGNALING_URL=ws://localhost:4444
-
 # Performance test settings
 PERFORMANCE_DATASET_SIZE=1000
 MEMORY_THRESHOLD_MB=100
-```
-
-### Mock Services
-
-For development, you may want to start mock services:
-
-```bash
-# Start signaling server for E2E tests
-npm run signaling
-
-# In another terminal, run E2E tests
-npm run test:e2e
 ```
 
 ## Debugging Tests
@@ -126,43 +87,6 @@ Add to `.vscode/launch.json`:
 }
 ```
 
-### E2E Test Debugging
-
-#### Headed Mode
-```bash
-# Run tests with visible browser
-npm run test:e2e:headed
-
-# Debug specific test
-npx playwright test e2e/tests/device-pairing.spec.js --debug
-```
-
-#### Debug Mode
-```bash
-# Step through test execution
-npm run test:e2e:debug
-
-# UI mode for interactive debugging
-npm run test:e2e:ui
-```
-
-#### Recording Mode
-```bash
-# Generate test from user actions
-npx playwright codegen localhost:5173
-```
-
-### Browser Developer Tools
-
-Access browser dev tools during E2E tests:
-```javascript
-// In test file, add:
-test('debug test', async ({ page }) => {
-  await page.pause(); // Opens debugger
-  // Test continues...
-});
-```
-
 ## Performance Monitoring
 
 ### Memory Profiling
@@ -170,9 +94,6 @@ test('debug test', async ({ page }) => {
 ```bash
 # Run tests with memory monitoring
 node --expose-gc --inspect ./node_modules/vitest/vitest.mjs
-
-# E2E memory profiling
-npm run test:e2e -- --project=performance
 ```
 
 ### Coverage Analysis
@@ -198,9 +119,6 @@ CI=true npm run test:coverage:check
 
 # Run security tests locally
 npm run test:security
-
-# Full E2E suite (as run in CI)
-npm run test:e2e -- --workers=2 --reporter=github
 ```
 
 ### GitHub Actions Requirements
@@ -209,39 +127,15 @@ Ensure your repository has these secrets configured:
 - `GITHUB_TOKEN` (automatically provided)
 - Any additional secrets for external services
 
-### Self-Hosted Runners
-
-For self-hosted GitHub Actions runners:
-
-```bash
-# Install Playwright dependencies on runner
-npx playwright install-deps
-
-# Verify runner can access signaling server
-curl -I http://localhost:4444
-```
-
 ## Troubleshooting Common Issues
 
 ### Port Conflicts
 ```bash
 # Check if ports are in use
 lsof -i :3000  # Vite dev server
-lsof -i :4444  # Signaling server
 
 # Kill processes using ports
 pkill -f "vite"
-pkill -f "node.*server.js"
-```
-
-### Browser Installation Issues
-```bash
-# Clear Playwright cache and reinstall
-npx playwright uninstall --all
-npx playwright install --with-deps
-
-# Check system requirements
-npx playwright install-deps
 ```
 
 ### Test File Watching Issues
@@ -263,39 +157,12 @@ export NODE_OPTIONS="--max-old-space-size=4096"
 node --trace-warnings --expose-gc ./node_modules/vitest/vitest.mjs
 ```
 
-## Docker Setup (Optional)
-
-For consistent testing environments:
-
-```dockerfile
-# Dockerfile.test
-FROM mcr.microsoft.com/playwright:v1.57.0-focal
-
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci
-
-COPY . .
-RUN npm run build
-
-CMD ["npm", "run", "test:e2e"]
-```
-
-Build and run:
-```bash
-docker build -f Dockerfile.test -t hypermark-tests .
-docker run --rm hypermark-tests
-```
-
 ## Performance Optimization
 
 ### Parallel Test Execution
 ```bash
 # Unit tests with specific worker count
 npm test -- --reporter=verbose --threads=4
-
-# E2E tests with sharding
-npm run test:e2e -- --shard=1/4
 ```
 
 ### Selective Test Running
@@ -305,7 +172,6 @@ npm test -- --changed
 
 # Run tests matching pattern
 npm test -- crypto
-npm run test:e2e -- --grep "pairing"
 ```
 
 ### Test Data Management

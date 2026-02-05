@@ -424,7 +424,7 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
         </div>
 
         <div className="text-[10px] text-muted-foreground/50 font-medium">
-          Enter to save · Esc to {isNew ? 'cancel' : 'close'}
+          Ctrl+Enter to save · Esc to {isNew ? 'cancel' : 'close'}
         </div>
       </div>
     </div>

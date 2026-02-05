@@ -8,13 +8,6 @@ Hypermark's testing architecture is designed around privacy, security, and perfo
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    E2E Tests (Playwright)                  │
-│  ┌───────────────┐ ┌───────────────┐ ┌───────────────────┐ │
-│  │ Cross-Browser │ │ Multi-Device  │ │ Performance &     │ │
-│  │ Testing       │ │ Pairing       │ │ Visual Regression │ │
-│  └───────────────┘ └───────────────┘ └───────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-┌─────────────────────────────────────────────────────────────┐
 │              Integration Tests (Vitest)                    │
 │  ┌───────────────┐ ┌───────────────┐ ┌───────────────────┐ │
 │  │ Service Layer │ │ Storage       │ │ Component         │ │
@@ -69,30 +62,6 @@ export default defineConfig({
 - **Global test functions**: Reduces import boilerplate
 - **V8 coverage**: Native V8 coverage for accurate metrics
 - **Multiple reporters**: HTML for local development, lcov for CI
-
-#### Playwright Configuration (`playwright.config.js`)
-```javascript
-export default defineConfig({
-  projects: [
-    { name: 'chromium', use: devices['Desktop Chrome'] },
-    { name: 'firefox', use: devices['Desktop Firefox'] },
-    { name: 'webkit', use: devices['Desktop Safari'] },
-    { name: 'mobile-chrome', use: devices['Pixel 5'] },
-    { name: 'mobile-safari', use: devices['iPhone 12'] }
-  ],
-  use: {
-    baseURL: 'http://localhost:5173',
-    trace: 'on-first-retry',
-    video: 'retain-on-failure'
-  }
-});
-```
-
-**Design Decisions:**
-- **Multi-browser testing**: Ensures cross-browser compatibility
-- **Mobile device simulation**: Validates responsive design
-- **Trace on retry**: Debugging aid for flaky tests
-- **Video on failure**: Visual debugging for failed tests
 
 ### 2. Test Utilities and Mocking
 
@@ -252,76 +221,7 @@ describe('Pairing Protocol Security', () => {
 });
 ```
 
-### 4. Multi-Device E2E Testing
-
-#### Device Pair Fixture
-```javascript
-// Advanced multi-device testing setup
-export const devicePairFixture = base.extend({
-  devicePair: async ({ browser }, use) => {
-    // Create isolated contexts
-    const context1 = await browser.newContext({
-      storageState: { cookies: [], origins: [] }
-    });
-    const context2 = await browser.newContext({
-      storageState: { cookies: [], origins: [] }
-    });
-
-    const device1 = await context1.newPage();
-    const device2 = await context2.newPage();
-
-    // Setup device identification
-    await device1.addInitScript(() => {
-      window.deviceId = 'device1';
-    });
-    await device2.addInitScript(() => {
-      window.deviceId = 'device2';
-    });
-
-    await device1.goto('/');
-    await device2.goto('/');
-
-    await use({ device1, device2 });
-
-    await context1.close();
-    await context2.close();
-  }
-});
-```
-
-**Multi-Device Architecture:**
-- **Isolated contexts**: Prevents data leakage between devices
-- **Independent storage**: Each device has separate localStorage/IndexedDB
-- **Network isolation**: Simulates real device separation
-- **Synchronization testing**: Validates P2P communication
-
-#### Sync Validation Patterns
-```javascript
-// Sophisticated sync testing
-const waitForSyncComplete = async (page, timeout = 10000) => {
-  await page.waitForFunction(
-    () => {
-      const syncStatus = window.hypermark?.syncStatus;
-      const pendingOps = window.hypermark?.pendingOperations;
-      return syncStatus === 'synced' && pendingOps === 0;
-    },
-    { timeout }
-  );
-};
-
-const expectDataConsistency = async (device1, device2) => {
-  const data1 = await device1.evaluate(() =>
-    localStorage.getItem('hypermark-bookmarks')
-  );
-  const data2 = await device2.evaluate(() =>
-    localStorage.getItem('hypermark-bookmarks')
-  );
-
-  expect(JSON.parse(data1)).toEqual(JSON.parse(data2));
-};
-```
-
-### 5. Performance Testing Architecture
+### 4. Performance Testing Architecture
 
 #### Memory Monitoring
 ```javascript
@@ -370,7 +270,7 @@ class PerformanceMonitor {
 - **Threshold enforcement**: Fails tests on performance regression
 - **Detailed reporting**: Provides actionable performance data
 
-### 6. CI/CD Integration
+### 5. CI/CD Integration
 
 #### GitHub Actions Workflow Architecture
 ```yaml
@@ -390,15 +290,6 @@ jobs:
     steps:
       - name: Run security tests
         run: npm run test:security
-
-  e2e-tests:
-    strategy:
-      matrix:
-        browser: [chromium, firefox, webkit]
-        shard: [1/3, 2/3, 3/3]
-    steps:
-      - name: Run E2E tests
-        run: playwright test --project=${{ matrix.browser }} --shard=${{ matrix.shard }}
 ```
 
 **CI/CD Design:**
@@ -407,26 +298,7 @@ jobs:
 - **Matrix testing**: Ensures compatibility across environments
 - **Artifact management**: Preserves test results and reports
 
-#### Test Result Aggregation
-```javascript
-// Merge reports from parallel execution
-const mergeReports = async (reportPaths) => {
-  const reports = await Promise.all(
-    reportPaths.map(path => fs.readFile(path, 'utf8').then(JSON.parse))
-  );
-
-  return {
-    summary: {
-      total: reports.reduce((sum, r) => sum + r.summary.total, 0),
-      passed: reports.reduce((sum, r) => sum + r.summary.passed, 0),
-      failed: reports.reduce((sum, r) => sum + r.summary.failed, 0)
-    },
-    tests: reports.flatMap(r => r.tests)
-  };
-};
-```
-
-### 7. Test Data Management
+### 6. Test Data Management
 
 #### Fixture Generation
 ```javascript
@@ -540,11 +412,5 @@ class FlakyTestDetector {
 - **Timing attack detection**: Validate constant-time implementations
 - **Side-channel analysis**: Monitor for information leakage
 - **Formal verification**: Mathematical proof of critical algorithms
-
-### Advanced E2E Scenarios
-- **Network simulation**: More realistic network conditions
-- **Device diversity**: Testing across different device capabilities
-- **Stress testing**: High-load multi-device scenarios
-- **Chaos engineering**: Fault injection during tests
 
 This architecture provides a robust foundation for maintaining code quality, security, and performance as Hypermark evolves while ensuring comprehensive test coverage across all critical components.

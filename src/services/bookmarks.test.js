@@ -309,4 +309,184 @@ describe("bookmarks service", () => {
       expect(result.tags).toEqual(["c++", "c#", "node.js"]);
     });
   });
+
+  describe("inbox items", () => {
+    it("allows empty title when inbox is true", () => {
+      const result = validateBookmark({
+        url: "https://example.com",
+        title: "",
+        inbox: true,
+      });
+
+      expect(result.inbox).toBe(true);
+      expect(result.title).toBe("");
+    });
+
+    it("allows missing title when inbox is true", () => {
+      const result = validateBookmark({
+        url: "https://example.com",
+        inbox: true,
+      });
+
+      expect(result.inbox).toBe(true);
+      expect(result.title).toBe("");
+    });
+
+    it("still requires title when inbox is false", () => {
+      expect(() =>
+        validateBookmark({
+          url: "https://example.com",
+          inbox: false,
+        })
+      ).toThrow("Title is required");
+    });
+
+    it("still requires title when inbox is not set", () => {
+      expect(() =>
+        validateBookmark({
+          url: "https://example.com",
+        })
+      ).toThrow("Title is required");
+    });
+
+    it("converts inbox to boolean", () => {
+      const result1 = validateBookmark({
+        url: "https://example.com",
+        title: "Test",
+        inbox: 1,
+      });
+      const result2 = validateBookmark({
+        url: "https://example.com",
+        title: "Test",
+        inbox: 0,
+      });
+      const result3 = validateBookmark({
+        url: "https://example.com",
+        title: "Test",
+        inbox: "yes",
+      });
+
+      expect(result1.inbox).toBe(true);
+      expect(result2.inbox).toBe(false);
+      expect(result3.inbox).toBe(true);
+    });
+
+    it("still validates URL for inbox items", () => {
+      expect(() =>
+        validateBookmark({
+          url: "not a valid url",
+          inbox: true,
+        })
+      ).toThrow("Invalid URL format");
+    });
+  });
+
+  describe("favicon and preview fields", () => {
+    it("passes through favicon value", () => {
+      const result = validateBookmark({
+        url: "https://example.com",
+        title: "Test",
+        favicon: "https://example.com/favicon.ico",
+      });
+
+      expect(result.favicon).toBe("https://example.com/favicon.ico");
+    });
+
+    it("defaults favicon to null", () => {
+      const result = validateBookmark({
+        url: "https://example.com",
+        title: "Test",
+      });
+
+      expect(result.favicon).toBeNull();
+    });
+
+    it("passes through preview value", () => {
+      const result = validateBookmark({
+        url: "https://example.com",
+        title: "Test",
+        preview: "https://example.com/preview.png",
+      });
+
+      expect(result.preview).toBe("https://example.com/preview.png");
+    });
+
+    it("defaults preview to null", () => {
+      const result = validateBookmark({
+        url: "https://example.com",
+        title: "Test",
+      });
+
+      expect(result.preview).toBeNull();
+    });
+  });
+
+  describe("tag edge cases", () => {
+    it("handles non-string values in tags array", () => {
+      const result = validateBookmark({
+        url: "https://example.com",
+        title: "Test",
+        tags: [123, null, undefined, "valid"],
+      });
+
+      // Non-string tags should be converted to empty string and filtered
+      expect(result.tags).toContain("valid");
+      expect(result.tags.length).toBe(1);
+    });
+
+    it("handles non-array tags gracefully", () => {
+      const result = validateBookmark({
+        url: "https://example.com",
+        title: "Test",
+        tags: "not-an-array",
+      });
+
+      expect(result.tags).toEqual([]);
+    });
+
+    it("trims and lowercases each tag", () => {
+      const result = validateBookmark({
+        url: "https://example.com",
+        title: "Test",
+        tags: ["  JavaScript  ", "REACT", " node.JS "],
+      });
+
+      expect(result.tags).toEqual(["javascript", "react", "node.js"]);
+    });
+
+    it("deduplication is not enforced at validation level", () => {
+      const result = validateBookmark({
+        url: "https://example.com",
+        title: "Test",
+        tags: ["dup", "dup", "dup"],
+      });
+
+      // validateBookmark does not deduplicate - it normalizes
+      expect(result.tags).toEqual(["dup", "dup", "dup"]);
+    });
+  });
+
+  describe("normalizeUrl edge cases", () => {
+    it("handles URLs with encoded characters", () => {
+      const result = normalizeUrl("https://example.com/path%20with%20spaces");
+      expect(result).toContain("path%20with%20spaces");
+    });
+
+    it("handles URLs with multiple query parameters of same key", () => {
+      const result = normalizeUrl("https://example.com?a=1&a=2");
+      expect(result).toContain("a=1&a=2");
+    });
+
+    it("handles internationalized domain names", () => {
+      // punycode-encoded domains should work
+      const result = normalizeUrl("https://xn--n3h.example.com");
+      expect(result).toContain("xn--n3h.example.com");
+    });
+
+    it("handles very long paths", () => {
+      const longPath = "/a".repeat(500);
+      const result = normalizeUrl(`https://example.com${longPath}`);
+      expect(result).toContain(longPath);
+    });
+  });
 });

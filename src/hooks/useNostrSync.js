@@ -19,11 +19,13 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import * as Y from 'yjs'
 import { NostrSyncService, CONNECTION_STATES } from '../services/nostr-sync'
 import { retrieveLEK } from '../services/key-storage'
 import { getYdocInstance, getUndoManager } from './useYjs'
 import { getNostrDiagnostics } from '../services/nostr-diagnostics'
+import { ymapToBookmarkData } from '../utils/bookmark-transform'
+import { exposeDebugUtilities } from '../services/nostr-sync-debug'
+import { handleInboundBookmark, handleInboundDeletion } from '../services/nostr-inbound-handlers'
 import {
   SyncPerformanceManager,
   PERFORMANCE_CONFIG,
@@ -36,188 +38,9 @@ let nostrSyncService = null
 let nostrSyncListeners = []
 let performanceManager = null
 let initializationPromise = null // Guard against concurrent initialization
-let processedEventIds = new Set() // Track processed events to prevent duplicates
-let deletedBookmarkIds = new Set() // Track deleted bookmarks to skip duplicate delete events
-
-// ============================================================================
-// DEBUG UTILITIES - Remove after fixing bookmark undo persistence issue
-// ============================================================================
-const DEBUG_SYNC = true // Set to false to disable verbose logging
-
-const syncDebug = {
-  eventLog: [], // Chronological log of all events
-  bookmarkSnapshots: new Map(), // bookmarkId -> array of state snapshots
-
-  log(type, data) {
-    const entry = {
-      time: new Date().toISOString(),
-      timestamp: Date.now(),
-      type,
-      ...data
-    }
-    this.eventLog.push(entry)
-    if (DEBUG_SYNC) {
-      const prefix = type.includes('DELETE') ? '🗑️' : type.includes('BOOKMARK') ? '📖' : 'ℹ️'
-      console.log(`[SyncDebug] ${prefix} ${type}`, data)
-    }
-  },
-
-  snapshot(bookmarkId, state, source) {
-    if (!this.bookmarkSnapshots.has(bookmarkId)) {
-      this.bookmarkSnapshots.set(bookmarkId, [])
-    }
-    this.bookmarkSnapshots.get(bookmarkId).push({
-      time: new Date().toISOString(),
-      timestamp: Date.now(),
-      source,
-      state: JSON.parse(JSON.stringify(state))
-    })
-  },
-
-  // Get timeline for a specific bookmark
-  getTimeline(bookmarkId) {
-    return this.bookmarkSnapshots.get(bookmarkId) || []
-  },
-
-  // Get all events for a bookmark
-  getEventsFor(bookmarkId) {
-    return this.eventLog.filter(e => e.bookmarkId === bookmarkId)
-  },
-
-  // Print summary
-  printSummary() {
-    console.log('=== SYNC DEBUG SUMMARY ===')
-    console.log(`Total events: ${this.eventLog.length}`)
-    console.log(`Bookmarks tracked: ${this.bookmarkSnapshots.size}`)
-    console.log('\nEvent breakdown:')
-    const counts = {}
-    this.eventLog.forEach(e => { counts[e.type] = (counts[e.type] || 0) + 1 })
-    Object.entries(counts).forEach(([type, count]) => console.log(`  ${type}: ${count}`))
-  },
-
-  // Republish a bookmark with fresh timestamp (to fix "doomed" bookmarks)
-  async republishBookmark(bookmarkId) {
-    const ydoc = getYdocInstance()
-    if (!ydoc) {
-      console.error('Ydoc not available')
-      return
-    }
-    const bookmarksMap = ydoc.getMap('bookmarks')
-    const bookmark = bookmarksMap.get(bookmarkId)
-    if (!bookmark) {
-      console.error(`Bookmark ${bookmarkId} not found locally. It may have been deleted.`)
-      console.log('Tip: Call this right after you see the bookmark flash, or check syncDebug.eventLog for the bookmark data')
-      return
-    }
-
-    const data = bookmark.get ? {
-      url: bookmark.get('url'),
-      title: bookmark.get('title'),
-      description: bookmark.get('description') || '',
-      tags: bookmark.get('tags')?.toArray?.() || bookmark.get('tags') || [],
-      readLater: bookmark.get('readLater') || false,
-      inbox: bookmark.get('inbox') || false,
-      favicon: bookmark.get('favicon') || null,
-      preview: bookmark.get('preview') || null,
-      createdAt: bookmark.get('createdAt'),
-      updatedAt: Date.now(), // Fresh timestamp!
-    } : { ...bookmark, updatedAt: Date.now() }
-
-    // Save locally with fresh timestamp
-    ydoc.transact(() => {
-      bookmarksMap.set(bookmarkId, data)
-    }, 'local')
-
-    // Publish to Nostr
-    if (nostrSyncService && nostrSyncService.isInitialized) {
-      await nostrSyncService.queueBookmarkUpdate(bookmarkId, data)
-      console.log(`✅ Republished ${bookmarkId} with fresh timestamp: ${data.updatedAt}`)
-    } else {
-      console.log(`⚠️ Saved locally but Nostr not connected. Will sync when connected.`)
-    }
-  },
-
-  // Republish from cached event data (for bookmarks that flash and disappear)
-  async republishFromCache(bookmarkId) {
-    const events = this.getEventsFor(bookmarkId)
-    const bookmarkEvent = events.find(e => e.type === 'BOOKMARK_RECEIVED' && e.bookmarkData)
-    if (!bookmarkEvent) {
-      console.error(`No cached bookmark data for ${bookmarkId}`)
-      console.log('Available bookmark IDs in cache:', [...new Set(this.eventLog.filter(e => e.bookmarkData).map(e => e.bookmarkId))])
-      return
-    }
-
-    const ydoc = getYdocInstance()
-    const bookmarksMap = ydoc.getMap('bookmarks')
-    const freshData = { ...bookmarkEvent.bookmarkData, updatedAt: Date.now() }
-
-    // Save locally
-    ydoc.transact(() => {
-      bookmarksMap.set(bookmarkId, freshData)
-    }, 'local')
-
-    // Publish to Nostr
-    if (nostrSyncService && nostrSyncService.isInitialized) {
-      await nostrSyncService.queueBookmarkUpdate(bookmarkId, freshData)
-      console.log(`✅ Republished ${bookmarkId} from cache with fresh timestamp: ${freshData.updatedAt}`)
-    } else {
-      console.log(`⚠️ Saved locally but Nostr not connected.`)
-    }
-  }
-}
 
 // Expose debug utilities on window
-if (typeof window !== 'undefined') {
-  window.__syncDebug = syncDebug
-  window.__getNostrSync = () => nostrSyncService
-  window.__getYdoc = getYdocInstance
-  console.log(`
-🔧 NOSTR SYNC DEBUG UTILITIES AVAILABLE:
-   window.__syncDebug.printSummary()           - Print event summary
-   window.__syncDebug.eventLog                 - All events (chronological)
-   window.__syncDebug.getEventsFor(id)         - Events for specific bookmark
-   window.__syncDebug.getTimeline(id)          - State snapshots for bookmark
-   window.__syncDebug.republishBookmark(id)    - Fix a doomed bookmark (if visible)
-   window.__syncDebug.republishFromCache(id)   - Fix from cached data (after flash)
-   window.__getYdoc()                          - Get Yjs document
-   window.__getNostrSync()                     - Get NostrSyncService instance
-  `)
-}
-
-/**
- * Convert a plain bookmark object to a Y.Map for Yjs storage
- * @param {Object} bookmarkData - Plain bookmark object from Nostr
- * @returns {Y.Map} - Y.Map instance
- */
-function bookmarkDataToYMap(bookmarkData) {
-  const ymap = new Y.Map()
-
-  // Set all bookmark properties
-  if (bookmarkData.url) ymap.set('url', bookmarkData.url)
-  if (bookmarkData.title) ymap.set('title', bookmarkData.title)
-  if (bookmarkData.description) ymap.set('description', bookmarkData.description)
-  if (bookmarkData.favicon) ymap.set('favicon', bookmarkData.favicon)
-  if (bookmarkData.preview) ymap.set('preview', bookmarkData.preview)
-  if (bookmarkData.readLater !== undefined) ymap.set('readLater', bookmarkData.readLater)
-  if (bookmarkData.createdAt) ymap.set('createdAt', bookmarkData.createdAt)
-  if (bookmarkData.updatedAt) ymap.set('updatedAt', bookmarkData.updatedAt)
-
-  // Handle tags array - convert to Y.Array
-  if (bookmarkData.tags && Array.isArray(bookmarkData.tags) && bookmarkData.tags.length > 0) {
-    const tagsArray = new Y.Array()
-    // Filter out any undefined/null values before pushing
-    const validTags = bookmarkData.tags.filter(t => t != null)
-    if (validTags.length > 0) {
-      tagsArray.push(validTags)
-    }
-    ymap.set('tags', tagsArray)
-  } else {
-    // Set empty tags array
-    ymap.set('tags', new Y.Array())
-  }
-
-  return ymap
-}
+exposeDebugUtilities(() => nostrSyncService)
 
 /**
  * Notify all listeners of service changes
@@ -475,7 +298,6 @@ export function useNostrSync(options = {}) {
 
           // Record network latency for optimization
           if (performanceManager && newState === CONNECTION_STATES.CONNECTED) {
-            // Simple latency estimation based on connection time
             performanceManager.recordNetworkLatency(500) // Default estimate
           }
 
@@ -483,7 +305,6 @@ export function useNostrSync(options = {}) {
           if (newState === CONNECTION_STATES.ERROR) {
             setRelayErrors(prev => ({ ...prev, [relayUrl]: true }))
           } else if (newState === CONNECTION_STATES.CONNECTED || newState === CONNECTION_STATES.CONNECTING) {
-            // Only clear error for THIS relay when it connects/reconnects
             setRelayErrors(prev => {
               const next = { ...prev }
               delete next[relayUrl]
@@ -492,157 +313,13 @@ export function useNostrSync(options = {}) {
           }
         })
 
-        // Set up bookmark sync subscription with performance optimizations
+        // Set up bookmark sync subscription using extracted handlers
         bookmarkSubscriptionRef.current = await nostrSyncService.subscribeToBookmarks(
-          async (bookmarkId, bookmarkData, event) => {
-            // Log incoming bookmark event
-            syncDebug.log('BOOKMARK_RECEIVED', {
-              bookmarkId,
-              eventId: event?.id?.substring(0, 12),
-              eventCreatedAt: event?.created_at,
-              eventCreatedAtDate: event?.created_at ? new Date(event.created_at * 1000).toISOString() : null,
-              bookmarkUpdatedAt: bookmarkData?.updatedAt,
-              bookmarkUpdatedAtDate: bookmarkData?.updatedAt ? new Date(bookmarkData.updatedAt).toISOString() : null,
-              bookmarkTitle: bookmarkData?.title,
-              bookmarkData: bookmarkData, // Cache full data for republishing
-            })
-
-            // Early validation - skip invalid/empty bookmarks immediately
-            if (!bookmarkData || !bookmarkData.url || !bookmarkData.title) {
-              syncDebug.log('BOOKMARK_SKIPPED_INVALID', { bookmarkId, reason: 'missing url or title' })
-              return
-            }
-
-            // Deduplicate: skip if we've already processed this event
-            if (event?.id && processedEventIds.has(event.id)) {
-              syncDebug.log('BOOKMARK_SKIPPED_DUPLICATE', { bookmarkId, eventId: event.id.substring(0, 12) })
-              return
-            }
-            if (event?.id) {
-              processedEventIds.add(event.id)
-              // Limit set size to prevent memory leak
-              if (processedEventIds.size > 1000) {
-                const idsToRemove = [...processedEventIds].slice(0, 500)
-                idsToRemove.forEach(id => processedEventIds.delete(id))
-              }
-            }
-
-            // Defer processing to not block the main thread
-            setTimeout(() => {
-              // Apply to Yjs document
-              const ydoc = getYdocInstance()
-              if (ydoc) {
-                const bookmarksMap = ydoc.getMap('bookmarks')
-                // Only apply if different from local (simple conflict avoidance)
-                const existing = bookmarksMap.get(bookmarkId)
-                // Handle both Y.Map (local) and plain object (legacy) formats
-                const existingUpdatedAt = existing?.get ? existing.get('updatedAt') : existing?.updatedAt
-
-                syncDebug.log('BOOKMARK_APPLY_CHECK', {
-                  bookmarkId,
-                  hasExisting: !!existing,
-                  existingUpdatedAt,
-                  existingUpdatedAtDate: existingUpdatedAt ? new Date(existingUpdatedAt).toISOString() : null,
-                  incomingUpdatedAt: bookmarkData.updatedAt,
-                  incomingUpdatedAtDate: new Date(bookmarkData.updatedAt).toISOString(),
-                  willApply: !existing || !existingUpdatedAt || existingUpdatedAt < bookmarkData.updatedAt,
-                  reason: !existing ? 'no local copy' : !existingUpdatedAt ? 'no local timestamp' : existingUpdatedAt < bookmarkData.updatedAt ? 'incoming is newer' : 'local is same or newer',
-                })
-
-                if (!existing || !existingUpdatedAt || existingUpdatedAt < bookmarkData.updatedAt) {
-                  // Convert plain object to Y.Map for consistent Yjs storage
-                  const bookmarkYMap = bookmarkDataToYMap(bookmarkData)
-                  // Use transaction with 'nostr-sync' origin so observer knows not to re-publish
-                  ydoc.transact(() => {
-                    bookmarksMap.set(bookmarkId, bookmarkYMap)
-                  }, 'nostr-sync')
-                  syncDebug.log('BOOKMARK_APPLIED', { bookmarkId, updatedAt: bookmarkData.updatedAt })
-                  syncDebug.snapshot(bookmarkId, bookmarkData, 'nostr-incoming')
-                } else {
-                  syncDebug.log('BOOKMARK_SKIPPED_OLDER', { bookmarkId, existingUpdatedAt, incomingUpdatedAt: bookmarkData.updatedAt })
-                }
-              }
-              setLastSyncTime(Date.now())
-            }, 0)
-
-            setLastSyncTime(Date.now())
+          (bookmarkId, bookmarkData, event) => {
+            handleInboundBookmark(bookmarkId, bookmarkData, event, setLastSyncTime)
           },
-          async (bookmarkId, event) => {
-            // Log incoming deletion event
-            const deletionTime = event?.created_at ? event.created_at * 1000 : 0
-            syncDebug.log('DELETE_RECEIVED', {
-              bookmarkId,
-              eventId: event?.id?.substring(0, 12),
-              eventCreatedAt: event?.created_at,
-              eventCreatedAtDate: event?.created_at ? new Date(event.created_at * 1000).toISOString() : null,
-              deletionTimeMs: deletionTime,
-            })
-
-            // Deduplicate: skip if we've already processed this event
-            if (event?.id && processedEventIds.has(event.id)) {
-              syncDebug.log('DELETE_SKIPPED_DUPLICATE_EVENT', { bookmarkId, eventId: event.id.substring(0, 12) })
-              return
-            }
-            if (event?.id) {
-              processedEventIds.add(event.id)
-            }
-
-            // Deduplicate: skip if we've already deleted this bookmark
-            if (deletedBookmarkIds.has(bookmarkId)) {
-              syncDebug.log('DELETE_SKIPPED_ALREADY_DELETED', { bookmarkId })
-              return
-            }
-
-            // Defer to not block main thread
-            setTimeout(() => {
-              const ydoc = getYdocInstance()
-              if (ydoc) {
-                const bookmarksMap = ydoc.getMap('bookmarks')
-                const existing = bookmarksMap.get(bookmarkId)
-
-                // Check if local bookmark exists and is newer than deletion event
-                // This handles the case where user undid a deletion - the restored
-                // bookmark will have a newer updatedAt than the deletion event
-                if (existing) {
-                  const updatedAt = existing?.get ? existing.get('updatedAt') : existing?.updatedAt
-                  // Nostr events use seconds, our timestamps use milliseconds
-                  const deletionTimeMs = event?.created_at ? event.created_at * 1000 : 0
-
-                  syncDebug.log('DELETE_APPLY_CHECK', {
-                    bookmarkId,
-                    localUpdatedAt: updatedAt,
-                    localUpdatedAtDate: updatedAt ? new Date(updatedAt).toISOString() : null,
-                    deletionTimeMs,
-                    deletionTimeDate: new Date(deletionTimeMs).toISOString(),
-                    localIsNewer: updatedAt && updatedAt > deletionTimeMs,
-                    willDelete: !(updatedAt && updatedAt > deletionTimeMs),
-                  })
-
-                  if (updatedAt && updatedAt > deletionTimeMs) {
-                    syncDebug.log('DELETE_SKIPPED_LOCAL_NEWER', { bookmarkId, localUpdatedAt: updatedAt, deletionTimeMs })
-                    return
-                  }
-                } else {
-                  syncDebug.log('DELETE_NO_LOCAL_COPY', { bookmarkId, willDelete: false })
-                }
-
-                // Track this deletion
-                deletedBookmarkIds.add(bookmarkId)
-                // Limit set size
-                if (deletedBookmarkIds.size > 500) {
-                  const idsToRemove = [...deletedBookmarkIds].slice(0, 250)
-                  idsToRemove.forEach(id => deletedBookmarkIds.delete(id))
-                }
-
-                // Use transaction with 'nostr-sync' origin so observer knows not to re-publish
-                ydoc.transact(() => {
-                  bookmarksMap.delete(bookmarkId)
-                }, 'nostr-sync')
-                syncDebug.log('DELETE_APPLIED', { bookmarkId })
-                syncDebug.snapshot(bookmarkId, { deleted: true }, 'nostr-deletion')
-              }
-              setLastSyncTime(Date.now())
-            }, 0)
+          (bookmarkId, event) => {
+            handleInboundDeletion(bookmarkId, event, setLastSyncTime)
           }
         )
 
@@ -657,7 +334,6 @@ export function useNostrSync(options = {}) {
             performanceManager.initialize(bookmarkCount)
             console.log('[useNostrSync] Performance manager initialized for', bookmarkCount, 'bookmarks')
 
-            // Check if this is a large collection and enable background sync
             if (bookmarkCount >= PERFORMANCE_CONFIG.LARGE_COLLECTION_THRESHOLD) {
               console.log('[useNostrSync] Large collection detected, performance optimizations enabled')
               setIsBackgroundSyncing(true)
@@ -665,7 +341,6 @@ export function useNostrSync(options = {}) {
           }
 
           // Clean up existing observer before attaching new one
-          // (prevents duplicate observers if initialize runs multiple times)
           if (yjsObserverRef.current) {
             bookmarksMap.unobserve(yjsObserverRef.current)
           }
@@ -685,41 +360,25 @@ export function useNostrSync(options = {}) {
                 if (change.action === 'add' || change.action === 'update') {
                   const bookmarkYMap = bookmarksMap.get(key)
                   if (bookmarkYMap) {
-                    // Convert Y.Map to plain object for publishing
-                    let bookmarkData = bookmarkYMap.get ? {
-                      url: bookmarkYMap.get('url'),
-                      title: bookmarkYMap.get('title'),
-                      description: bookmarkYMap.get('description') || '',
-                      tags: bookmarkYMap.get('tags')?.toArray() || [],
-                      readLater: bookmarkYMap.get('readLater') || false,
-                      inbox: bookmarkYMap.get('inbox') || false,
-                      favicon: bookmarkYMap.get('favicon') || null,
-                      preview: bookmarkYMap.get('preview') || null,
-                      createdAt: bookmarkYMap.get('createdAt'),
-                      updatedAt: bookmarkYMap.get('updatedAt'),
-                    } : { ...bookmarkYMap } // Already a plain object, clone it
+                    let bookmarkData = ymapToBookmarkData(bookmarkYMap)
 
                     // If this is an undo restoration (bookmark was deleted and now restored),
                     // bump updatedAt to ensure it's newer than any deletion events on relays.
-                    // This prevents the deletion from being replayed on refresh.
                     if (isUndoRedo && change.action === 'add') {
                       const newUpdatedAt = Date.now()
                       console.log('[useNostrSync] Undo restoration detected, bumping updatedAt:', key, { old: bookmarkData.updatedAt, new: newUpdatedAt })
                       bookmarkData = { ...bookmarkData, updatedAt: newUpdatedAt }
 
                       // Persist the updated timestamp to IndexedDB
-                      // Use 'nostr-sync' origin to avoid re-triggering this observer
                       ydoc.transact(() => {
                         bookmarksMap.set(key, bookmarkData)
                       }, 'nostr-sync')
                     }
 
-                    // Queue for debounced publishing
                     nostrSyncService.queueBookmarkUpdate(key, bookmarkData)
                   }
                 } else if (change.action === 'delete') {
                   console.log('[useNostrSync] Publishing bookmark deletion:', key)
-                  // Publish deletion immediately (no debounce for deletions)
                   nostrSyncService.publishBookmarkDeletion(key)
                     .then((event) => {
                       if (event) {
@@ -755,7 +414,6 @@ export function useNostrSync(options = {}) {
       setInitError(err.message || 'Failed to initialize Nostr sync')
       setIsConnecting(false)
 
-      // Record initialization error in diagnostics
       try {
         getNostrDiagnostics().recordError(err, { eventType: 'init' })
       } catch (e) {
@@ -781,7 +439,6 @@ export function useNostrSync(options = {}) {
    * Disconnect from Nostr relays
    */
   const disconnect = useCallback(async () => {
-    // Cleanup Yjs observer
     if (yjsObserverRef.current) {
       const ydoc = getYdocInstance()
       if (ydoc) {
@@ -791,13 +448,11 @@ export function useNostrSync(options = {}) {
       yjsObserverRef.current = null
     }
 
-    // Cleanup bookmark subscription
     if (bookmarkSubscriptionRef.current && nostrSyncService) {
       await nostrSyncService.unsubscribe(bookmarkSubscriptionRef.current)
       bookmarkSubscriptionRef.current = null
     }
 
-    // Clear received bookmarks tracking
     receivedBookmarksRef.current.clear()
 
     await disconnectNostrSync()
@@ -809,9 +464,6 @@ export function useNostrSync(options = {}) {
     setPerformanceStats(null)
   }, [updateStatus])
 
-  /**
-   * Pause background sync operations (useful when app goes to background)
-   */
   const pauseBackgroundSync = useCallback(() => {
     if (performanceManager) {
       performanceManager.pauseBackgroundOperations()
@@ -819,9 +471,6 @@ export function useNostrSync(options = {}) {
     }
   }, [])
 
-  /**
-   * Resume background sync operations
-   */
   const resumeBackgroundSync = useCallback(() => {
     if (performanceManager) {
       performanceManager.resumeBackgroundOperations()
@@ -829,9 +478,6 @@ export function useNostrSync(options = {}) {
     }
   }, [])
 
-  /**
-   * Get recommended sync parameters based on current network/memory conditions
-   */
   const getRecommendedParameters = useCallback(() => {
     if (performanceManager) {
       return performanceManager.getRecommendedParameters()
@@ -844,13 +490,11 @@ export function useNostrSync(options = {}) {
     let timeoutId = null
 
     if (autoInitialize) {
-      // Defer initialization to let the UI render first
       timeoutId = setTimeout(() => {
         initialize()
       }, 100)
     }
 
-    // Cleanup on unmount
     return () => {
       if (timeoutId) {
         clearTimeout(timeoutId)
@@ -869,8 +513,6 @@ export function useNostrSync(options = {}) {
   useEffect(() => {
     const unsubscribe = subscribeToNostrSync((service) => {
       updateStatus()
-      // When service becomes initialized (e.g., after pairing calls initializeNostrSync),
-      // trigger full hook initialization to set up subscriptions and observers
       if (service?.isInitialized && !bookmarkSubscriptionRef.current) {
         initialize()
       }
@@ -890,7 +532,6 @@ export function useNostrSync(options = {}) {
       : null
 
   return {
-    // Status
     isInitialized,
     isConnecting,
     isConnected: connectedRelays > 0,
@@ -898,25 +539,17 @@ export function useNostrSync(options = {}) {
     totalRelays,
     pendingUpdates,
     error,
-    relayErrors, // Expose per-relay errors for detailed UI
+    relayErrors,
     lastSyncTime,
-
-    // Performance status
     syncProgress,
     isBackgroundSyncing,
     performanceStats,
-
-    // Methods
     initialize,
     disconnect,
     syncNow,
-
-    // Performance methods
     pauseBackgroundSync,
     resumeBackgroundSync,
     getRecommendedParameters,
-
-    // Service access (for advanced use)
     getService: () => nostrSyncService,
     getPerformanceManager: () => performanceManager,
   }
@@ -943,18 +576,7 @@ export async function publishAllExistingBookmarks() {
   let count = 0
 
   bookmarksMap.forEach((bookmark, id) => {
-    const bookmarkData = bookmark.get ? {
-      url: bookmark.get('url'),
-      title: bookmark.get('title'),
-      description: bookmark.get('description') || '',
-      tags: bookmark.get('tags')?.toArray?.() || [],
-      readLater: bookmark.get('readLater') || false,
-      inbox: bookmark.get('inbox') || false,
-      favicon: bookmark.get('favicon') || null,
-      preview: bookmark.get('preview') || null,
-      createdAt: bookmark.get('createdAt'),
-      updatedAt: bookmark.get('updatedAt'),
-    } : { ...bookmark }
+    const bookmarkData = ymapToBookmarkData(bookmark)
 
     if (bookmarkData.url && bookmarkData.title) {
       nostrSyncService.queueBookmarkUpdate(id, bookmarkData)

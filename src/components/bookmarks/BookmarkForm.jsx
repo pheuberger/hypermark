@@ -8,6 +8,13 @@ import { getAllTags } from '../../services/bookmarks'
 import { useHotkeys } from '../../hooks/useHotkeys'
 import { useContentSuggestion } from '../../hooks/useContentSuggestion'
 
+// Helper to detect if a string looks like a URL
+function looksLikeUrl(str) {
+  if (!str) return false
+  const trimmed = str.trim()
+  return /^https?:\/\//i.test(trimmed) || /^www\./i.test(trimmed)
+}
+
 export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
   const isEditing = Boolean(initialData)
   const formRef = useRef(null)
@@ -23,8 +30,9 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
   const [allTags, setAllTags] = useState([])
+  const [suggestedTags, setSuggestedTags] = useState([]) // Tags from suggestions, not yet applied
 
-  const { suggestions, loading: suggesting, error: suggestError, suggest, clear: clearSuggestions, enabled: suggestionsEnabled } = useContentSuggestion()
+  const { suggestions, loading: suggesting, error: suggestError, suggest, clear: clearSuggestions, cancel: cancelSuggestion, enabled: suggestionsEnabled } = useContentSuggestion()
 
   useEffect(() => {
     if (initialData) {
@@ -45,6 +53,7 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
       })
     }
     setErrors({})
+    setSuggestedTags([])
     clearSuggestions()
   }, [initialData, isOpen, clearSuggestions])
 
@@ -58,16 +67,26 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
     }
   }, [isOpen])
 
-  // Apply suggestions to empty fields when they arrive
+  // Apply suggestions to empty fields when they arrive (except tags - show those separately)
   useEffect(() => {
     if (!suggestions) return
     setFormData((prev) => ({
       ...prev,
       title: prev.title || suggestions.title || prev.title,
       description: prev.description || suggestions.description || prev.description,
-      tags: prev.tags.length > 0 ? prev.tags : suggestions.suggestedTags || prev.tags,
+      // Don't auto-apply tags - let user pick from suggestedTags
     }))
-  }, [suggestions])
+    // Show suggested tags that aren't already in the form
+    if (suggestions.suggestedTags?.length > 0) {
+      setSuggestedTags((prev) => {
+        // Filter out tags already in formData
+        const newSuggested = suggestions.suggestedTags.filter(
+          (tag) => !formData.tags.includes(tag)
+        )
+        return newSuggested
+      })
+    }
+  }, [suggestions, formData.tags])
 
   const submitForm = useCallback(() => {
     if (formRef.current && !loading) {
@@ -153,6 +172,43 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
     }
   }
 
+  // Auto-suggest when URL is pasted
+  const handleUrlPaste = (e) => {
+    const pastedText = e.clipboardData?.getData('text')
+    if (pastedText && looksLikeUrl(pastedText) && suggestionsEnabled && !isEditing) {
+      // Small delay to let the input update first
+      setTimeout(() => {
+        const url = pastedText.trim().startsWith('http')
+          ? pastedText.trim()
+          : `https://${pastedText.trim()}`
+        suggest(url)
+      }, 100)
+    }
+  }
+
+  // Add a single suggested tag
+  const addSuggestedTag = (tag) => {
+    setFormData((prev) => ({
+      ...prev,
+      tags: [...prev.tags, tag],
+    }))
+    setSuggestedTags((prev) => prev.filter((t) => t !== tag))
+  }
+
+  // Add all suggested tags
+  const addAllSuggestedTags = () => {
+    setFormData((prev) => ({
+      ...prev,
+      tags: [...prev.tags, ...suggestedTags],
+    }))
+    setSuggestedTags([])
+  }
+
+  // Dismiss all suggested tags
+  const dismissSuggestedTags = () => {
+    setSuggestedTags([])
+  }
+
   return (
     <Modal
       isOpen={isOpen}
@@ -167,6 +223,7 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
               type="url"
               value={formData.url}
               onChange={(value) => updateField('url', value)}
+              onPaste={handleUrlPaste}
               placeholder="https://example.com"
               required
               error={errors.url}
@@ -178,17 +235,24 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
               <Button
                 type="button"
                 variant="ghost"
-                onClick={handleSuggest}
-                disabled={loading || suggesting || !formData.url.trim()}
+                onClick={suggesting ? cancelSuggestion : handleSuggest}
+                disabled={loading || !formData.url.trim()}
                 className="text-xs whitespace-nowrap"
               >
-                {suggesting ? 'Fetching...' : 'Suggest'}
+                {suggesting ? 'Cancel' : 'Suggest'}
               </Button>
             </div>
           )}
         </div>
 
-        {suggestError && (
+        {suggesting && (
+          <p className="text-xs text-muted-foreground -mt-2 mb-3 flex items-center gap-1.5">
+            <span className="inline-block w-3 h-3 border-2 border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin" />
+            Fetching suggestions...
+          </p>
+        )}
+
+        {suggestError && !suggesting && (
           <p className="text-xs text-muted-foreground -mt-2 mb-3">
             Could not fetch suggestions
           </p>
@@ -199,7 +263,7 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
           type="text"
           value={formData.title}
           onChange={(value) => updateField('title', value)}
-          placeholder="Bookmark title"
+          placeholder={suggesting ? 'Loading...' : 'Bookmark title'}
           required
           error={errors.title}
           disabled={loading}
@@ -233,13 +297,51 @@ export function BookmarkForm({ isOpen, onClose, onSave, initialData = null }) {
               {errors.tags}
             </p>
           )}
+
+          {suggestedTags.length > 0 && (
+            <div className="mt-3 p-2.5 rounded-md bg-muted/50 border border-border/50">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-muted-foreground">Suggested tags</span>
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={addAllSuggestedTags}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    Add all
+                  </button>
+                  <span className="text-muted-foreground/50">·</span>
+                  <button
+                    type="button"
+                    onClick={dismissSuggestedTags}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {suggestedTags.map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => addSuggestedTag(tag)}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-md bg-background border border-border hover:border-primary hover:text-primary transition-colors cursor-pointer"
+                  >
+                    <span className="text-muted-foreground">+</span>
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <TextArea
           label="Description"
           value={formData.description}
           onChange={(value) => updateField('description', value)}
-          placeholder="Optional description..."
+          placeholder={suggesting ? 'Loading...' : 'Optional description...'}
           rows={3}
           disabled={loading}
         />

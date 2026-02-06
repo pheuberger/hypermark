@@ -55,9 +55,10 @@ dev:
 	@: > logs/dev.log
 	@# Write .env.local for local dev
 	@echo "VITE_SIGNALING_URL=ws://localhost:$(PORT_SIGNALING)" > .env.local
-	@# Start signaling server
-	@echo -e "$(GREEN)Starting signaling server...$(NC)"
-	@npm run signaling 2>&1 | sed 's/^/[signaling] /' >> logs/dev.log & \
+	@echo "VITE_SUGGESTION_URL=http://localhost:$(PORT_SIGNALING)" >> .env.local
+	@# Start services server (signaling + suggestions)
+	@echo -e "$(GREEN)Starting services server...$(NC)"
+	@npm run services 2>&1 | sed 's/^/[services] /' >> logs/dev.log & \
 		echo $$! > $(PID_SIGNALING)
 	@# Wait for signaling ready
 	@$(MAKE) --no-print-directory wait-signaling
@@ -72,8 +73,9 @@ dev:
 	@echo -e "$(GREEN)  Local dev ready at http://localhost:$(PORT_VITE)$(NC)"
 	@echo -e "$(GREEN)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
 	@echo ""
-	@echo "  Logs: tail -f logs/dev.log"
-	@echo "  Stop: make stop"
+	@echo "  Services: http://localhost:$(PORT_SIGNALING) (signaling + suggestions)"
+	@echo "  Logs:     tail -f logs/dev.log"
+	@echo "  Stop:     make stop"
 	@echo ""
 
 #------------------------------------------------------------------------------
@@ -95,11 +97,11 @@ remote:
 	@# Setup
 	@mkdir -p logs
 	@: > logs/dev.log
-	@# Start signaling server
-	@echo -e "$(GREEN)Starting signaling server...$(NC)"
-	@npm run signaling 2>&1 | sed 's/^/[signaling] /' >> logs/dev.log & \
+	@# Start services server (signaling + suggestions)
+	@echo -e "$(GREEN)Starting services server...$(NC)"
+	@npm run services 2>&1 | sed 's/^/[services] /' >> logs/dev.log & \
 		echo $$! > $(PID_SIGNALING)
-	@# Wait for signaling ready
+	@# Wait for services ready
 	@$(MAKE) --no-print-directory wait-signaling
 	@# Start ngrok
 	@echo -e "$(GREEN)Starting ngrok tunnels...$(NC)"
@@ -180,10 +182,10 @@ check-ports:
 	done
 
 wait-signaling:
-	@echo -n "  Waiting for signaling server"
+	@echo -n "  Waiting for services"
 	@ELAPSED=0; \
 	while [ $$ELAPSED -lt $(TIMEOUT_SECS) ]; do \
-		if curl -s http://localhost:$(PORT_SIGNALING) >/dev/null 2>&1; then \
+		if curl -s http://localhost:$(PORT_SIGNALING)/api/health 2>&1 | grep -q '"status":"ok"'; then \
 			echo -e " $(GREEN)✓$(NC)"; \
 			exit 0; \
 		fi; \
@@ -192,7 +194,7 @@ wait-signaling:
 		ELAPSED=$$((ELAPSED + 1)); \
 	done; \
 	echo -e " $(RED)✗$(NC)"; \
-	echo -e "$(RED)Error: Signaling server failed to start within $(TIMEOUT_SECS)s$(NC)"; \
+	echo -e "$(RED)Error: Services server failed to start within $(TIMEOUT_SECS)s$(NC)"; \
 	$(MAKE) --no-print-directory stop; \
 	exit 1
 
@@ -232,6 +234,7 @@ discover-tunnels:
 	fi; \
 	WS_URL=$$(echo "$$SIGNALING_URL" | sed 's|^https://|wss://|'); \
 	echo "VITE_SIGNALING_URL=$$WS_URL" > .env.local; \
+	echo "VITE_SUGGESTION_URL=$$SIGNALING_URL" >> .env.local; \
 	echo "$$VITE_URL" > /tmp/hypermark-vite-url.tmp; \
 	echo "$$SIGNALING_URL" > /tmp/hypermark-signaling-url.tmp; \
 	echo -e " $(GREEN)✓$(NC)"

@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "signaling": "PORT=4444 node node_modules/y-webrtc/bin/server.js",
+    "services": "cd services && PORT=4444 node server.js",
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",

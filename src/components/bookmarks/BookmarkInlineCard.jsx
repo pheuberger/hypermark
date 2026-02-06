@@ -398,12 +398,6 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
             {urlError && (
               <span className="text-[10px] text-destructive">{urlError}</span>
             )}
-            {suggesting && (
-              <span className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
-                <span className="inline-block w-2 h-2 border border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin" />
-                Fetching suggestions...
-              </span>
-            )}
           </div>
         ) : (
           <>
@@ -424,7 +418,7 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
       {/* Main Inputs - Linear style (borderless, clean) */}
       <div className="space-y-3">
         {/* Title */}
-        <div>
+        <div className="relative">
           <input
             ref={titleInputRef}
             type="text"
@@ -432,22 +426,27 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
             onChange={(e) => setLocalTitle(e.target.value)}
             onBlur={handleTitleBlur}
             onKeyDown={(e) => handleKeyDown(e, 'title')}
-            className="w-full bg-transparent border-none outline-none text-base font-medium placeholder:text-muted-foreground/50 p-0 focus:ring-0"
-            placeholder="Title"
+            className={`w-full bg-transparent border-none outline-none text-base font-medium placeholder:text-muted-foreground/50 p-0 focus:ring-0 ${suggesting && !localTitle ? 'placeholder:animate-pulse' : ''}`}
+            placeholder={suggesting && !localTitle ? 'Loading title...' : 'Title'}
           />
+          {suggesting && !localTitle && (
+            <div className="absolute right-0 top-1/2 -translate-y-1/2">
+              <span className="inline-block w-3 h-3 border-2 border-muted-foreground/20 border-t-muted-foreground/60 rounded-full animate-spin" />
+            </div>
+          )}
         </div>
 
         {/* Description */}
-        <div>
+        <div className="relative">
           <textarea
             ref={descInputRef}
             value={localDesc}
             onChange={(e) => setLocalDesc(e.target.value)}
             onBlur={handleDescBlur}
             onKeyDown={(e) => handleKeyDown(e, 'desc')}
-            className="w-full bg-transparent border-none outline-none text-sm text-muted-foreground placeholder:text-muted-foreground/40 resize-none p-0 focus:ring-0 min-h-[2.5em]"
+            className={`w-full bg-transparent border-none outline-none text-sm text-muted-foreground placeholder:text-muted-foreground/40 resize-none p-0 focus:ring-0 min-h-[2.5em] ${suggesting && !localDesc ? 'placeholder:animate-pulse' : ''}`}
             rows={2}
-            placeholder="Add description..."
+            placeholder={suggesting && !localDesc ? 'Loading description...' : 'Add description...'}
           />
         </div>
 

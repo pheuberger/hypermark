@@ -82,6 +82,8 @@ export function isSuggestionsEnabled() {
  */
 export function setSuggestionsEnabled(enabled) {
   localStorage.setItem(STORAGE_KEY_ENABLED, enabled ? 'true' : 'false')
+  // Dispatch custom event for same-tab reactivity (storage event only fires cross-tab)
+  window.dispatchEvent(new CustomEvent('suggestions-enabled-change', { detail: { enabled } }))
 }
 
 /**

@@ -24,7 +24,7 @@ export function useContentSuggestion() {
   const [enabled, setEnabled] = useState(() => isSuggestionsEnabled())
   const abortRef = useRef(null)
 
-  // Re-check enabled state when localStorage changes (e.g., from settings)
+  // Re-check enabled state when localStorage changes (cross-tab via storage event)
   useEffect(() => {
     const handleStorage = (e) => {
       if (e.key === 'hypermark_suggestions_enabled') {
@@ -35,11 +35,11 @@ export function useContentSuggestion() {
     return () => window.removeEventListener('storage', handleStorage)
   }, [])
 
-  // Also check on mount/focus in case changed in same tab
+  // Listen for same-tab changes via custom event
   useEffect(() => {
-    const handleFocus = () => setEnabled(isSuggestionsEnabled())
-    window.addEventListener('focus', handleFocus)
-    return () => window.removeEventListener('focus', handleFocus)
+    const handleChange = (e) => setEnabled(e.detail.enabled)
+    window.addEventListener('suggestions-enabled-change', handleChange)
+    return () => window.removeEventListener('suggestions-enabled-change', handleChange)
   }, [])
 
   const cancel = useCallback(() => {

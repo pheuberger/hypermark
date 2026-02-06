@@ -663,33 +663,46 @@ class NostrDiagnosticsService {
   }
 
   /**
+   * Create a standardized diagnostic result object.
+   * @private
+   */
+  _result(id, name, status, message, details, startTime) {
+    return { id, name, status, message, details, duration: Date.now() - startTime, timestamp: new Date() }
+  }
+
+  /**
+   * Run a diagnostic check that requires the sync service.
+   * Handles the common "service not initialized" guard and error catching.
+   * @private
+   */
+  async _runServiceCheck(id, name, checkFn) {
+    const startTime = Date.now()
+    const service = getNostrSyncService()
+    if (!service) {
+      return this._result(id, name, 'fail', `Cannot check ${name.toLowerCase()} - service not initialized`, {}, startTime)
+    }
+    try {
+      return await checkFn(service, startTime)
+    } catch (error) {
+      return this._result(id, name, 'fail', `Check failed: ${error.message}`, { error: error.message }, startTime)
+    }
+  }
+
+  /**
    * Check LEK availability
    * @private
    */
   async _checkLEK() {
     const startTime = Date.now()
-
     try {
       const lek = await retrieveLEK()
-      return {
-        id: 'lek',
-        name: 'LEK Availability',
-        status: lek ? 'pass' : 'fail',
-        message: lek ? 'LEK is available' : 'LEK not found - device needs pairing',
-        details: { available: !!lek },
-        duration: Date.now() - startTime,
-        timestamp: new Date()
-      }
+      return this._result('lek', 'LEK Availability',
+        lek ? 'pass' : 'fail',
+        lek ? 'LEK is available' : 'LEK not found - device needs pairing',
+        { available: !!lek }, startTime)
     } catch (error) {
-      return {
-        id: 'lek',
-        name: 'LEK Availability',
-        status: 'fail',
-        message: `Failed to check LEK: ${error.message}`,
-        details: { error: error.message },
-        duration: Date.now() - startTime,
-        timestamp: new Date()
-      }
+      return this._result('lek', 'LEK Availability', 'fail',
+        `Failed to check LEK: ${error.message}`, { error: error.message }, startTime)
     }
   }
 
@@ -698,34 +711,15 @@ class NostrDiagnosticsService {
    * @private
    */
   async _checkSyncService() {
-    const startTime = Date.now()
-    const service = getNostrSyncService()
-
-    if (!service) {
-      return {
-        id: 'service',
-        name: 'Sync Service Status',
-        status: 'fail',
-        message: 'Sync service not initialized',
-        details: { initialized: false },
-        duration: Date.now() - startTime,
-        timestamp: new Date()
-      }
-    }
-
-    const status = service.getStatus()
-
-    return {
-      id: 'service',
-      name: 'Sync Service Status',
-      status: status.isInitialized ? 'pass' : 'warn',
-      message: status.isInitialized
-        ? `Service initialized with ${status.relays.connected}/${status.relays.total} relays`
-        : 'Service not fully initialized',
-      details: status,
-      duration: Date.now() - startTime,
-      timestamp: new Date()
-    }
+    return this._runServiceCheck('service', 'Sync Service Status', (service, startTime) => {
+      const status = service.getStatus()
+      return this._result('service', 'Sync Service Status',
+        status.isInitialized ? 'pass' : 'warn',
+        status.isInitialized
+          ? `Service initialized with ${status.relays.connected}/${status.relays.total} relays`
+          : 'Service not fully initialized',
+        status, startTime)
+    })
   }
 
   /**
@@ -733,52 +727,22 @@ class NostrDiagnosticsService {
    * @private
    */
   async _checkRelays() {
-    const startTime = Date.now()
-    const service = getNostrSyncService()
-
-    if (!service) {
-      return {
-        id: 'relays',
-        name: 'Relay Connectivity',
-        status: 'fail',
-        message: 'Cannot check relays - service not initialized',
-        details: {},
-        duration: Date.now() - startTime,
-        timestamp: new Date()
+    return this._runServiceCheck('relays', 'Relay Connectivity', (service, startTime) => {
+      const { connected: connectedCount, total: totalCount, connections } = service.getStatus().relays
+      let resultStatus, message
+      if (connectedCount === 0) {
+        resultStatus = 'fail'
+        message = 'No relays connected'
+      } else if (connectedCount < totalCount / 2) {
+        resultStatus = 'warn'
+        message = `Only ${connectedCount} of ${totalCount} relays connected`
+      } else {
+        resultStatus = 'pass'
+        message = `${connectedCount} of ${totalCount} relays connected`
       }
-    }
-
-    const status = service.getStatus()
-    const connectedCount = status.relays.connected
-    const totalCount = status.relays.total
-
-    let resultStatus = 'fail'
-    let message = ''
-
-    if (connectedCount === 0) {
-      resultStatus = 'fail'
-      message = 'No relays connected'
-    } else if (connectedCount < totalCount / 2) {
-      resultStatus = 'warn'
-      message = `Only ${connectedCount} of ${totalCount} relays connected`
-    } else {
-      resultStatus = 'pass'
-      message = `${connectedCount} of ${totalCount} relays connected`
-    }
-
-    return {
-      id: 'relays',
-      name: 'Relay Connectivity',
-      status: resultStatus,
-      message,
-      details: {
-        connected: connectedCount,
-        total: totalCount,
-        connections: status.relays.connections
-      },
-      duration: Date.now() - startTime,
-      timestamp: new Date()
-    }
+      return this._result('relays', 'Relay Connectivity', resultStatus, message,
+        { connected: connectedCount, total: totalCount, connections }, startTime)
+    })
   }
 
   /**
@@ -786,35 +750,13 @@ class NostrDiagnosticsService {
    * @private
    */
   async _checkSubscriptions() {
-    const startTime = Date.now()
-    const service = getNostrSyncService()
-
-    if (!service) {
-      return {
-        id: 'subscriptions',
-        name: 'Active Subscriptions',
-        status: 'fail',
-        message: 'Cannot check subscriptions - service not initialized',
-        details: {},
-        duration: Date.now() - startTime,
-        timestamp: new Date()
-      }
-    }
-
-    const status = service.getStatus()
-    const subCount = status.subscriptions.active
-
-    return {
-      id: 'subscriptions',
-      name: 'Active Subscriptions',
-      status: subCount > 0 ? 'pass' : 'warn',
-      message: subCount > 0
-        ? `${subCount} active subscription(s)`
-        : 'No active subscriptions',
-      details: status.subscriptions,
-      duration: Date.now() - startTime,
-      timestamp: new Date()
-    }
+    return this._runServiceCheck('subscriptions', 'Active Subscriptions', (service, startTime) => {
+      const { active: subCount } = service.getStatus().subscriptions
+      return this._result('subscriptions', 'Active Subscriptions',
+        subCount > 0 ? 'pass' : 'warn',
+        subCount > 0 ? `${subCount} active subscription(s)` : 'No active subscriptions',
+        service.getStatus().subscriptions, startTime)
+    })
   }
 
   /**
@@ -822,48 +764,21 @@ class NostrDiagnosticsService {
    * @private
    */
   async _checkPendingUpdates() {
-    const startTime = Date.now()
-    const service = getNostrSyncService()
-
-    if (!service) {
-      return {
-        id: 'pending',
-        name: 'Pending Updates',
-        status: 'fail',
-        message: 'Cannot check pending updates - service not initialized',
-        details: {},
-        duration: Date.now() - startTime,
-        timestamp: new Date()
+    return this._runServiceCheck('pending', 'Pending Updates', (service, startTime) => {
+      const status = service.getStatus()
+      const { pendingUpdates: pendingCount, queuedEvents: queuedCount } = status
+      let resultStatus = 'pass'
+      let message = 'No pending updates'
+      if (pendingCount > 0 || queuedCount > 0) {
+        resultStatus = 'warn'
+        const parts = []
+        if (pendingCount > 0) parts.push(`${pendingCount} pending update(s)`)
+        if (queuedCount > 0) parts.push(`${queuedCount} queued event(s)`)
+        message = parts.join(', ')
       }
-    }
-
-    const status = service.getStatus()
-    const pendingCount = status.pendingUpdates
-    const queuedCount = status.queuedEvents
-
-    let resultStatus = 'pass'
-    let message = 'No pending updates'
-
-    if (pendingCount > 0 || queuedCount > 0) {
-      resultStatus = 'warn'
-      const parts = []
-      if (pendingCount > 0) parts.push(`${pendingCount} pending update(s)`)
-      if (queuedCount > 0) parts.push(`${queuedCount} queued event(s)`)
-      message = parts.join(', ')
-    }
-
-    return {
-      id: 'pending',
-      name: 'Pending Updates',
-      status: resultStatus,
-      message,
-      details: {
-        pendingUpdates: pendingCount,
-        queuedEvents: queuedCount
-      },
-      duration: Date.now() - startTime,
-      timestamp: new Date()
-    }
+      return this._result('pending', 'Pending Updates', resultStatus, message,
+        { pendingUpdates: pendingCount, queuedEvents: queuedCount }, startTime)
+    })
   }
 
   /**

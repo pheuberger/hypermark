@@ -1,8 +1,10 @@
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useYjs, undo, redo } from '../../hooks/useYjs'
-import { useSearch, useDebounce } from '../../hooks/useSearch'
 import { useHotkeys } from '../../hooks/useHotkeys'
 import { useToast } from '../../hooks/useToast'
+import { useBookmarkFilters } from '../../hooks/useBookmarkFilters'
+import { useBookmarkSelection } from '../../hooks/useBookmarkSelection'
+import { useBookmarkKeyboardNav } from '../../hooks/useBookmarkKeyboardNav'
 import { BookmarkItem } from './BookmarkItem'
 import { BookmarkInlineCard } from './BookmarkInlineCard'
 import { InboxView } from './InboxView'
@@ -48,53 +50,97 @@ export function BookmarkList() {
 
   const [isAddingNew, setIsAddingNew] = useState(false)
   const [editingBookmarkId, setEditingBookmarkId] = useState(null)
-  const [filterView, setFilterView] = useState('all')
-  const [selectedTag, setSelectedTag] = useState(null)
-  const [sortBy, setSortBy] = useState('recent')
-  const [searchQuery, setSearchQuery] = useState('')
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isHelpOpen, setIsHelpOpen] = useState(false)
   const [isTagModalOpen, setIsTagModalOpen] = useState(false)
   const [tagModalBookmark, setTagModalBookmark] = useState(null)
-  const [selectedIndex, setSelectedIndex] = useState(-1)
-  const [selectionMode, setSelectionMode] = useState(false)
-  const [selectedIds, setSelectedIds] = useState(new Set())
-  const [hoveredIndex, setHoveredIndex] = useState(-1)
-  const [keyboardNavActive, setKeyboardNavActive] = useState(false)
-  const selectedItemRef = useRef(null)
   const searchInputRef = useRef(null)
   const inboxViewRef = useRef(null)
-  const ignoreHoverRef = useRef(false)
 
-  const debouncedSearchQuery = useDebounce(searchQuery, 300)
-  const searchedBookmarks = useSearch(bookmarks, debouncedSearchQuery)
+  // Extracted hooks
+  const {
+    filterView,
+    selectedTag,
+    sortBy,
+    setSortBy,
+    searchQuery,
+    setSearchQuery,
+    debouncedSearchQuery,
+    filteredBookmarks,
+    goToAllBookmarks,
+    goToReadLater,
+    goToInbox,
+    handleFilterChange: filterChange,
+    handleTagSelect: tagSelect,
+    handleTagClick,
+  } = useBookmarkFilters(bookmarks)
+
+  const {
+    selectedIndex,
+    setSelectedIndex,
+    hoveredIndex,
+    keyboardNavActive,
+    selectedItemRef,
+    selectNext,
+    selectPrev,
+    goToTop,
+    goToBottom,
+    handleBookmarkHover,
+    suppressHoverBriefly,
+    getSelectedBookmark,
+  } = useBookmarkKeyboardNav(filteredBookmarks, {
+    filterView,
+    inboxViewRef,
+    selectedTag,
+    debouncedSearchQuery,
+  })
+
+  const {
+    selectionMode,
+    selectedIds,
+    exitSelectionMode,
+    toggleSelectionMode,
+    toggleSelectBookmark,
+    toggleSelectCurrent,
+    selectAllBookmarks,
+    selectNextWithShift,
+    selectPrevWithShift,
+  } = useBookmarkSelection(filteredBookmarks, { selectedIndex, setSelectedIndex })
+
+  // Wrap filter change to also set currentView
+  const handleFilterChange = useCallback((view) => {
+    filterChange(view)
+    setCurrentView('bookmarks')
+  }, [filterChange])
+
+  const handleTagSelect = useCallback((tag) => {
+    tagSelect(tag)
+    setCurrentView('bookmarks')
+  }, [tagSelect])
+
+  // Navigation callbacks that also set currentView
+  const navToAllBookmarks = useCallback(() => {
+    goToAllBookmarks()
+    setCurrentView('bookmarks')
+  }, [goToAllBookmarks])
+
+  const navToReadLater = useCallback(() => {
+    goToReadLater()
+    setCurrentView('bookmarks')
+  }, [goToReadLater])
+
+  const navToInbox = useCallback(() => {
+    goToInbox()
+    setCurrentView('bookmarks')
+  }, [goToInbox])
+
+  const goToSettings = useCallback(() => {
+    setCurrentView('settings')
+  }, [])
 
   const openNewBookmarkForm = useCallback(() => {
     setEditingBookmarkId(null)
     setIsAddingNew(true)
-  }, [])
-
-  const goToAllBookmarks = useCallback(() => {
-    setFilterView('all')
-    setSelectedTag(null)
-    setSearchQuery('')
-    setCurrentView('bookmarks')
-  }, [])
-
-  const goToReadLater = useCallback(() => {
-    setFilterView('read-later')
-    setSelectedTag(null)
-    setCurrentView('bookmarks')
-  }, [])
-
-  const goToInbox = useCallback(() => {
-    setFilterView('inbox')
-    setSelectedTag(null)
-    setCurrentView('bookmarks')
-  }, [])
-
-  const goToSettings = useCallback(() => {
-    setCurrentView('settings')
   }, [])
 
   const showHelp = useCallback(() => {
@@ -106,79 +152,14 @@ export function BookmarkList() {
     searchInputRef.current?.select()
   }, [])
 
-  const filteredBookmarks = useMemo(() => {
-    let filtered = [...searchedBookmarks]
-
-    if (filterView === 'read-later') {
-      filtered = filtered.filter((b) => b.readLater)
-    } else if (filterView === 'inbox') {
-      filtered = filtered.filter((b) => b.inbox)
-    } else if (filterView === 'tag' && selectedTag) {
-      filtered = filtered.filter(
-        (b) => Array.isArray(b.tags) && b.tags.includes(selectedTag)
-      )
-    }
-
-    filtered.sort((a, b) => {
-      if (sortBy === 'recent') {
-        return b.createdAt - a.createdAt
-      } else if (sortBy === 'oldest') {
-        return a.createdAt - b.createdAt
-      } else if (sortBy === 'title') {
-        return a.title.localeCompare(b.title)
-      } else if (sortBy === 'updated') {
-        return b.updatedAt - a.updatedAt
-      }
-      return 0
-    })
-
-    return filtered
-  }, [searchedBookmarks, filterView, selectedTag, sortBy])
-
   const handleSearchSubmit = useCallback(() => {
     if (filteredBookmarks.length > 0) {
       setSelectedIndex(0)
       searchInputRef.current?.blur()
     }
-  }, [filteredBookmarks.length])
-
-  const selectNext = useCallback(() => {
-    if (filterView === 'inbox') {
-      inboxViewRef.current?.selectNext()
-    } else {
-      setKeyboardNavActive(true)
-      setSelectedIndex((prev) => {
-        const maxIndex = filteredBookmarks.length - 1
-        if (maxIndex < 0) return -1
-        // If no selection, start from hovered index or top
-        if (prev === -1) {
-          return hoveredIndex >= 0 ? hoveredIndex : 0
-        }
-        return prev < maxIndex ? prev + 1 : prev
-      })
-    }
-  }, [filteredBookmarks.length, filterView, hoveredIndex])
-
-  const selectPrev = useCallback(() => {
-    if (filterView === 'inbox') {
-      inboxViewRef.current?.selectPrev()
-    } else {
-      setKeyboardNavActive(true)
-      setSelectedIndex((prev) => {
-        const maxIndex = filteredBookmarks.length - 1
-        if (maxIndex < 0) return -1
-        // If no selection, start from hovered index or bottom
-        if (prev === -1) {
-          return hoveredIndex >= 0 ? hoveredIndex : maxIndex
-        }
-        if (prev <= 0) return 0
-        return prev - 1
-      })
-    }
-  }, [filterView, filteredBookmarks.length, hoveredIndex])
+  }, [filteredBookmarks.length, setSelectedIndex])
 
   const openSelected = useCallback(() => {
-    // Don't open URL if we're adding/editing
     if (isAddingNew || editingBookmarkId) return
     if (filterView === 'inbox') {
       inboxViewRef.current?.handleEnter()
@@ -190,9 +171,9 @@ export function BookmarkList() {
 
   const exitInbox = useCallback(() => {
     if (filterView === 'inbox') {
-      goToAllBookmarks()
+      navToAllBookmarks()
     }
-  }, [filterView, goToAllBookmarks])
+  }, [filterView, navToAllBookmarks])
 
   const editSelected = useCallback(() => {
     if (filterView === 'inbox') return
@@ -210,9 +191,7 @@ export function BookmarkList() {
         deleteBookmark(bookmark._id)
         addToast({
           message: `Deleted "${bookmark.title}"`,
-          action: () => {
-            undo()
-          },
+          action: () => { undo() },
           actionLabel: 'Undo',
           duration: 5000,
         })
@@ -234,106 +213,6 @@ export function BookmarkList() {
     }
   }, [addToast])
 
-  const toggleSelectionMode = useCallback(() => {
-    setSelectionMode(prev => {
-      if (prev) {
-        setSelectedIds(new Set())
-      }
-      return !prev
-    })
-  }, [])
-
-  const exitSelectionMode = useCallback(() => {
-    setSelectionMode(false)
-    setSelectedIds(new Set())
-  }, [])
-
-  const toggleSelectBookmark = useCallback((id, initiateSelection = false) => {
-    if (initiateSelection && !selectionMode) {
-      setSelectionMode(true)
-      setSelectedIds(new Set([id]))
-      return
-    }
-
-    setSelectedIds(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) {
-        next.delete(id)
-        // Exit selection mode if no items remain selected
-        if (next.size === 0) {
-          setSelectionMode(false)
-        }
-      } else {
-        next.add(id)
-      }
-      return next
-    })
-  }, [selectionMode])
-
-  const toggleSelectCurrent = useCallback(() => {
-    if (!selectionMode) return
-    if (selectedIndex >= 0 && selectedIndex < filteredBookmarks.length) {
-      const bookmark = filteredBookmarks[selectedIndex]
-      toggleSelectBookmark(bookmark._id)
-    }
-  }, [selectionMode, selectedIndex, filteredBookmarks, toggleSelectBookmark])
-
-  const selectAllBookmarks = useCallback(() => {
-    if (!selectionMode) {
-      setSelectionMode(true)
-    }
-    setSelectedIds(new Set(filteredBookmarks.map(b => b._id)))
-  }, [selectionMode, filteredBookmarks])
-
-  const selectNextWithShift = useCallback(() => {
-    if (filteredBookmarks.length === 0) return
-
-    if (!selectionMode) {
-      setSelectionMode(true)
-    }
-
-    // Select current item before moving
-    if (selectedIndex >= 0 && selectedIndex < filteredBookmarks.length) {
-      const currentBookmark = filteredBookmarks[selectedIndex]
-      setSelectedIds(prev => new Set(prev).add(currentBookmark._id))
-    }
-
-    // Move to next and select it
-    setSelectedIndex(prev => {
-      const maxIndex = filteredBookmarks.length - 1
-      const nextIndex = prev < maxIndex ? prev + 1 : prev
-      if (nextIndex >= 0 && nextIndex < filteredBookmarks.length) {
-        const nextBookmark = filteredBookmarks[nextIndex]
-        setSelectedIds(p => new Set(p).add(nextBookmark._id))
-      }
-      return nextIndex
-    })
-  }, [selectionMode, selectedIndex, filteredBookmarks])
-
-  const selectPrevWithShift = useCallback(() => {
-    if (filteredBookmarks.length === 0) return
-
-    if (!selectionMode) {
-      setSelectionMode(true)
-    }
-
-    // Select current item before moving
-    if (selectedIndex >= 0 && selectedIndex < filteredBookmarks.length) {
-      const currentBookmark = filteredBookmarks[selectedIndex]
-      setSelectedIds(prev => new Set(prev).add(currentBookmark._id))
-    }
-
-    // Move to prev and select it
-    setSelectedIndex(prev => {
-      const prevIndex = prev > 0 ? prev - 1 : 0
-      if (prevIndex >= 0 && prevIndex < filteredBookmarks.length) {
-        const prevBookmark = filteredBookmarks[prevIndex]
-        setSelectedIds(p => new Set(p).add(prevBookmark._id))
-      }
-      return prevIndex
-    })
-  }, [selectionMode, selectedIndex, filteredBookmarks])
-
   const handleBulkDelete = useCallback(() => {
     if (selectedIds.size === 0) return
 
@@ -342,9 +221,7 @@ export function BookmarkList() {
       bulkDeleteBookmarks(Array.from(selectedIds))
       addToast({
         message: `Deleted ${count} bookmark${count > 1 ? 's' : ''}`,
-        action: () => {
-          undo()
-        },
+        action: () => { undo() },
         actionLabel: 'Undo',
         duration: 5000,
       })
@@ -355,15 +232,6 @@ export function BookmarkList() {
     }
   }, [selectedIds, addToast, exitSelectionMode])
 
-  // Get the currently selected bookmark
-  const getSelectedBookmark = useCallback(() => {
-    if (selectedIndex >= 0 && selectedIndex < filteredBookmarks.length) {
-      return filteredBookmarks[selectedIndex]
-    }
-    return null
-  }, [selectedIndex, filteredBookmarks])
-
-  // Shift+T: Open tag edit modal for selected bookmark
   const openTagModal = useCallback(() => {
     if (filterView === 'inbox') return
     if (isAddingNew || editingBookmarkId) return
@@ -377,14 +245,9 @@ export function BookmarkList() {
   const closeTagModal = useCallback(() => {
     setIsTagModalOpen(false)
     setTagModalBookmark(null)
-    // Ignore hover events briefly to prevent mouse position from disrupting keyboard selection
-    ignoreHoverRef.current = true
-    setTimeout(() => {
-      ignoreHoverRef.current = false
-    }, 100)
-  }, [])
+    suppressHoverBriefly()
+  }, [suppressHoverBriefly])
 
-  // Shift+L: Toggle read later for selected bookmark
   const toggleReadLaterSelected = useCallback(() => {
     if (filterView === 'inbox') return
     if (isAddingNew || editingBookmarkId) return
@@ -402,7 +265,6 @@ export function BookmarkList() {
     }
   }, [filterView, isAddingNew, editingBookmarkId, getSelectedBookmark, addToast])
 
-  // c: Copy URL to clipboard
   const copySelectedUrl = useCallback(() => {
     if (filterView === 'inbox') return
     if (isAddingNew || editingBookmarkId) return
@@ -417,41 +279,6 @@ export function BookmarkList() {
     }
   }, [filterView, isAddingNew, editingBookmarkId, getSelectedBookmark, addToast])
 
-  const goToTop = useCallback(() => {
-    if (filterView === 'inbox') {
-      inboxViewRef.current?.goToTop?.()
-    } else if (filteredBookmarks.length > 0) {
-      setKeyboardNavActive(true)
-      setSelectedIndex(0)
-    }
-  }, [filterView, filteredBookmarks.length])
-
-  const goToBottom = useCallback(() => {
-    if (filterView === 'inbox') {
-      inboxViewRef.current?.goToBottom?.()
-    } else if (filteredBookmarks.length > 0) {
-      setKeyboardNavActive(true)
-      setSelectedIndex(filteredBookmarks.length - 1)
-    }
-  }, [filterView, filteredBookmarks.length])
-
-  const handleBookmarkHover = useCallback((index) => {
-    // Ignore hover events right after modal closes to preserve keyboard selection
-    if (ignoreHoverRef.current) return
-
-    if (keyboardNavActive) {
-      // Mouse moved - cancel keyboard selection and return to hover mode
-      setKeyboardNavActive(false)
-      setSelectedIndex(-1)
-    }
-    setHoveredIndex(index)
-  }, [keyboardNavActive])
-
-  useEffect(() => {
-    setSelectedIndex(-1)
-    setHoveredIndex(-1)
-  }, [filteredBookmarks.length, filterView, selectedTag, debouncedSearchQuery])
-
   // Close inline card and exit selection mode when view/filter changes
   useEffect(() => {
     setIsAddingNew(false)
@@ -459,17 +286,11 @@ export function BookmarkList() {
     exitSelectionMode()
   }, [filterView, selectedTag, currentView, exitSelectionMode])
 
-  useEffect(() => {
-    if (selectedIndex >= 0 && selectedItemRef.current) {
-      selectedItemRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-    }
-  }, [selectedIndex])
-
   useHotkeys({
     'g n': openNewBookmarkForm,
-    'g a': goToAllBookmarks,
-    'g i': goToInbox,
-    'g l': goToReadLater,
+    'g a': navToAllBookmarks,
+    'g i': navToInbox,
+    'g l': navToReadLater,
     'g s': goToSettings,
     'g g': goToTop,
     'shift+g': goToBottom,
@@ -512,9 +333,7 @@ export function BookmarkList() {
       deleteBookmark(bookmarkId)
       addToast({
         message: `Deleted "${bookmarkTitle}"`,
-        action: () => {
-          undo()
-        },
+        action: () => { undo() },
         actionLabel: 'Undo',
         duration: 5000,
       })
@@ -524,29 +343,10 @@ export function BookmarkList() {
     }
   }, [bookmarks, addToast])
 
-  const handleTagClick = (tag) => {
-    setFilterView('tag')
-    setSelectedTag(tag)
-  }
-
-  const handleFilterChange = (view) => {
-    setFilterView(view)
-    setSelectedTag(null)
-    setCurrentView('bookmarks')
-  }
-
   const handleHomeClick = () => {
-    setFilterView('all')
-    setSelectedTag(null)
-    setSearchQuery('')
+    goToAllBookmarks()
     setCurrentView('bookmarks')
     setIsSidebarOpen(false)
-  }
-
-  const handleTagSelect = (tag) => {
-    setFilterView('tag')
-    setSelectedTag(tag)
-    setCurrentView('bookmarks')
   }
 
   if (!synced) {

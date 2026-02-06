@@ -4,6 +4,14 @@ import { TagInput } from '../ui/TagInput'
 import { Tag } from '../ui/Tag'
 import { getAllTags, createBookmark, updateBookmark } from '../../services/bookmarks'
 import { useHotkeys } from '../../hooks/useHotkeys'
+import { useContentSuggestion } from '../../hooks/useContentSuggestion'
+
+// Helper to detect if a string looks like a URL
+function looksLikeUrl(str) {
+  if (!str) return false
+  const trimmed = str.trim()
+  return /^https?:\/\//i.test(trimmed) || /^www\./i.test(trimmed)
+}
 
 /**
  * BookmarkInlineCard - Inline card for adding/editing bookmarks
@@ -36,6 +44,9 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
   const [allTags, setAllTags] = useState([])
   const [urlError, setUrlError] = useState('')
   const [editMode, setEditMode] = useState(true)
+  const [suggestedTags, setSuggestedTags] = useState([])
+
+  const { suggestions, loading: suggesting, suggest, clear: clearSuggestions, cancel: cancelSuggestion, enabled: suggestionsEnabled } = useContentSuggestion()
 
   // Extract domain from URL
   let domain = ''
@@ -77,6 +88,24 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
       setLocalReadLater(bookmark.readLater || false)
     }
   }, [bookmark])
+
+  // Apply suggestions to empty fields when they arrive (except tags - show those separately)
+  useEffect(() => {
+    if (!suggestions) return
+    if (!localTitle && suggestions.title) {
+      setLocalTitle(suggestions.title)
+    }
+    if (!localDesc && suggestions.description) {
+      setLocalDesc(suggestions.description)
+    }
+    // Show suggested tags that aren't already applied
+    if (suggestions.suggestedTags?.length > 0) {
+      const newSuggested = suggestions.suggestedTags.filter(
+        (tag) => !localTags.includes(tag)
+      )
+      setSuggestedTags(newSuggested)
+    }
+  }, [suggestions, localTitle, localDesc, localTags])
 
   const validateUrl = (url) => {
     if (!url.trim()) return false
@@ -295,6 +324,39 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
     onDiscard?.()
   }
 
+  // Auto-suggest when URL is pasted
+  const handleUrlPaste = (e) => {
+    const pastedText = e.clipboardData?.getData('text')
+    if (pastedText && looksLikeUrl(pastedText) && suggestionsEnabled && isNew) {
+      // Small delay to let the input update first
+      setTimeout(() => {
+        const url = pastedText.trim().startsWith('http')
+          ? pastedText.trim()
+          : `https://${pastedText.trim()}`
+        suggest(url)
+      }, 100)
+    }
+  }
+
+  // Add a single suggested tag
+  const addSuggestedTag = (tag) => {
+    const newTags = [...localTags, tag]
+    setLocalTags(newTags)
+    setSuggestedTags((prev) => prev.filter((t) => t !== tag))
+  }
+
+  // Add all suggested tags
+  const addAllSuggestedTags = () => {
+    const newTags = [...localTags, ...suggestedTags]
+    setLocalTags(newTags)
+    setSuggestedTags([])
+  }
+
+  // Dismiss all suggested tags
+  const dismissSuggestedTags = () => {
+    setSuggestedTags([])
+  }
+
   return (
     <div
       ref={ref}
@@ -328,12 +390,19 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
                 setUrlError('')
               }}
               onBlur={handleUrlBlur}
+              onPaste={handleUrlPaste}
               onKeyDown={(e) => handleKeyDown(e, 'url')}
               className={`w-full bg-transparent border-none outline-none text-xs placeholder:text-muted-foreground/50 p-0 focus:ring-0 ${urlError ? 'text-destructive' : ''}`}
               placeholder="https://example.com"
             />
             {urlError && (
               <span className="text-[10px] text-destructive">{urlError}</span>
+            )}
+            {suggesting && (
+              <span className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                <span className="inline-block w-2 h-2 border border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin" />
+                Fetching suggestions...
+              </span>
             )}
           </div>
         ) : (
@@ -400,6 +469,44 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
                   {tag}
                 </Tag>
               ))}
+            </div>
+          )}
+
+          {suggestedTags.length > 0 && (
+            <div className="mt-2 p-2 rounded-md bg-muted/50 border border-border/50">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[10px] font-medium text-muted-foreground">Suggested tags</span>
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={addAllSuggestedTags}
+                    className="text-[10px] text-primary hover:underline"
+                  >
+                    Add all
+                  </button>
+                  <span className="text-muted-foreground/50">·</span>
+                  <button
+                    type="button"
+                    onClick={dismissSuggestedTags}
+                    className="text-[10px] text-muted-foreground hover:text-foreground"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {suggestedTags.map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => addSuggestedTag(tag)}
+                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] rounded bg-background border border-border hover:border-primary hover:text-primary transition-colors cursor-pointer"
+                  >
+                    <span className="text-muted-foreground">+</span>
+                    {tag}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>

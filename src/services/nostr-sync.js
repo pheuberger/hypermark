@@ -379,24 +379,13 @@ export function validateBookmarkEvent(event) {
   }
 
   // Check for required 'd' tag (bookmark ID)
-  const dTag = event.tags.find(t => t[0] === 'd')
-  if (!dTag || dTag.length < 2 || !dTag[1]) {
-    return invalidResult(
-      VALIDATION_ERRORS.MISSING_REQUIRED_TAG,
-      "Bookmark event must have a 'd' tag with bookmark ID",
-      { tags: event.tags }
-    )
-  }
+  let result = requireTag(event, 'd', "Bookmark event must have a 'd' tag with bookmark ID")
+  if (!result.valid) return result
 
-  // Check for required 'app' tag
-  const appTag = event.tags.find(t => t[0] === 'app')
-  if (!appTag || appTag.length < 2 || appTag[1] !== 'hypermark') {
-    return invalidResult(
-      VALIDATION_ERRORS.MISSING_REQUIRED_TAG,
-      "Bookmark event must have 'app' tag with value 'hypermark'",
-      { appTag }
-    )
-  }
+  // Check for required 'app' tag with value 'hypermark'
+  result = requireTag(event, 'app', "Bookmark event must have 'app' tag with value 'hypermark'",
+    { expectedValue: 'hypermark' })
+  if (!result.valid) return result
 
   // Validate encrypted content format (iv:ciphertext in base64)
   if (event.content) {
@@ -409,7 +398,6 @@ export function validateBookmarkEvent(event) {
       )
     }
 
-    // Validate both parts look like base64
     const base64Regex = /^[A-Za-z0-9+/]+=*$/
     if (!base64Regex.test(parts[0]) || !base64Regex.test(parts[1])) {
       return invalidResult(
@@ -443,26 +431,55 @@ export function validateDeleteEvent(event) {
     )
   }
 
-  // Check for 'a' tag referencing the addressable event
-  const aTag = event.tags.find(t => t[0] === 'a')
-  if (!aTag || aTag.length < 2) {
-    return invalidResult(
-      VALIDATION_ERRORS.MISSING_REQUIRED_TAG,
-      "Delete event must have an 'a' tag referencing the event to delete",
-      { tags: event.tags }
-    )
-  }
+  // Check for 'a' tag referencing the addressable event, with format kind:pubkey:d-tag
+  const result = requireTag(event, 'a',
+    "Delete event must have an 'a' tag referencing the event to delete",
+    { minParts: 3 })
+  if (!result.valid) return result
 
-  // Validate 'a' tag format: kind:pubkey:d-tag
-  const parts = aTag[1].split(':')
-  if (parts.length < 3) {
-    return invalidResult(
-      VALIDATION_ERRORS.INVALID_TAG_FORMAT,
-      "Delete event 'a' tag must be in format kind:pubkey:d-tag",
-      { aTag: aTag[1] }
-    )
-  }
+  return validResult()
+}
 
+/**
+ * Run a series of validation functions in sequence, short-circuiting on first failure.
+ * @param {Object} event - Nostr event to validate
+ * @param {...Function} validators - Validation functions that take an event and return ValidationResult
+ * @returns {ValidationResult}
+ */
+function runValidationPipeline(event, ...validators) {
+  for (const validator of validators) {
+    const result = validator(event)
+    if (!result.valid) return result
+  }
+  return validResult()
+}
+
+/**
+ * Find and validate a required tag on an event.
+ * @param {Object} event - Nostr event
+ * @param {string} tagName - Tag name to find (e.g. 'd', 'app', 'a')
+ * @param {string} errorMessage - Error message if tag is missing/invalid
+ * @param {Object} [options]
+ * @param {string} [options.expectedValue] - If set, tag value must equal this
+ * @param {number} [options.minParts] - Minimum number of ':'-separated parts in tag value
+ * @returns {ValidationResult}
+ */
+function requireTag(event, tagName, errorMessage, options = {}) {
+  const tag = event.tags.find(t => t[0] === tagName)
+  if (!tag || tag.length < 2 || !tag[1]) {
+    return invalidResult(VALIDATION_ERRORS.MISSING_REQUIRED_TAG, errorMessage, { tags: event.tags })
+  }
+  if (options.expectedValue && tag[1] !== options.expectedValue) {
+    return invalidResult(VALIDATION_ERRORS.MISSING_REQUIRED_TAG, errorMessage, { [`${tagName}Tag`]: tag })
+  }
+  if (options.minParts) {
+    const parts = tag[1].split(':')
+    if (parts.length < options.minParts) {
+      return invalidResult(VALIDATION_ERRORS.INVALID_TAG_FORMAT,
+        `${errorMessage} (expected format with ${options.minParts}+ parts)`,
+        { [`${tagName}Tag`]: tag[1] })
+    }
+  }
   return validResult()
 }
 
@@ -481,23 +498,16 @@ export function validateDeleteEvent(event) {
 export async function validateNostrEvent(event, options = {}) {
   const { skipSignature = false, isHypermarkEvent = true } = options
 
-  // 1. Validate basic structure
-  let result = validateEventStructure(event)
-  if (!result.valid) return result
+  // Run core validators as a pipeline
+  const coreResult = runValidationPipeline(event,
+    validateEventStructure,
+    validateEventTimestamp,
+    validateEventTags,
+    validateEventContentSize
+  )
+  if (!coreResult.valid) return coreResult
 
-  // 2. Validate timestamp
-  result = validateEventTimestamp(event)
-  if (!result.valid) return result
-
-  // 3. Validate tags
-  result = validateEventTags(event)
-  if (!result.valid) return result
-
-  // 4. Validate content size
-  result = validateEventContentSize(event)
-  if (!result.valid) return result
-
-  // 5. Validate signature (unless skipped)
+  // Validate signature (unless skipped)
   if (!skipSignature) {
     const sigValid = await verifyNostrEventSignature(event)
     if (!sigValid) {
@@ -509,13 +519,13 @@ export async function validateNostrEvent(event, options = {}) {
     }
   }
 
-  // 6. Hypermark-specific validation
+  // Hypermark-specific validation
   if (isHypermarkEvent) {
     if (event.kind === NOSTR_KINDS.REPLACEABLE_EVENT) {
-      result = validateBookmarkEvent(event)
+      const result = validateBookmarkEvent(event)
       if (!result.valid) return result
     } else if (event.kind === NOSTR_KINDS.DELETE) {
-      result = validateDeleteEvent(event)
+      const result = validateDeleteEvent(event)
       if (!result.valid) return result
     }
   }

@@ -10,7 +10,7 @@ import { lookup } from 'node:dns/promises'
 
 const FETCH_TIMEOUT = 10000
 const MAX_BODY_SIZE = 2 * 1024 * 1024 // 2MB limit for HTML
-const USER_AGENT = 'Mozilla/5.0 (compatible; Hypermark/1.0; +https://hypermark.app)'
+const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 
 // Cache: domain -> { result, expiresAt }
 const metadataCache = new Map()
@@ -169,7 +169,14 @@ async function fetchPage(url) {
       signal: controller.signal,
       headers: {
         'User-Agent': USER_AGENT,
-        'Accept': 'text/html,application/xhtml+xml',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Cache-Control': 'no-cache',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
       },
       redirect: 'follow',
     })

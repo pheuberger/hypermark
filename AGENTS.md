@@ -125,6 +125,8 @@ Key test files:
 - `src/services/crypto.test.js` - Crypto primitives
 - `src/services/security-audit.test.js` - Security invariants
 
+**After implementing any feature or fix, you MUST run `npm run test:coverage` and verify all coverage thresholds pass before committing.** If coverage drops below thresholds, add tests for your new code until thresholds are met. IF you can't write meaningful tests to increase coverage, stop and ask me what to do.
+
 ---
 
 ## Beads Workflow

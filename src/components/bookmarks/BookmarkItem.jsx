@@ -1,8 +1,8 @@
-import { forwardRef } from 'react'
-import { Pencil, Trash, Check } from '../ui/Icons'
+import { forwardRef, useRef, useCallback } from 'react'
+import { Check } from '../ui/Icons'
 
 export const BookmarkItem = forwardRef(function BookmarkItem(
-  { bookmark, isSelected, isChecked, selectionMode, keyboardNavActive, onEdit, onDelete, onTagClick, onToggleSelect, onMouseEnter },
+  { bookmark, isSelected, isChecked, selectionMode, keyboardNavActive, onEdit, onTagClick, onToggleSelect, onMouseEnter, onContextMenu },
   ref
 ) {
   const { title, url, tags } = bookmark
@@ -16,20 +16,61 @@ export const BookmarkItem = forwardRef(function BookmarkItem(
 
   const faviconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`
 
+  // Long-press detection for mobile context menu
+  const longPressTimer = useRef(null)
+  const isLongPress = useRef(false)
+  const touchOrigin = useRef(null)
+
+  const handleTouchStart = useCallback((e) => {
+    isLongPress.current = false
+    const touch = e.touches[0]
+    touchOrigin.current = { x: touch.clientX, y: touch.clientY }
+    longPressTimer.current = setTimeout(() => {
+      isLongPress.current = true
+      onContextMenu?.(bookmark, { x: touch.clientX, y: touch.clientY })
+    }, 500)
+  }, [bookmark, onContextMenu])
+
+  const handleTouchEnd = useCallback(() => {
+    clearTimeout(longPressTimer.current)
+  }, [])
+
+  const handleTouchMove = useCallback((e) => {
+    if (touchOrigin.current) {
+      const touch = e.touches[0]
+      const dx = touch.clientX - touchOrigin.current.x
+      const dy = touch.clientY - touchOrigin.current.y
+      if (dx * dx + dy * dy > 100) {
+        clearTimeout(longPressTimer.current)
+      }
+    }
+  }, [])
+
+  const handleRightClick = useCallback((e) => {
+    e.preventDefault()
+    onContextMenu?.(bookmark, { x: e.clientX, y: e.clientY })
+  }, [bookmark, onContextMenu])
+
   const handleClick = (e) => {
+    if (isLongPress.current) {
+      isLongPress.current = false
+      return
+    }
     if (selectionMode) {
       e.preventDefault()
       onToggleSelect?.(bookmark._id)
     } else if (e.shiftKey) {
       e.preventDefault()
       onToggleSelect?.(bookmark._id, true)
+    } else {
+      // Click on empty area opens edit
+      onEdit?.(bookmark)
     }
   }
 
   const handleCheckboxClick = (e) => {
     e.stopPropagation()
     e.preventDefault()
-    // If not in selection mode, clicking checkbox initiates selection
     if (!selectionMode) {
       onToggleSelect?.(bookmark._id, true)
     } else {
@@ -37,13 +78,16 @@ export const BookmarkItem = forwardRef(function BookmarkItem(
     }
   }
 
-  // Keyboard selection should be visible on top of checked state
   const showKeyboardSelection = isSelected && keyboardNavActive
 
   return (
     <div
       ref={ref}
       onClick={handleClick}
+      onContextMenu={handleRightClick}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onTouchMove={handleTouchMove}
       onMouseEnter={onMouseEnter}
       className={`group flex items-center gap-3 px-3 py-2.5 rounded-md transition-all duration-200 ${
         selectionMode ? 'cursor-pointer' : 'cursor-default'
@@ -59,7 +103,7 @@ export const BookmarkItem = forwardRef(function BookmarkItem(
           : ''
       }`}
     >
-      {/* Always render checkbox area for consistent alignment */}
+      {/* Checkbox */}
       <button
         onClick={handleCheckboxClick}
         className={`flex-shrink-0 w-4 h-4 rounded border transition-all duration-150 flex items-center justify-center ${
@@ -88,14 +132,20 @@ export const BookmarkItem = forwardRef(function BookmarkItem(
             href={url}
             target="_blank"
             rel="noopener noreferrer"
-            onClick={(e) => selectionMode && e.preventDefault()}
+            onClick={(e) => {
+              if (selectionMode) {
+                e.preventDefault()
+              } else {
+                e.stopPropagation()
+              }
+            }}
             className="font-medium text-sm text-foreground truncate hover:text-primary transition-colors"
           >
             {title}
           </a>
-          <span className="text-xs text-muted-foreground truncate flex-shrink-0 font-normal">{domain}</span>
+          <span className="text-xs text-muted-foreground truncate flex-shrink-0 font-normal hidden md:inline">{domain}</span>
           {tags && tags.length > 0 && (
-            <div className="flex items-center gap-1.5 flex-shrink-0">
+            <div className="items-center gap-1.5 flex-shrink-0 hidden md:flex">
               {tags.map((tag) => (
                 <span
                   key={tag}
@@ -113,27 +163,6 @@ export const BookmarkItem = forwardRef(function BookmarkItem(
             </div>
           )}
         </div>
-      </div>
-
-      <div className={`flex items-center gap-0.5 transition-opacity ${
-        selectionMode
-          ? 'opacity-0 pointer-events-none'
-          : 'opacity-100 md:opacity-0 md:group-hover:opacity-100'
-      }`}>
-        <button
-          onClick={() => onEdit(bookmark)}
-          className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
-          title="Edit"
-        >
-          <Pencil className="w-3.5 h-3.5" strokeWidth={1.5} />
-        </button>
-        <button
-          onClick={() => onDelete(bookmark._id)}
-          className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
-          title="Delete"
-        >
-          <Trash className="w-3.5 h-3.5" strokeWidth={1.5} />
-        </button>
       </div>
     </div>
   )

@@ -7,6 +7,7 @@ import { useBookmarkSelection } from '../../hooks/useBookmarkSelection'
 import { useBookmarkKeyboardNav } from '../../hooks/useBookmarkKeyboardNav'
 import { BookmarkItem } from './BookmarkItem'
 import { BookmarkInlineCard } from './BookmarkInlineCard'
+import { BookmarkContextMenu } from './BookmarkContextMenu'
 import { InboxView } from './InboxView'
 import { TagSidebar } from './TagSidebar'
 import { FilterBar } from './FilterBar'
@@ -15,7 +16,7 @@ import { SettingsView } from '../ui/SettingsView'
 import { HelpModal } from '../ui/HelpModal'
 import { QuickTagModal } from '../ui/QuickTagModal'
 import { ToastContainer } from '../ui/Toast'
-import { PackageOpen } from '../ui/Icons'
+import { PackageOpen, Pencil, Trash } from '../ui/Icons'
 import {
   getAllBookmarks,
   deleteBookmark,
@@ -54,6 +55,7 @@ export function BookmarkList() {
   const [isHelpOpen, setIsHelpOpen] = useState(false)
   const [isTagModalOpen, setIsTagModalOpen] = useState(false)
   const [tagModalBookmark, setTagModalBookmark] = useState(null)
+  const [contextMenu, setContextMenu] = useState(null)
   const searchInputRef = useRef(null)
   const inboxViewRef = useRef(null)
 
@@ -279,6 +281,16 @@ export function BookmarkList() {
     }
   }, [filterView, isAddingNew, editingBookmarkId, getSelectedBookmark, addToast])
 
+  const openContextMenuForSelected = useCallback(() => {
+    if (filterView === 'inbox') return
+    if (isAddingNew || editingBookmarkId) return
+    const bookmark = getSelectedBookmark()
+    if (bookmark && selectedItemRef.current) {
+      const rect = selectedItemRef.current.getBoundingClientRect()
+      setContextMenu({ bookmark, position: { x: rect.right - 50, y: rect.bottom } })
+    }
+  }, [filterView, isAddingNew, editingBookmarkId, getSelectedBookmark, selectedItemRef])
+
   // Close inline card and exit selection mode when view/filter changes
   useEffect(() => {
     setIsAddingNew(false)
@@ -306,6 +318,7 @@ export function BookmarkList() {
     't': openTagModal,
     'l': toggleReadLaterSelected,
     'c': copySelectedUrl,
+    '.': openContextMenuForSelected,
     'mod+k': focusSearch,
     'q': exitInbox,
     'mod+z': handleUndo,
@@ -318,8 +331,17 @@ export function BookmarkList() {
   const handleAddNew = openNewBookmarkForm
 
   const handleEdit = (bookmark) => {
+    setContextMenu(null)
     setEditingBookmarkId(bookmark._id)
   }
+
+  const handleContextMenu = useCallback((bookmark, position) => {
+    setContextMenu({ bookmark, position })
+  }, [])
+
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(null)
+  }, [])
 
   const handleCloseInlineCard = useCallback(() => {
     setIsAddingNew(false)
@@ -444,10 +466,10 @@ export function BookmarkList() {
                               selectionMode={selectionMode}
                               keyboardNavActive={keyboardNavActive}
                               onEdit={handleEdit}
-                              onDelete={handleDelete}
                               onTagClick={handleTagClick}
                               onToggleSelect={toggleSelectBookmark}
                               onMouseEnter={() => handleBookmarkHover(index)}
+                              onContextMenu={handleContextMenu}
                             />
                           )
                         ))
@@ -479,6 +501,17 @@ export function BookmarkList() {
         onDelete={handleBulkDelete}
         onCancel={exitSelectionMode}
       />
+
+      {contextMenu && (
+        <BookmarkContextMenu
+          actions={[
+            { id: 'edit', label: 'Edit', icon: Pencil, shortcut: 'E', handler: () => handleEdit(contextMenu.bookmark) },
+            { id: 'delete', label: 'Delete', icon: Trash, shortcut: 'D', variant: 'destructive', handler: () => handleDelete(contextMenu.bookmark._id) },
+          ]}
+          position={contextMenu.position}
+          onClose={closeContextMenu}
+        />
+      )}
 
       <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>

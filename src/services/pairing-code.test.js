@@ -336,8 +336,12 @@ describe("pairing-code service", () => {
     it("fails to decrypt tampered ciphertext", async () => {
       const { ciphertext, iv } = await encryptMessage(psk, { test: "data" });
 
-      // Tamper with ciphertext by changing a character
-      const tampered = "X" + ciphertext.slice(1);
+      // Tamper with ciphertext by flipping bits in the decoded bytes
+      const bytes = Uint8Array.from(atob(ciphertext), c => c.charCodeAt(0));
+      for (let i = 0; i < bytes.length; i++) {
+        bytes[i] ^= 0xff;
+      }
+      const tampered = btoa(String.fromCharCode(...bytes));
 
       await expect(
         decryptMessage(psk, tampered, iv)

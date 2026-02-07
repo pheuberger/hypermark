@@ -281,6 +281,16 @@ export function BookmarkList() {
     }
   }, [filterView, isAddingNew, editingBookmarkId, getSelectedBookmark, addToast])
 
+  const openContextMenuForSelected = useCallback(() => {
+    if (filterView === 'inbox') return
+    if (isAddingNew || editingBookmarkId) return
+    const bookmark = getSelectedBookmark()
+    if (bookmark && selectedItemRef.current) {
+      const rect = selectedItemRef.current.getBoundingClientRect()
+      setContextMenu({ bookmark, position: { x: rect.right - 50, y: rect.bottom } })
+    }
+  }, [filterView, isAddingNew, editingBookmarkId, getSelectedBookmark, selectedItemRef])
+
   // Close inline card and exit selection mode when view/filter changes
   useEffect(() => {
     setIsAddingNew(false)
@@ -308,6 +318,7 @@ export function BookmarkList() {
     't': openTagModal,
     'l': toggleReadLaterSelected,
     'c': copySelectedUrl,
+    '.': openContextMenuForSelected,
     'mod+k': focusSearch,
     'q': exitInbox,
     'mod+z': handleUndo,

@@ -12,8 +12,8 @@ import { performFullReset, checkResetableData } from '../../services/reset'
 import { downloadExport, importFromFile } from '../../services/bookmark-io'
 import { isSuggestionsEnabled, setSuggestionsEnabled } from '../../services/content-suggestion'
 
-export function SettingsView({ onBack }) {
-  const [showPairing, setShowPairing] = useState(false)
+export function SettingsView({ onBack, initialShowPairing = false }) {
+  const [showPairing, setShowPairing] = useState(initialShowPairing)
   const [showRelayConfig, setShowRelayConfig] = useState(false)
   const [showDiagnostics, setShowDiagnostics] = useState(false)
   const [showServiceConfig, setShowServiceConfig] = useState(false)

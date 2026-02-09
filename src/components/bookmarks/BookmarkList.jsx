@@ -8,6 +8,7 @@ import { useBookmarkKeyboardNav } from '../../hooks/useBookmarkKeyboardNav'
 import { BookmarkItem } from './BookmarkItem'
 import { BookmarkInlineCard } from './BookmarkInlineCard'
 import { BookmarkContextMenu } from './BookmarkContextMenu'
+import { WelcomeState } from './WelcomeState'
 import { InboxView } from './InboxView'
 import { TagSidebar } from './TagSidebar'
 import { FilterBar } from './FilterBar'
@@ -23,12 +24,15 @@ import {
   bulkDeleteBookmarks,
   toggleReadLater,
 } from '../../services/bookmarks'
+import { checkDeviceInitialization } from '../../services/key-storage'
 
 export function BookmarkList() {
   const { bookmarks: bookmarksMap, synced } = useYjs()
   const [bookmarks, setBookmarks] = useState([])
   const { toasts, addToast, removeToast } = useToast()
   const [currentView, setCurrentView] = useState('bookmarks')
+  const [isFirstRun, setIsFirstRun] = useState(null) // null = loading, true/false = resolved
+  const [shouldOpenPairing, setShouldOpenPairing] = useState(false)
 
   useEffect(() => {
     const loadBookmarks = () => {
@@ -48,6 +52,20 @@ export function BookmarkList() {
       bookmarksMap.unobserveDeep(observer)
     }
   }, [bookmarksMap])
+
+  // First-run detection
+  useEffect(() => {
+    checkDeviceInitialization().then(({ hasLEK }) => {
+      setIsFirstRun(!hasLEK)
+    })
+  }, [])
+
+  // Transition out of first-run when bookmarks are added
+  useEffect(() => {
+    if (bookmarks.length > 0 && isFirstRun) {
+      setIsFirstRun(false)
+    }
+  }, [bookmarks.length, isFirstRun])
 
   const [isAddingNew, setIsAddingNew] = useState(false)
   const [editingBookmarkId, setEditingBookmarkId] = useState(null)
@@ -138,6 +156,20 @@ export function BookmarkList() {
 
   const goToSettings = useCallback(() => {
     setCurrentView('settings')
+  }, [])
+
+  // WelcomeState callbacks
+  const handleWelcomeAddBookmark = useCallback(() => {
+    setIsAddingNew(true)
+  }, [])
+
+  const handleWelcomeImport = useCallback(() => {
+    setCurrentView('settings')
+  }, [])
+
+  const handleWelcomePairDevice = useCallback(() => {
+    setCurrentView('settings')
+    setShouldOpenPairing(true)
   }, [])
 
   const openNewBookmarkForm = useCallback(() => {
@@ -298,6 +330,13 @@ export function BookmarkList() {
     exitSelectionMode()
   }, [filterView, selectedTag, currentView, exitSelectionMode])
 
+  // Reset pairing state when leaving settings view
+  useEffect(() => {
+    if (currentView !== 'settings') {
+      setShouldOpenPairing(false)
+    }
+  }, [currentView])
+
   useHotkeys({
     'g n': openNewBookmarkForm,
     'g a': navToAllBookmarks,
@@ -434,18 +473,26 @@ export function BookmarkList() {
                       )}
 
                       {filteredBookmarks.length === 0 && !isAddingNew ? (
-                        <div className="flex flex-col items-center justify-center py-20 opacity-50">
-                          <PackageOpen className="w-12 h-12 mb-4 stroke-1" />
-                          <p className="text-sm font-medium">No bookmarks found</p>
-                          {filterView !== 'all' && (
-                            <button
-                              onClick={() => handleFilterChange('all')}
-                              className="mt-2 text-sm text-primary hover:underline"
-                            >
-                              Clear filters
-                            </button>
-                          )}
-                        </div>
+                        isFirstRun && filterView === 'all' ? (
+                          <WelcomeState
+                            onAddBookmark={handleWelcomeAddBookmark}
+                            onImport={handleWelcomeImport}
+                            onPairDevice={handleWelcomePairDevice}
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center py-20 opacity-50">
+                            <PackageOpen className="w-12 h-12 mb-4 stroke-1" />
+                            <p className="text-sm font-medium">No bookmarks found</p>
+                            {filterView !== 'all' && (
+                              <button
+                                onClick={() => handleFilterChange('all')}
+                                className="mt-2 text-sm text-primary hover:underline"
+                              >
+                                Clear filters
+                              </button>
+                            )}
+                          </div>
+                        )
                       ) : (
                         filteredBookmarks.map((bookmark, index) => (
                           editingBookmarkId === bookmark._id ? (
@@ -483,7 +530,10 @@ export function BookmarkList() {
 
         {currentView === 'settings' && (
           <div className="flex-1 overflow-y-auto bg-background">
-            <SettingsView onBack={() => setCurrentView('bookmarks')} />
+            <SettingsView
+              onBack={() => setCurrentView('bookmarks')}
+              initialShowPairing={shouldOpenPairing}
+            />
           </div>
         )}
       </div>

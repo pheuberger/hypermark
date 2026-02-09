@@ -20,4 +20,5 @@ export {
   Square,
   CheckSquare,
   ListChecks,
+  Upload,
 } from 'lucide-react'

@@ -14,6 +14,7 @@ describe('content-suggestion service', () => {
   beforeEach(() => {
     localStorage.clear()
     vi.restoreAllMocks()
+    vi.unstubAllEnvs()
   })
 
   // ---- Toggle ----
@@ -65,6 +66,7 @@ describe('content-suggestion service', () => {
     })
 
     it('derives HTTPS from WSS signaling URL', () => {
+      vi.stubEnv('VITE_SUGGESTION_URL', '')
       setSignalingServiceUrl('wss://my-server.fly.dev')
       const url = getSuggestionServiceUrl()
       expect(url).toBe('https://my-server.fly.dev')

@@ -21,4 +21,18 @@ export {
   CheckSquare,
   ListChecks,
   Upload,
+  // New icons for command palette
+  ExternalLink,
+  BookmarkPlus,
+  Copy,
+  Undo2,
+  Redo2,
+  HelpCircle,
+  Library,
+  Clock,
+  ArrowDownWideNarrow,
+  ArrowUpWideNarrow,
+  ArrowDownAZ,
+  RefreshCw,
+  Filter,
 } from 'lucide-react'

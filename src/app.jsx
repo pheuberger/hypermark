@@ -3,6 +3,7 @@ import { useYjs } from './hooks/useYjs'
 import { useNostrSync } from './hooks/useNostrSync'
 import { usePasteToInbox } from './hooks/usePasteToInbox'
 import { useOnlineStatus } from './hooks/useOnlineStatus'
+import { useRelayErrorToasts } from './hooks/useRelayErrorToasts'
 import { BookmarkList } from './components/bookmarks/BookmarkList'
 import { ToastProvider, useToastContext } from './contexts/ToastContext'
 import { ToastContainer } from './components/ui/Toast'
@@ -10,6 +11,7 @@ import { OfflineBanner } from './components/ui/OfflineBanner'
 
 function AppContent() {
   const { addToast, toasts, removeToast } = useToastContext()
+  useRelayErrorToasts()
 
   const handlePasteSuccess = useCallback((url) => {
     const domain = new URL(url).hostname.replace('www.', '')

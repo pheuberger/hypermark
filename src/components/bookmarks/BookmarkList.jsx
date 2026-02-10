@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useYjs, undo, redo } from '../../hooks/useYjs'
 import { useHotkeys } from '../../hooks/useHotkeys'
+import { useHashRouter } from '../../hooks/useHashRouter'
 import { useToastContext } from '../../contexts/ToastContext'
 import { useBookmarkFilters } from '../../hooks/useBookmarkFilters'
 import { useBookmarkSelection } from '../../hooks/useBookmarkSelection'
@@ -30,7 +31,7 @@ export function BookmarkList() {
   const { bookmarks: bookmarksMap, synced } = useYjs()
   const [bookmarks, setBookmarks] = useState([])
   const { addToast } = useToastContext()
-  const [currentView, setCurrentView] = useState('bookmarks')
+  const { view, filter, tag, navigate } = useHashRouter()
   const [isFirstRun, setIsFirstRun] = useState(false)
 
   useEffect(() => {
@@ -88,10 +89,14 @@ export function BookmarkList() {
     goToAllBookmarks,
     goToReadLater,
     goToInbox,
-    handleFilterChange: filterChange,
-    handleTagSelect: tagSelect,
+    handleFilterChange,
+    handleTagSelect,
     handleTagClick,
-  } = useBookmarkFilters(bookmarks)
+  } = useBookmarkFilters(bookmarks, {
+    filterView: filter,
+    selectedTag: tag,
+    navigate,
+  })
 
   const {
     selectedIndex,
@@ -124,37 +129,6 @@ export function BookmarkList() {
     selectNextWithShift,
     selectPrevWithShift,
   } = useBookmarkSelection(filteredBookmarks, { selectedIndex, setSelectedIndex })
-
-  // Wrap filter change to also set currentView
-  const handleFilterChange = useCallback((view) => {
-    filterChange(view)
-    setCurrentView('bookmarks')
-  }, [filterChange])
-
-  const handleTagSelect = useCallback((tag) => {
-    tagSelect(tag)
-    setCurrentView('bookmarks')
-  }, [tagSelect])
-
-  // Navigation callbacks that also set currentView
-  const navToAllBookmarks = useCallback(() => {
-    goToAllBookmarks()
-    setCurrentView('bookmarks')
-  }, [goToAllBookmarks])
-
-  const navToReadLater = useCallback(() => {
-    goToReadLater()
-    setCurrentView('bookmarks')
-  }, [goToReadLater])
-
-  const navToInbox = useCallback(() => {
-    goToInbox()
-    setCurrentView('bookmarks')
-  }, [goToInbox])
-
-  const goToSettings = useCallback(() => {
-    setCurrentView('settings')
-  }, [])
 
   const openNewBookmarkForm = useCallback(() => {
     setEditingBookmarkId(null)
@@ -189,9 +163,9 @@ export function BookmarkList() {
 
   const exitInbox = useCallback(() => {
     if (filterView === 'inbox') {
-      navToAllBookmarks()
+      goToAllBookmarks()
     }
-  }, [filterView, navToAllBookmarks])
+  }, [filterView, goToAllBookmarks])
 
   const editSelected = useCallback(() => {
     if (filterView === 'inbox') return
@@ -346,14 +320,14 @@ export function BookmarkList() {
     setIsAddingNew(false)
     setEditingBookmarkId(null)
     exitSelectionMode()
-  }, [filterView, selectedTag, currentView, exitSelectionMode])
+  }, [filter, tag, view, exitSelectionMode])
 
   useHotkeys({
     'g n': openNewBookmarkForm,
-    'g a': navToAllBookmarks,
-    'g i': navToInbox,
-    'g l': navToReadLater,
-    'g s': goToSettings,
+    'g a': goToAllBookmarks,
+    'g i': goToInbox,
+    'g l': goToReadLater,
+    'g s': () => navigate('#/settings'),
     'g g': goToTop,
     'shift+g': goToBottom,
     'shift+?': showHelp,
@@ -418,7 +392,6 @@ export function BookmarkList() {
 
   const handleHomeClick = () => {
     goToAllBookmarks()
-    setCurrentView('bookmarks')
     setIsSidebarOpen(false)
   }
 
@@ -441,15 +414,15 @@ export function BookmarkList() {
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         onOpenSettings={() => {
-          setCurrentView('settings')
+          navigate('#/settings')
           setIsSidebarOpen(false)
         }}
-        isSettingsActive={currentView === 'settings'}
+        isSettingsActive={view === 'settings'}
         onHomeClick={handleHomeClick}
       />
 
       <div className="flex-1 flex flex-col overflow-hidden relative">
-        {currentView === 'bookmarks' && (
+        {view === 'bookmarks' && (
           <>
             <FilterBar
               searchQuery={searchQuery}
@@ -488,8 +461,8 @@ export function BookmarkList() {
                         isFirstRun && filterView === 'all' ? (
                           <WelcomeState
                             onAddBookmark={openNewBookmarkForm}
-                            onImport={() => setCurrentView('settings')}
-                            onPairDevice={() => setCurrentView('settings')}
+                            onImport={() => navigate('#/settings')}
+                            onPairDevice={() => navigate('#/settings')}
                           />
                         ) : (
                           <div className="flex flex-col items-center justify-center py-20 opacity-50">
@@ -540,9 +513,9 @@ export function BookmarkList() {
           </>
         )}
 
-        {currentView === 'settings' && (
+        {view === 'settings' && (
           <div className="flex-1 overflow-y-auto bg-background">
-            <SettingsView onBack={() => setCurrentView('bookmarks')} />
+            <SettingsView onBack={() => navigate('#/')} />
           </div>
         )}
       </div>

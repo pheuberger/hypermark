@@ -2,9 +2,11 @@ import { useCallback } from 'react'
 import { useYjs } from './hooks/useYjs'
 import { useNostrSync } from './hooks/useNostrSync'
 import { usePasteToInbox } from './hooks/usePasteToInbox'
+import { useOnlineStatus } from './hooks/useOnlineStatus'
 import { BookmarkList } from './components/bookmarks/BookmarkList'
 import { ToastProvider, useToastContext } from './contexts/ToastContext'
 import { ToastContainer } from './components/ui/Toast'
+import { OfflineBanner } from './components/ui/OfflineBanner'
 
 function AppContent() {
   const { addToast, toasts, removeToast } = useToastContext()
@@ -20,8 +22,11 @@ function AppContent() {
 
   usePasteToInbox(handlePasteSuccess, handlePasteDuplicate)
 
+  const isOnline = useOnlineStatus()
+
   return (
     <div className="h-dvh bg-background">
+      {!isOnline && <OfflineBanner />}
       <BookmarkList />
       <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>

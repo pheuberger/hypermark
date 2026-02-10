@@ -1,6 +1,7 @@
 export {
   Settings,
   BookmarkCheck,
+  BookmarkPlus,
   Plus,
   Pencil,
   Trash,

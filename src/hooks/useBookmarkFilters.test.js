@@ -12,26 +12,36 @@ const bookmarks = [
   { _id: 'b3', title: 'Mango', url: 'https://m.com', description: '', tags: ['fruit'], readLater: false, inbox: false, createdAt: 300, updatedAt: 300 },
 ]
 
+const makeRouter = (overrides = {}) => ({
+  filterView: 'all',
+  selectedTag: null,
+  navigate: vi.fn(),
+  ...overrides,
+})
+
 describe('useBookmarkFilters', () => {
   afterEach(() => {
     vi.useRealTimers()
   })
 
   it('returns all bookmarks by default', () => {
-    const { result } = renderHook(() => useBookmarkFilters(bookmarks))
+    const router = makeRouter()
+    const { result } = renderHook(() => useBookmarkFilters(bookmarks, router))
     expect(result.current.filterView).toBe('all')
     expect(result.current.filteredBookmarks).toHaveLength(3)
   })
 
   it('sorts by recent (default)', () => {
-    const { result } = renderHook(() => useBookmarkFilters(bookmarks))
+    const router = makeRouter()
+    const { result } = renderHook(() => useBookmarkFilters(bookmarks, router))
     expect(result.current.sortBy).toBe('recent')
     expect(result.current.filteredBookmarks[0]._id).toBe('b3') // createdAt 300
     expect(result.current.filteredBookmarks[2]._id).toBe('b1') // createdAt 100
   })
 
   it('sorts by oldest', () => {
-    const { result } = renderHook(() => useBookmarkFilters(bookmarks))
+    const router = makeRouter()
+    const { result } = renderHook(() => useBookmarkFilters(bookmarks, router))
 
     act(() => result.current.setSortBy('oldest'))
     expect(result.current.filteredBookmarks[0]._id).toBe('b1')
@@ -39,7 +49,8 @@ describe('useBookmarkFilters', () => {
   })
 
   it('sorts by title', () => {
-    const { result } = renderHook(() => useBookmarkFilters(bookmarks))
+    const router = makeRouter()
+    const { result } = renderHook(() => useBookmarkFilters(bookmarks, router))
 
     act(() => result.current.setSortBy('title'))
     expect(result.current.filteredBookmarks[0].title).toBe('Apple')
@@ -47,76 +58,92 @@ describe('useBookmarkFilters', () => {
   })
 
   it('sorts by updated', () => {
-    const { result } = renderHook(() => useBookmarkFilters(bookmarks))
+    const router = makeRouter()
+    const { result } = renderHook(() => useBookmarkFilters(bookmarks, router))
 
     act(() => result.current.setSortBy('updated'))
     expect(result.current.filteredBookmarks[0]._id).toBe('b3') // updatedAt 300
   })
 
-  it('goToReadLater filters for readLater only', () => {
-    const { result } = renderHook(() => useBookmarkFilters(bookmarks))
+  it('goToReadLater navigates to read-later hash', () => {
+    const router = makeRouter()
+    const { result } = renderHook(() => useBookmarkFilters(bookmarks, router))
 
     act(() => result.current.goToReadLater())
-    expect(result.current.filterView).toBe('read-later')
+    expect(router.navigate).toHaveBeenCalledWith('#/read-later')
+  })
+
+  it('filters for readLater when filterView is read-later', () => {
+    const router = makeRouter({ filterView: 'read-later' })
+    const { result } = renderHook(() => useBookmarkFilters(bookmarks, router))
+
     expect(result.current.filteredBookmarks).toHaveLength(1)
     expect(result.current.filteredBookmarks[0]._id).toBe('b1')
   })
 
-  it('goToInbox filters for inbox only', () => {
-    const { result } = renderHook(() => useBookmarkFilters(bookmarks))
+  it('goToInbox navigates to inbox hash', () => {
+    const router = makeRouter()
+    const { result } = renderHook(() => useBookmarkFilters(bookmarks, router))
 
     act(() => result.current.goToInbox())
-    expect(result.current.filterView).toBe('inbox')
+    expect(router.navigate).toHaveBeenCalledWith('#/inbox')
+  })
+
+  it('filters for inbox when filterView is inbox', () => {
+    const router = makeRouter({ filterView: 'inbox' })
+    const { result } = renderHook(() => useBookmarkFilters(bookmarks, router))
+
     expect(result.current.filteredBookmarks).toHaveLength(1)
     expect(result.current.filteredBookmarks[0]._id).toBe('b2')
   })
 
-  it('handleTagSelect filters by tag', () => {
-    const { result } = renderHook(() => useBookmarkFilters(bookmarks))
+  it('handleTagSelect navigates to tag hash', () => {
+    const router = makeRouter()
+    const { result } = renderHook(() => useBookmarkFilters(bookmarks, router))
 
     act(() => result.current.handleTagSelect('fruit'))
-    expect(result.current.filterView).toBe('tag')
-    expect(result.current.selectedTag).toBe('fruit')
+    expect(router.navigate).toHaveBeenCalledWith('#/tag/fruit')
+  })
+
+  it('filters by tag when filterView is tag', () => {
+    const router = makeRouter({ filterView: 'tag', selectedTag: 'fruit' })
+    const { result } = renderHook(() => useBookmarkFilters(bookmarks, router))
+
     expect(result.current.filteredBookmarks).toHaveLength(2)
     expect(result.current.filteredBookmarks.every(b => b.tags.includes('fruit'))).toBe(true)
   })
 
-  it('handleTagClick filters by tag', () => {
-    const { result } = renderHook(() => useBookmarkFilters(bookmarks))
+  it('handleTagClick navigates to tag hash', () => {
+    const router = makeRouter()
+    const { result } = renderHook(() => useBookmarkFilters(bookmarks, router))
 
     act(() => result.current.handleTagClick('animals'))
-    expect(result.current.filterView).toBe('tag')
-    expect(result.current.selectedTag).toBe('animals')
-    expect(result.current.filteredBookmarks).toHaveLength(1)
+    expect(router.navigate).toHaveBeenCalledWith('#/tag/animals')
   })
 
-  it('handleFilterChange sets filter view and clears tag', () => {
-    const { result } = renderHook(() => useBookmarkFilters(bookmarks))
+  it('handleFilterChange navigates to correct hash', () => {
+    const router = makeRouter()
+    const { result } = renderHook(() => useBookmarkFilters(bookmarks, router))
 
-    // First set a tag filter
-    act(() => result.current.handleTagSelect('fruit'))
-    expect(result.current.selectedTag).toBe('fruit')
-
-    // Then change filter - should clear tag
     act(() => result.current.handleFilterChange('all'))
-    expect(result.current.filterView).toBe('all')
-    expect(result.current.selectedTag).toBeNull()
+    expect(router.navigate).toHaveBeenCalledWith('#/')
   })
 
-  it('goToAllBookmarks resets everything', () => {
-    const { result } = renderHook(() => useBookmarkFilters(bookmarks))
+  it('goToAllBookmarks navigates and clears search', () => {
+    const router = makeRouter()
+    const { result } = renderHook(() => useBookmarkFilters(bookmarks, router))
 
-    act(() => result.current.goToReadLater())
     act(() => result.current.setSearchQuery('test'))
+    expect(result.current.searchQuery).toBe('test')
 
     act(() => result.current.goToAllBookmarks())
-    expect(result.current.filterView).toBe('all')
-    expect(result.current.selectedTag).toBeNull()
+    expect(router.navigate).toHaveBeenCalledWith('#/')
     expect(result.current.searchQuery).toBe('')
   })
 
   it('setSearchQuery updates search query state', () => {
-    const { result } = renderHook(() => useBookmarkFilters(bookmarks))
+    const router = makeRouter()
+    const { result } = renderHook(() => useBookmarkFilters(bookmarks, router))
 
     act(() => result.current.setSearchQuery('hello'))
     expect(result.current.searchQuery).toBe('hello')
@@ -126,10 +153,10 @@ describe('useBookmarkFilters', () => {
     const messyBookmarks = [
       { _id: 'b1', title: 'No Tags', url: 'https://x.com', tags: null, readLater: false, inbox: false, createdAt: 100, updatedAt: 100 },
     ]
-    const { result } = renderHook(() => useBookmarkFilters(messyBookmarks))
+    const router = makeRouter({ filterView: 'tag', selectedTag: 'test' })
+    const { result } = renderHook(() => useBookmarkFilters(messyBookmarks, router))
 
     // Should not crash when filtering by tag
-    act(() => result.current.handleTagSelect('test'))
     expect(result.current.filteredBookmarks).toHaveLength(0)
   })
 })

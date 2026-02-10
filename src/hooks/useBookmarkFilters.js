@@ -7,14 +7,14 @@
 
 import { useState, useMemo, useCallback } from 'react'
 import { useSearch, useDebounce } from './useSearch'
+import { toHash } from './useHashRouter'
 
 /**
  * @param {Array} bookmarks - Raw bookmark array from Yjs
+ * @param {Object} router - Router state: { filterView, selectedTag, navigate }
  * @returns {Object} Filter state and filtered bookmarks
  */
-export function useBookmarkFilters(bookmarks) {
-  const [filterView, setFilterView] = useState('all')
-  const [selectedTag, setSelectedTag] = useState(null)
+export function useBookmarkFilters(bookmarks, { filterView, selectedTag, navigate }) {
   const [sortBy, setSortBy] = useState('recent')
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -51,35 +51,29 @@ export function useBookmarkFilters(bookmarks) {
   }, [searchedBookmarks, filterView, selectedTag, sortBy])
 
   const goToAllBookmarks = useCallback(() => {
-    setFilterView('all')
-    setSelectedTag(null)
+    navigate('#/')
     setSearchQuery('')
-  }, [])
+  }, [navigate])
 
   const goToReadLater = useCallback(() => {
-    setFilterView('read-later')
-    setSelectedTag(null)
-  }, [])
+    navigate('#/read-later')
+  }, [navigate])
 
   const goToInbox = useCallback(() => {
-    setFilterView('inbox')
-    setSelectedTag(null)
-  }, [])
+    navigate('#/inbox')
+  }, [navigate])
 
   const handleFilterChange = useCallback((view) => {
-    setFilterView(view)
-    setSelectedTag(null)
-  }, [])
+    navigate(toHash('bookmarks', view, null))
+  }, [navigate])
 
   const handleTagSelect = useCallback((tag) => {
-    setFilterView('tag')
-    setSelectedTag(tag)
-  }, [])
+    navigate(toHash('bookmarks', 'tag', tag))
+  }, [navigate])
 
   const handleTagClick = useCallback((tag) => {
-    setFilterView('tag')
-    setSelectedTag(tag)
-  }, [])
+    navigate(toHash('bookmarks', 'tag', tag))
+  }, [navigate])
 
   return {
     filterView,

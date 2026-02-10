@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Hash, Check, Plus } from './Icons'
-import { getAllTags, updateBookmark } from '../../services/bookmarks'
+import { getAllTags, updateBookmark, bulkAddTags } from '../../services/bookmarks'
 import { cn } from '@/utils/cn'
 
 /**
@@ -10,21 +10,27 @@ import { cn } from '@/utils/cn'
  * - List of tags with checkboxes for selected
  * - Keyboard navigation: Ctrl+j/k or arrows, Space to toggle, 1-9 for quick select
  */
-export function QuickTagModal({ isOpen, onClose, bookmark }) {
+export function QuickTagModal({ isOpen, onClose, bookmark, bookmarkIds }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [localTags, setLocalTags] = useState([])
   const inputRef = useRef(null)
   const listRef = useRef(null)
 
+  const isBulkMode = !bookmark && Array.isArray(bookmarkIds) && bookmarkIds.length > 0
+
   const allTags = getAllTags()
 
   // Sync local tags when modal opens or bookmark changes
   useEffect(() => {
-    if (isOpen && bookmark) {
-      setLocalTags(bookmark.tags || [])
+    if (isOpen) {
+      if (isBulkMode) {
+        setLocalTags([])
+      } else if (bookmark) {
+        setLocalTags(bookmark.tags || [])
+      }
     }
-  }, [isOpen, bookmark?._id])
+  }, [isOpen, bookmark?._id, isBulkMode])
 
   // Filter tags based on search, and include "create new" option
   const filteredOptions = useMemo(() => {
@@ -89,15 +95,21 @@ export function QuickTagModal({ isOpen, onClose, bookmark }) {
   }, [])
 
   const saveAndClose = useCallback(() => {
+    if (isBulkMode) {
+      if (localTags.length > 0) {
+        bulkAddTags(bookmarkIds, localTags)
+      }
+      onClose()
+      return
+    }
     if (!bookmark?._id) return
-
     try {
       updateBookmark(bookmark._id, { tags: localTags })
     } catch (error) {
       console.error('Failed to update tags:', error)
     }
     onClose()
-  }, [bookmark?._id, localTags, onClose])
+  }, [isBulkMode, bookmarkIds, bookmark?._id, localTags, onClose])
 
   const handleKeyDown = useCallback((e) => {
     const isModified = e.ctrlKey || e.metaKey
@@ -133,18 +145,21 @@ export function QuickTagModal({ isOpen, onClose, bookmark }) {
       e.preventDefault()
       const selectedOption = filteredOptions[selectedIndex]
       if (selectedOption?.type === 'create') {
-        // Add the new tag before saving
         const newTags = [...localTags, selectedOption.value.toLowerCase()]
-        setLocalTags(newTags)
-        // Save with the new tag included
-        if (bookmark?._id) {
-          try {
-            updateBookmark(bookmark._id, { tags: newTags })
-          } catch (error) {
-            console.error('Failed to update tags:', error)
+        if (isBulkMode) {
+          bulkAddTags(bookmarkIds, newTags)
+          onClose()
+        } else {
+          setLocalTags(newTags)
+          if (bookmark?._id) {
+            try {
+              updateBookmark(bookmark._id, { tags: newTags })
+            } catch (error) {
+              console.error('Failed to update tags:', error)
+            }
           }
+          onClose()
         }
-        onClose()
       } else {
         saveAndClose()
       }
@@ -168,7 +183,7 @@ export function QuickTagModal({ isOpen, onClose, bookmark }) {
     }
   }, [filteredOptions, selectedIndex, toggleTag, saveAndClose, onClose])
 
-  if (!isOpen || !bookmark) return null
+  if (!isOpen || (!bookmark && !isBulkMode)) return null
 
   return (
     <div
@@ -187,7 +202,7 @@ export function QuickTagModal({ isOpen, onClose, bookmark }) {
         {/* Header - Bookmark title */}
         <div className="px-3 py-2 border-b border-border bg-muted/30">
           <span className="text-sm text-muted-foreground truncate block">
-            {bookmark.title}
+            {isBulkMode ? `Tag ${bookmarkIds.length} bookmarks` : bookmark.title}
           </span>
         </div>
 

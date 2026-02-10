@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useYjs, undo, redo } from '../../hooks/useYjs'
 import { useHotkeys } from '../../hooks/useHotkeys'
-import { useToast } from '../../hooks/useToast'
+import { useToastContext } from '../../contexts/ToastContext'
 import { useBookmarkFilters } from '../../hooks/useBookmarkFilters'
 import { useBookmarkSelection } from '../../hooks/useBookmarkSelection'
 import { useBookmarkKeyboardNav } from '../../hooks/useBookmarkKeyboardNav'
@@ -16,7 +16,6 @@ import { WelcomeState } from './WelcomeState'
 import { SettingsView } from '../ui/SettingsView'
 import { HelpModal } from '../ui/HelpModal'
 import { QuickTagModal } from '../ui/QuickTagModal'
-import { ToastContainer } from '../ui/Toast'
 import { PackageOpen, Pencil, Trash } from '../ui/Icons'
 import {
   getAllBookmarks,
@@ -29,7 +28,7 @@ import { checkDeviceInitialization } from '../../services/key-storage'
 export function BookmarkList() {
   const { bookmarks: bookmarksMap, synced } = useYjs()
   const [bookmarks, setBookmarks] = useState([])
-  const { toasts, addToast, removeToast } = useToast()
+  const { addToast } = useToastContext()
   const [currentView, setCurrentView] = useState('bookmarks')
   const [isFirstRun, setIsFirstRun] = useState(false)
 
@@ -208,6 +207,7 @@ export function BookmarkList() {
         deleteBookmark(bookmark._id)
         addToast({
           message: `Deleted "${bookmark.title}"`,
+          type: 'info',
           action: () => { undo() },
           actionLabel: 'Undo',
           duration: 5000,
@@ -220,13 +220,13 @@ export function BookmarkList() {
 
   const handleUndo = useCallback(() => {
     if (undo()) {
-      addToast({ message: 'Undone', duration: 2000 })
+      addToast({ message: 'Undone', type: 'success', duration: 2000 })
     }
   }, [addToast])
 
   const handleRedo = useCallback(() => {
     if (redo()) {
-      addToast({ message: 'Redone', duration: 2000 })
+      addToast({ message: 'Redone', type: 'success', duration: 2000 })
     }
   }, [addToast])
 
@@ -238,6 +238,7 @@ export function BookmarkList() {
       bulkDeleteBookmarks(Array.from(selectedIds))
       addToast({
         message: `Deleted ${count} bookmark${count > 1 ? 's' : ''}`,
+        type: 'info',
         action: () => { undo() },
         actionLabel: 'Undo',
         duration: 5000,
@@ -245,7 +246,7 @@ export function BookmarkList() {
       exitSelectionMode()
     } catch (error) {
       console.error('Failed to delete bookmarks:', error)
-      addToast({ message: 'Failed to delete bookmarks', duration: 3000 })
+      addToast({ message: 'Failed to delete bookmarks', type: 'error', duration: 3000 })
     }
   }, [selectedIds, addToast, exitSelectionMode])
 
@@ -274,6 +275,7 @@ export function BookmarkList() {
         const newValue = toggleReadLater(bookmark._id)
         addToast({
           message: newValue ? 'Added to Read Later' : 'Removed from Read Later',
+          type: 'success',
           duration: 2000,
         })
       } catch (error) {
@@ -288,10 +290,10 @@ export function BookmarkList() {
     const bookmark = getSelectedBookmark()
     if (bookmark) {
       navigator.clipboard.writeText(bookmark.url).then(() => {
-        addToast({ message: 'URL copied to clipboard', duration: 2000 })
+        addToast({ message: 'URL copied to clipboard', type: 'success', duration: 2000 })
       }).catch((error) => {
         console.error('Failed to copy URL:', error)
-        addToast({ message: 'Failed to copy URL', duration: 2000 })
+        addToast({ message: 'Failed to copy URL', type: 'error', duration: 2000 })
       })
     }
   }, [filterView, isAddingNew, editingBookmarkId, getSelectedBookmark, addToast])
@@ -370,13 +372,14 @@ export function BookmarkList() {
       deleteBookmark(bookmarkId)
       addToast({
         message: `Deleted "${bookmarkTitle}"`,
+        type: 'info',
         action: () => { undo() },
         actionLabel: 'Undo',
         duration: 5000,
       })
     } catch (error) {
       console.error('Failed to delete bookmark:', error)
-      addToast({ message: 'Failed to delete bookmark', duration: 3000 })
+      addToast({ message: 'Failed to delete bookmark', type: 'error', duration: 3000 })
     }
   }, [bookmarks, addToast])
 
@@ -536,7 +539,6 @@ export function BookmarkList() {
         />
       )}
 
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   )
 }

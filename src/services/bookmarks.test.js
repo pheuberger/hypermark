@@ -6,16 +6,33 @@
  * CRUD operations require Yjs integration which is tested separately.
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import * as Y from "yjs";
 import {
   normalizeUrl,
   isValidUrl,
   validateBookmark,
+  bulkSetReadLater,
+  bulkAddTags,
 } from "./bookmarks.js";
 
 import {
   generateBookmarkInput,
 } from "../test-utils/data-generators.js";
+
+// Mock useYjs to provide a real Y.Doc for bulk operation tests
+vi.mock("../hooks/useYjs", () => {
+  let doc = new Y.Doc();
+  return {
+    getYdocInstance: () => doc,
+    LOCAL_ORIGIN: "local",
+    __resetDoc: () => { doc = new Y.Doc(); },
+    __getDoc: () => doc,
+  };
+});
+
+// Import the mock helpers after vi.mock
+const { __resetDoc, __getDoc } = await import("../hooks/useYjs");
 
 describe("bookmarks service", () => {
   describe("normalizeUrl", () => {
@@ -488,5 +505,210 @@ describe("bookmarks service", () => {
       const result = normalizeUrl(`https://example.com${longPath}`);
       expect(result).toContain(longPath);
     });
+  });
+});
+
+// ============================================================================
+// Bulk operation tests (require Yjs mock)
+// ============================================================================
+
+function seedBookmark(doc, id, overrides = {}) {
+  const bookmarksMap = doc.getMap("bookmarks");
+  const now = Date.now();
+  const bookmark = {
+    id,
+    url: `https://example.com/${id}`,
+    title: `Bookmark ${id}`,
+    description: "",
+    tags: [],
+    readLater: false,
+    inbox: false,
+    favicon: null,
+    preview: null,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+  bookmarksMap.set(id, bookmark);
+  return bookmark;
+}
+
+describe("bulkSetReadLater", () => {
+  beforeEach(() => {
+    __resetDoc();
+  });
+
+  it("returns 0 for empty array", () => {
+    expect(bulkSetReadLater([], true)).toBe(0);
+  });
+
+  it("returns 0 for non-array input", () => {
+    expect(bulkSetReadLater(null, true)).toBe(0);
+    expect(bulkSetReadLater(undefined, true)).toBe(0);
+    expect(bulkSetReadLater("not-array", true)).toBe(0);
+  });
+
+  it("sets readLater=true on multiple bookmarks", () => {
+    const doc = __getDoc();
+    seedBookmark(doc, "b1", { readLater: false });
+    seedBookmark(doc, "b2", { readLater: false });
+
+    const count = bulkSetReadLater(["b1", "b2"], true);
+
+    expect(count).toBe(2);
+    const map = doc.getMap("bookmarks");
+    expect(map.get("b1").readLater).toBe(true);
+    expect(map.get("b2").readLater).toBe(true);
+  });
+
+  it("sets readLater=false on multiple bookmarks", () => {
+    const doc = __getDoc();
+    seedBookmark(doc, "b1", { readLater: true });
+    seedBookmark(doc, "b2", { readLater: true });
+
+    const count = bulkSetReadLater(["b1", "b2"], false);
+
+    expect(count).toBe(2);
+    const map = doc.getMap("bookmarks");
+    expect(map.get("b1").readLater).toBe(false);
+    expect(map.get("b2").readLater).toBe(false);
+  });
+
+  it("skips bookmarks that already have the target value", () => {
+    const doc = __getDoc();
+    seedBookmark(doc, "b1", { readLater: true });
+    seedBookmark(doc, "b2", { readLater: false });
+    seedBookmark(doc, "b3", { readLater: true });
+
+    const count = bulkSetReadLater(["b1", "b2", "b3"], true);
+
+    // Only b2 should be updated (b1 and b3 already true)
+    expect(count).toBe(1);
+  });
+
+  it("handles missing/nonexistent bookmark IDs gracefully", () => {
+    const doc = __getDoc();
+    seedBookmark(doc, "b1", { readLater: false });
+
+    const count = bulkSetReadLater(["b1", "nonexistent", "also-missing"], true);
+
+    expect(count).toBe(1);
+    const map = doc.getMap("bookmarks");
+    expect(map.get("b1").readLater).toBe(true);
+  });
+
+  it("updates updatedAt timestamp", () => {
+    const doc = __getDoc();
+    const original = seedBookmark(doc, "b1", { readLater: false });
+    const originalUpdatedAt = original.updatedAt;
+
+    // Small delay to ensure timestamp differs
+    bulkSetReadLater(["b1"], true);
+
+    const map = doc.getMap("bookmarks");
+    expect(map.get("b1").updatedAt).toBeGreaterThanOrEqual(originalUpdatedAt);
+  });
+});
+
+describe("bulkAddTags", () => {
+  beforeEach(() => {
+    __resetDoc();
+  });
+
+  it("returns 0 for empty ids array", () => {
+    expect(bulkAddTags([], ["tag1"])).toBe(0);
+  });
+
+  it("returns 0 for empty tags array", () => {
+    const doc = __getDoc();
+    seedBookmark(doc, "b1");
+
+    expect(bulkAddTags(["b1"], [])).toBe(0);
+  });
+
+  it("returns 0 for non-array ids", () => {
+    expect(bulkAddTags(null, ["tag1"])).toBe(0);
+    expect(bulkAddTags(undefined, ["tag1"])).toBe(0);
+  });
+
+  it("returns 0 for non-array tags", () => {
+    expect(bulkAddTags(["b1"], null)).toBe(0);
+    expect(bulkAddTags(["b1"], "not-array")).toBe(0);
+  });
+
+  it("adds tags to multiple bookmarks", () => {
+    const doc = __getDoc();
+    seedBookmark(doc, "b1", { tags: ["existing"] });
+    seedBookmark(doc, "b2", { tags: [] });
+
+    const count = bulkAddTags(["b1", "b2"], ["design", "tools"]);
+
+    expect(count).toBe(2);
+    const map = doc.getMap("bookmarks");
+    expect(map.get("b1").tags).toEqual(["existing", "design", "tools"]);
+    expect(map.get("b2").tags).toEqual(["design", "tools"]);
+  });
+
+  it("normalizes tags to lowercase and trims whitespace", () => {
+    const doc = __getDoc();
+    seedBookmark(doc, "b1", { tags: [] });
+
+    bulkAddTags(["b1"], ["  Design  ", "TOOLS", " React "]);
+
+    const map = doc.getMap("bookmarks");
+    expect(map.get("b1").tags).toEqual(["design", "tools", "react"]);
+  });
+
+  it("skips duplicate tags that bookmark already has", () => {
+    const doc = __getDoc();
+    seedBookmark(doc, "b1", { tags: ["design", "react"] });
+    seedBookmark(doc, "b2", { tags: ["design"] });
+
+    const count = bulkAddTags(["b1", "b2"], ["design", "tools"]);
+
+    // b1 already has "design", only "tools" added -> modified
+    // b2 already has "design", only "tools" added -> modified
+    expect(count).toBe(2);
+    const map = doc.getMap("bookmarks");
+    expect(map.get("b1").tags).toEqual(["design", "react", "tools"]);
+    expect(map.get("b2").tags).toEqual(["design", "tools"]);
+  });
+
+  it("returns 0 when bookmark already has all tags", () => {
+    const doc = __getDoc();
+    seedBookmark(doc, "b1", { tags: ["design", "tools"] });
+
+    const count = bulkAddTags(["b1"], ["design", "tools"]);
+
+    expect(count).toBe(0);
+  });
+
+  it("handles missing/nonexistent bookmark IDs gracefully", () => {
+    const doc = __getDoc();
+    seedBookmark(doc, "b1", { tags: [] });
+
+    const count = bulkAddTags(["b1", "nonexistent"], ["tag1"]);
+
+    expect(count).toBe(1);
+  });
+
+  it("returns 0 when all tags are empty strings after normalization", () => {
+    const doc = __getDoc();
+    seedBookmark(doc, "b1", { tags: [] });
+
+    const count = bulkAddTags(["b1"], ["", "  ", "   "]);
+
+    expect(count).toBe(0);
+  });
+
+  it("updates updatedAt timestamp", () => {
+    const doc = __getDoc();
+    const original = seedBookmark(doc, "b1", { tags: [] });
+    const originalUpdatedAt = original.updatedAt;
+
+    bulkAddTags(["b1"], ["newtag"]);
+
+    const map = doc.getMap("bookmarks");
+    expect(map.get("b1").updatedAt).toBeGreaterThanOrEqual(originalUpdatedAt);
   });
 });

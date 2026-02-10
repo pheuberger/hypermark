@@ -254,6 +254,81 @@ export function bulkDeleteBookmarks(ids) {
 }
 
 /**
+ * Set read-later on multiple bookmarks in a single transaction
+ * @param {string[]} ids - Array of bookmark IDs
+ * @param {boolean} value - Target read-later value
+ * @returns {number} - Number of bookmarks updated
+ */
+export function bulkSetReadLater(ids, value) {
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return 0
+  }
+
+  const doc = getYdoc()
+  const bookmarksMap = doc.getMap('bookmarks')
+
+  let updatedCount = 0
+  doc.transact(() => {
+    for (const id of ids) {
+      const raw = bookmarksMap.get(id)
+      if (!raw) continue
+
+      const bookmark = toPlainObject(id, raw)
+      if (bookmark.readLater !== value) {
+        bookmarksMap.set(id, { ...bookmark, readLater: value, updatedAt: Date.now() })
+        updatedCount++
+      }
+    }
+  }, LOCAL_ORIGIN)
+
+  console.log(`[Bookmarks] Bulk set read-later: ${updatedCount} bookmarks → ${value}`)
+  return updatedCount
+}
+
+/**
+ * Add tags to multiple bookmarks in a single transaction
+ * @param {string[]} ids - Array of bookmark IDs
+ * @param {string[]} tags - Array of tags to add
+ * @returns {number} - Number of bookmarks modified
+ */
+export function bulkAddTags(ids, tags) {
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return 0
+  }
+  if (!Array.isArray(tags) || tags.length === 0) {
+    return 0
+  }
+
+  const normalizedTags = tags.map(t => t.toLowerCase().trim()).filter(Boolean)
+  if (normalizedTags.length === 0) {
+    return 0
+  }
+
+  const doc = getYdoc()
+  const bookmarksMap = doc.getMap('bookmarks')
+
+  let modifiedCount = 0
+  doc.transact(() => {
+    for (const id of ids) {
+      const raw = bookmarksMap.get(id)
+      if (!raw) continue
+
+      const bookmark = toPlainObject(id, raw)
+      const existingTags = bookmark.tags || []
+      const newTags = normalizedTags.filter(t => !existingTags.includes(t))
+
+      if (newTags.length > 0) {
+        bookmarksMap.set(id, { ...bookmark, tags: [...existingTags, ...newTags], updatedAt: Date.now() })
+        modifiedCount++
+      }
+    }
+  }, LOCAL_ORIGIN)
+
+  console.log(`[Bookmarks] Bulk added tags: ${modifiedCount} bookmarks modified`)
+  return modifiedCount
+}
+
+/**
  * Toggle read-later status
  */
 export function toggleReadLater(id) {

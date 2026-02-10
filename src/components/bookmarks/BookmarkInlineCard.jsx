@@ -254,6 +254,16 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
       return
     }
 
+    // Enter = save/confirm (Shift+Enter = newline in description)
+    if (e.key === 'Enter') {
+      if (e.shiftKey && currentField === 'desc') {
+        return // Allow Shift+Enter for newlines in description
+      }
+      e.preventDefault()
+      handleDone()
+      return
+    }
+
     // Tab navigation
     if (e.key === 'Tab') {
       e.preventDefault()
@@ -282,6 +292,11 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
   }
 
   const handleTagsKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      handleDone()
+      return
+    }
     if (e.key === 'Tab') {
       e.preventDefault()
       if (e.shiftKey) {
@@ -445,7 +460,7 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
 
         <div className="flex items-center gap-2 text-[10px] text-muted-foreground/50 font-medium">
           <SaveIndicator show={saveCount} />
-          Ctrl+Enter to save · Esc to {isNew ? 'cancel' : 'close'}
+          Enter to save · Esc to {isNew ? 'cancel' : 'close'}
         </div>
       </div>
     </div>

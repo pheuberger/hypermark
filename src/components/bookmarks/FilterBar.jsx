@@ -79,16 +79,18 @@ export function FilterBar({
 
         <button
           onClick={onToggleSelectionMode}
-          className={`h-9 px-3 rounded-md font-medium text-sm inline-flex items-center gap-1.5 transition-colors ${
+          className={`h-9 w-9 rounded-md inline-flex items-center justify-center transition-colors ${
             selectionMode
               ? 'bg-primary text-primary-foreground hover:bg-primary/90'
               : 'text-muted-foreground hover:text-foreground hover:bg-accent'
           }`}
           aria-label={selectionMode ? 'Exit selection mode' : 'Select bookmarks'}
-          title={selectionMode ? 'Exit selection mode' : 'Select multiple bookmarks'}
+          title={selectionMode ? 'Exit selection mode (Esc)' : 'Select multiple bookmarks'}
         >
-          <ListChecks className="w-4 h-4" strokeWidth={1.5} />
-          <span className="hidden sm:inline">{selectionMode ? 'Done' : 'Select'}</span>
+          {selectionMode
+            ? <X className="w-4 h-4" strokeWidth={1.5} />
+            : <ListChecks className="w-4 h-4" strokeWidth={1.5} />
+          }
         </button>
 
         <button

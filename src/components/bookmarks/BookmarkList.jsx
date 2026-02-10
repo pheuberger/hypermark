@@ -12,6 +12,7 @@ import { InboxView } from './InboxView'
 import { TagSidebar } from './TagSidebar'
 import { FilterBar } from './FilterBar'
 import { SelectionActionBar } from './SelectionActionBar'
+import { WelcomeState } from './WelcomeState'
 import { SettingsView } from '../ui/SettingsView'
 import { HelpModal } from '../ui/HelpModal'
 import { QuickTagModal } from '../ui/QuickTagModal'
@@ -23,12 +24,26 @@ import {
   bulkDeleteBookmarks,
   toggleReadLater,
 } from '../../services/bookmarks'
+import { checkDeviceInitialization } from '../../services/key-storage'
 
 export function BookmarkList() {
   const { bookmarks: bookmarksMap, synced } = useYjs()
   const [bookmarks, setBookmarks] = useState([])
   const { toasts, addToast, removeToast } = useToast()
   const [currentView, setCurrentView] = useState('bookmarks')
+  const [isFirstRun, setIsFirstRun] = useState(false)
+
+  useEffect(() => {
+    checkDeviceInitialization().then(({ hasLEK }) => {
+      setIsFirstRun(!hasLEK)
+    })
+  }, [])
+
+  useEffect(() => {
+    if (bookmarks.length > 0) {
+      setIsFirstRun(false)
+    }
+  }, [bookmarks.length])
 
   useEffect(() => {
     const loadBookmarks = () => {
@@ -434,18 +449,26 @@ export function BookmarkList() {
                       )}
 
                       {filteredBookmarks.length === 0 && !isAddingNew ? (
-                        <div className="flex flex-col items-center justify-center py-20 opacity-50">
-                          <PackageOpen className="w-12 h-12 mb-4 stroke-1" />
-                          <p className="text-sm font-medium">No bookmarks found</p>
-                          {filterView !== 'all' && (
-                            <button
-                              onClick={() => handleFilterChange('all')}
-                              className="mt-2 text-sm text-primary hover:underline"
-                            >
-                              Clear filters
-                            </button>
-                          )}
-                        </div>
+                        isFirstRun && filterView === 'all' ? (
+                          <WelcomeState
+                            onAddBookmark={openNewBookmarkForm}
+                            onImport={() => setCurrentView('settings')}
+                            onPairDevice={() => setCurrentView('settings')}
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center py-20 opacity-50">
+                            <PackageOpen className="w-12 h-12 mb-4 stroke-1" />
+                            <p className="text-sm font-medium">No bookmarks found</p>
+                            {filterView !== 'all' && (
+                              <button
+                                onClick={() => handleFilterChange('all')}
+                                className="mt-2 text-sm text-primary hover:underline"
+                              >
+                                Clear filters
+                              </button>
+                            )}
+                          </div>
+                        )
                       ) : (
                         filteredBookmarks.map((bookmark, index) => (
                           editingBookmarkId === bookmark._id ? (

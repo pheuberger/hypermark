@@ -2,6 +2,7 @@ import { forwardRef, useRef, useEffect, useState, useCallback } from 'react'
 import { ExternalLink, Check, X } from 'lucide-react'
 import { TagInput } from '../ui/TagInput'
 import { Tag } from '../ui/Tag'
+import { SaveIndicator } from '../ui/SaveIndicator'
 import { getAllTags, createBookmark, updateBookmark } from '../../services/bookmarks'
 import { useHotkeys } from '../../hooks/useHotkeys'
 
@@ -36,6 +37,7 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
   const [allTags, setAllTags] = useState([])
   const [urlError, setUrlError] = useState('')
   const [editMode, setEditMode] = useState(true)
+  const [saveCount, setSaveCount] = useState(0)
 
   // Extract domain from URL
   let domain = ''
@@ -162,13 +164,13 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
 
   const handleTitleBlur = () => {
     if (isEditing && localTitle !== bookmark?.title) {
-      saveChanges()
+      if (saveChanges()) setSaveCount(c => c + 1)
     }
   }
 
   const handleDescBlur = () => {
     if (isEditing && localDesc !== bookmark?.description) {
-      saveChanges()
+      if (saveChanges()) setSaveCount(c => c + 1)
     }
   }
 
@@ -187,6 +189,7 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
         try {
           updateBookmark(bookmark._id, data)
           onFieldChange?.(data)
+          setSaveCount(c => c + 1)
         } catch (error) {
           console.error('Failed to save tags:', error)
         }
@@ -213,6 +216,7 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
         try {
           updateBookmark(bookmark._id, data)
           onFieldChange?.(data)
+          setSaveCount(c => c + 1)
         } catch (error) {
           console.error('Failed to save read later:', error)
         }
@@ -439,7 +443,8 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
           </button>
         </div>
 
-        <div className="text-[10px] text-muted-foreground/50 font-medium">
+        <div className="flex items-center gap-2 text-[10px] text-muted-foreground/50 font-medium">
+          <SaveIndicator show={saveCount} />
           Ctrl+Enter to save · Esc to {isNew ? 'cancel' : 'close'}
         </div>
       </div>

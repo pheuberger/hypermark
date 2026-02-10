@@ -21,6 +21,7 @@ import {
   getAllBookmarks,
   deleteBookmark,
   bulkDeleteBookmarks,
+  bulkSetReadLater,
   toggleReadLater,
 } from '../../services/bookmarks'
 import { checkDeviceInitialization } from '../../services/key-storage'
@@ -69,6 +70,7 @@ export function BookmarkList() {
   const [isHelpOpen, setIsHelpOpen] = useState(false)
   const [isTagModalOpen, setIsTagModalOpen] = useState(false)
   const [tagModalBookmark, setTagModalBookmark] = useState(null)
+  const [bulkTagIds, setBulkTagIds] = useState(null)
   const [contextMenu, setContextMenu] = useState(null)
   const searchInputRef = useRef(null)
   const inboxViewRef = useRef(null)
@@ -250,6 +252,33 @@ export function BookmarkList() {
     }
   }, [selectedIds, addToast, exitSelectionMode])
 
+  const handleBulkReadLater = useCallback(() => {
+    if (selectedIds.size === 0) return
+    const ids = Array.from(selectedIds)
+    const anyNotReadLater = ids.some(id => {
+      const bm = bookmarks.find(b => b._id === id)
+      return bm && !bm.readLater
+    })
+    const targetValue = anyNotReadLater
+    const count = bulkSetReadLater(ids, targetValue)
+    addToast({
+      message: targetValue
+        ? `Added ${count} bookmark${count > 1 ? 's' : ''} to Read Later`
+        : `Removed ${count} bookmark${count > 1 ? 's' : ''} from Read Later`,
+      action: () => { undo() },
+      actionLabel: 'Undo',
+      duration: 5000,
+    })
+    exitSelectionMode()
+  }, [selectedIds, bookmarks, addToast, exitSelectionMode])
+
+  const openBulkTagModal = useCallback(() => {
+    if (selectedIds.size === 0) return
+    setTagModalBookmark(null)
+    setBulkTagIds(Array.from(selectedIds))
+    setIsTagModalOpen(true)
+  }, [selectedIds])
+
   const openTagModal = useCallback(() => {
     if (filterView === 'inbox') return
     if (isAddingNew || editingBookmarkId) return
@@ -263,8 +292,12 @@ export function BookmarkList() {
   const closeTagModal = useCallback(() => {
     setIsTagModalOpen(false)
     setTagModalBookmark(null)
+    if (bulkTagIds) {
+      exitSelectionMode()
+      setBulkTagIds(null)
+    }
     suppressHoverBriefly()
-  }, [suppressHoverBriefly])
+  }, [suppressHoverBriefly, bulkTagIds, exitSelectionMode])
 
   const toggleReadLaterSelected = useCallback(() => {
     if (filterView === 'inbox') return
@@ -332,8 +365,8 @@ export function BookmarkList() {
     'o': openSelected,
     'e': editSelected,
     'd': selectionMode && selectedIds.size > 0 ? handleBulkDelete : deleteSelected,
-    't': openTagModal,
-    'l': toggleReadLaterSelected,
+    't': selectionMode && selectedIds.size > 0 ? openBulkTagModal : openTagModal,
+    'l': selectionMode && selectedIds.size > 0 ? handleBulkReadLater : toggleReadLaterSelected,
     'c': copySelectedUrl,
     '.': openContextMenuForSelected,
     'mod+k': focusSearch,
@@ -520,10 +553,13 @@ export function BookmarkList() {
         isOpen={isTagModalOpen}
         onClose={closeTagModal}
         bookmark={tagModalBookmark}
+        bookmarkIds={bulkTagIds}
       />
 
       <SelectionActionBar
         selectedCount={selectedIds.size}
+        onTag={openBulkTagModal}
+        onReadLater={handleBulkReadLater}
         onDelete={handleBulkDelete}
         onCancel={exitSelectionMode}
       />

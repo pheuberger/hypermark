@@ -1,4 +1,5 @@
 import { X, ChevronDown, Menu, Search, Plus, ListChecks } from '../ui/Icons'
+import { SyncStatusIndicator } from '../ui/SyncStatusIndicator'
 
 export function FilterBar({
   searchQuery,
@@ -73,6 +74,8 @@ export function FilterBar({
           </select>
           <ChevronDown className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" strokeWidth={1.5} />
         </div>
+
+        <SyncStatusIndicator />
 
         <button
           onClick={onToggleSelectionMode}

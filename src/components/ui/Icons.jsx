@@ -22,4 +22,8 @@ export {
   CheckSquare,
   ListChecks,
   Upload,
+  Cloud,
+  CloudOff,
+  RefreshCw,
+  Activity,
 } from 'lucide-react'

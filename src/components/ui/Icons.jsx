@@ -17,7 +17,6 @@ export {
   Monitor,
   Smartphone,
   AlertCircle,
-  Inbox,
   Square,
   CheckSquare,
   ListChecks,

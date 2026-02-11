@@ -11,8 +11,8 @@ describe('parseHash', () => {
     expect(parseHash('#/')).toEqual({ view: 'bookmarks', filter: 'all', tag: null })
   })
 
-  it('parses #/inbox', () => {
-    expect(parseHash('#/inbox')).toEqual({ view: 'bookmarks', filter: 'inbox', tag: null })
+  it('parses #/inbox as fallback to all', () => {
+    expect(parseHash('#/inbox')).toEqual({ view: 'bookmarks', filter: 'all', tag: null })
   })
 
   it('parses #/read-later', () => {
@@ -41,8 +41,8 @@ describe('toHash', () => {
     expect(toHash('settings', 'all', null)).toBe('#/settings')
   })
 
-  it('returns #/inbox for inbox filter', () => {
-    expect(toHash('bookmarks', 'inbox', null)).toBe('#/inbox')
+  it('returns #/ for inbox filter (removed feature)', () => {
+    expect(toHash('bookmarks', 'inbox', null)).toBe('#/')
   })
 
   it('returns #/read-later for read-later filter', () => {
@@ -61,7 +61,6 @@ describe('toHash', () => {
 describe('parseHash/toHash round-trip', () => {
   const cases = [
     { view: 'bookmarks', filter: 'all', tag: null },
-    { view: 'bookmarks', filter: 'inbox', tag: null },
     { view: 'bookmarks', filter: 'read-later', tag: null },
     { view: 'settings', filter: 'all', tag: null },
     { view: 'bookmarks', filter: 'tag', tag: 'design' },
@@ -89,10 +88,10 @@ describe('useHashRouter', () => {
   })
 
   it('returns initial state from current hash', () => {
-    window.location.hash = '#/inbox'
+    window.location.hash = '#/read-later'
     const { result } = renderHook(() => useHashRouter())
     expect(result.current.view).toBe('bookmarks')
-    expect(result.current.filter).toBe('inbox')
+    expect(result.current.filter).toBe('read-later')
     expect(result.current.tag).toBeNull()
   })
 
@@ -107,10 +106,10 @@ describe('useHashRouter', () => {
     const { result } = renderHook(() => useHashRouter())
 
     act(() => {
-      result.current.navigate('#/inbox')
+      result.current.navigate('#/read-later')
     })
 
-    expect(window.location.hash).toBe('#/inbox')
+    expect(window.location.hash).toBe('#/read-later')
   })
 
   it('responds to hashchange events', () => {
@@ -126,13 +125,13 @@ describe('useHashRouter', () => {
   })
 
   it('navigate does not set hash if already current', () => {
-    window.location.hash = '#/inbox'
+    window.location.hash = '#/read-later'
     const { result } = renderHook(() => useHashRouter())
 
     const hashBefore = window.location.hash
 
     act(() => {
-      result.current.navigate('#/inbox')
+      result.current.navigate('#/read-later')
     })
 
     expect(window.location.hash).toBe(hashBefore)

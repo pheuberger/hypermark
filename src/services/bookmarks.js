@@ -79,8 +79,8 @@ export function validateBookmark(data) {
     throw new Error('Invalid URL format')
   }
 
-  // Validate title (not required for inbox items)
-  if (!data.inbox && (!data.title || typeof data.title !== 'string' || !data.title.trim())) {
+  // Validate title
+  if (!data.title || typeof data.title !== 'string' || !data.title.trim()) {
     throw new Error('Title is required')
   }
 
@@ -95,7 +95,6 @@ export function validateBookmark(data) {
           .filter(tag => tag.length > 0)
       : [],
     readLater: Boolean(data.readLater),
-    inbox: Boolean(data.inbox),
     favicon: data.favicon || null,
     preview: data.preview || null,
   }
@@ -149,7 +148,6 @@ export function createBookmark(bookmarkData) {
     description: validated.description,
     tags: validated.tags,
     readLater: validated.readLater,
-    inbox: validated.inbox,
     favicon: validated.favicon,
     preview: validated.preview,
     createdAt: now,
@@ -194,7 +192,6 @@ export function updateBookmark(id, updates) {
     description: validated.description,
     tags: validated.tags,
     readLater: validated.readLater,
-    inbox: validated.inbox,
     favicon: validated.favicon,
     preview: validated.preview,
     updatedAt: Date.now(),
@@ -455,79 +452,6 @@ export function getReadLaterBookmarks() {
 }
 
 /**
- * Get all inbox bookmarks
- */
-export function getInboxBookmarks() {
-  const all = getAllBookmarks()
-  return all.filter(bookmark => bookmark.inbox)
-}
-
-/**
- * Create inbox item from URL
- * @param {string} url - URL to add to inbox
- * @returns {Object} - Created bookmark object
- * @throws {Error} - If URL is invalid or duplicate
- */
-export function createInboxItem(url) {
-  // Validate URL
-  if (!url || typeof url !== 'string') {
-    throw new Error('URL is required')
-  }
-
-  if (!isValidUrl(url)) {
-    throw new Error('Invalid URL format')
-  }
-
-  // Check for duplicates
-  const existing = findBookmarksByUrl(url)
-  if (existing.length > 0) {
-    throw new Error('Bookmark already exists for this URL')
-  }
-
-  // Extract domain as title
-  const domain = new URL(normalizeUrl(url)).hostname
-
-  // Create inbox bookmark
-  const bookmarkData = {
-    url,
-    title: domain,
-    description: '',
-    tags: [],
-    readLater: false,
-    inbox: true,
-  }
-
-  return createBookmark(bookmarkData)
-}
-
-/**
- * Move bookmark from inbox (set inbox to false)
- * @param {string} id - Bookmark ID
- */
-export function moveFromInbox(id) {
-  const doc = getYdoc()
-  const bookmarksMap = doc.getMap('bookmarks')
-  const raw = bookmarksMap.get(id)
-
-  if (!raw) {
-    throw new Error(`Bookmark not found: ${id}`)
-  }
-
-  const bookmark = toPlainObject(id, raw)
-  const updated = {
-    ...bookmark,
-    inbox: false,
-    updatedAt: Date.now(),
-  }
-
-  doc.transact(() => {
-    bookmarksMap.set(id, updated)
-  }, LOCAL_ORIGIN)
-
-  console.log('[Bookmarks] Moved from inbox:', id)
-}
-
-/**
  * Get all unique tags
  */
 export function getAllTags() {
@@ -581,7 +505,6 @@ function toPlainObject(id, bookmark) {
       description: bookmark.get('description') || '',
       tags: tags?.toArray?.() || tags || [],
       readLater: bookmark.get('readLater') || false,
-      inbox: bookmark.get('inbox') || false,
       favicon: bookmark.get('favicon') || null,
       preview: bookmark.get('preview') || null,
       createdAt: bookmark.get('createdAt'),
@@ -609,7 +532,6 @@ function bookmarkToObject(id, bookmark) {
       description: bookmark.get('description') || '',
       tags: tags?.toArray?.() || tags || [],
       readLater: bookmark.get('readLater') || false,
-      inbox: bookmark.get('inbox') || false,
       favicon: bookmark.get('favicon') || null,
       preview: bookmark.get('preview') || null,
       createdAt: bookmark.get('createdAt'),
@@ -627,7 +549,6 @@ function bookmarkToObject(id, bookmark) {
     description: bookmark.description || '',
     tags: bookmark.tags || [],
     readLater: bookmark.readLater || false,
-    inbox: bookmark.inbox || false,
     favicon: bookmark.favicon || null,
     preview: bookmark.preview || null,
     createdAt: bookmark.createdAt,

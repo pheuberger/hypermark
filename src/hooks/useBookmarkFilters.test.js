@@ -7,9 +7,9 @@ import { renderHook, act } from '@testing-library/react'
 import { useBookmarkFilters } from './useBookmarkFilters.js'
 
 const bookmarks = [
-  { _id: 'b1', title: 'Zebra', url: 'https://z.com', description: '', tags: ['animals'], readLater: true, inbox: false, createdAt: 100, updatedAt: 200 },
-  { _id: 'b2', title: 'Apple', url: 'https://a.com', description: '', tags: ['fruit'], readLater: false, inbox: true, createdAt: 200, updatedAt: 100 },
-  { _id: 'b3', title: 'Mango', url: 'https://m.com', description: '', tags: ['fruit'], readLater: false, inbox: false, createdAt: 300, updatedAt: 300 },
+  { _id: 'b1', title: 'Zebra', url: 'https://z.com', description: '', tags: ['animals'], readLater: true, createdAt: 100, updatedAt: 200 },
+  { _id: 'b2', title: 'Apple', url: 'https://a.com', description: '', tags: ['fruit'], readLater: false, createdAt: 200, updatedAt: 100 },
+  { _id: 'b3', title: 'Mango', url: 'https://m.com', description: '', tags: ['fruit'], readLater: false, createdAt: 300, updatedAt: 300 },
 ]
 
 const makeRouter = (overrides = {}) => ({
@@ -81,22 +81,6 @@ describe('useBookmarkFilters', () => {
     expect(result.current.filteredBookmarks[0]._id).toBe('b1')
   })
 
-  it('goToInbox navigates to inbox hash', () => {
-    const router = makeRouter()
-    const { result } = renderHook(() => useBookmarkFilters(bookmarks, router))
-
-    act(() => result.current.goToInbox())
-    expect(router.navigate).toHaveBeenCalledWith('#/inbox')
-  })
-
-  it('filters for inbox when filterView is inbox', () => {
-    const router = makeRouter({ filterView: 'inbox' })
-    const { result } = renderHook(() => useBookmarkFilters(bookmarks, router))
-
-    expect(result.current.filteredBookmarks).toHaveLength(1)
-    expect(result.current.filteredBookmarks[0]._id).toBe('b2')
-  })
-
   it('handleTagSelect navigates to tag hash', () => {
     const router = makeRouter()
     const { result } = renderHook(() => useBookmarkFilters(bookmarks, router))
@@ -151,7 +135,7 @@ describe('useBookmarkFilters', () => {
 
   it('handles bookmarks with missing tags array', () => {
     const messyBookmarks = [
-      { _id: 'b1', title: 'No Tags', url: 'https://x.com', tags: null, readLater: false, inbox: false, createdAt: 100, updatedAt: 100 },
+      { _id: 'b1', title: 'No Tags', url: 'https://x.com', tags: null, readLater: false, createdAt: 100, updatedAt: 100 },
     ]
     const router = makeRouter({ filterView: 'tag', selectedTag: 'test' })
     const { result } = renderHook(() => useBookmarkFilters(messyBookmarks, router))

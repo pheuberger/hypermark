@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 
-const KNOWN_ROUTES = new Set(['inbox', 'read-later', 'settings'])
+const KNOWN_ROUTES = new Set(['read-later', 'settings'])
 
 export function parseHash(hash) {
   const path = hash.replace(/^#\/?/, '').trim()
@@ -27,7 +27,6 @@ export function parseHash(hash) {
 
 export function toHash(view, filter, tag) {
   if (view === 'settings') return '#/settings'
-  if (filter === 'inbox') return '#/inbox'
   if (filter === 'read-later') return '#/read-later'
   if (filter === 'tag' && tag != null) return `#/tag/${encodeURIComponent(tag)}`
   return '#/'

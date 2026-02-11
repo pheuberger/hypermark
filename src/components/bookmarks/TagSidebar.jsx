@@ -1,5 +1,5 @@
 import { useMemo, useEffect } from 'react'
-import { Tag as TagIcon, Hash, BookmarkCheck, PackageOpen, X, Settings, Inbox } from '../ui/Icons'
+import { Tag as TagIcon, Hash, BookmarkCheck, PackageOpen, X, Settings } from '../ui/Icons'
 import { SyncStatusIndicator } from '../ui/SyncStatusIndicator'
 import { cn } from '@/utils/cn'
 
@@ -39,10 +39,6 @@ export function TagSidebar({
 
   const readLaterCount = useMemo(() => {
     return bookmarks.filter((b) => b.readLater).length
-  }, [bookmarks])
-
-  const inboxCount = useMemo(() => {
-    return bookmarks.filter((b) => b.inbox).length
   }, [bookmarks])
 
   const totalCount = bookmarks.length
@@ -136,22 +132,6 @@ export function TagSidebar({
               <span className="text-sm">Read Later</span>
             </div>
             <span className={cn('text-xs', selectedFilter === 'read-later' ? 'opacity-60' : 'opacity-40 group-hover:opacity-60')}>{readLaterCount}</span>
-          </button>
-
-          <button
-            onClick={() => handleFilterChange('inbox')}
-            className={cn(
-              'w-full px-3 py-2 flex items-center justify-between text-left rounded-md transition-all duration-200 group',
-              selectedFilter === 'inbox'
-                ? 'bg-accent text-foreground font-medium'
-                : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
-            )}
-          >
-            <div className="flex items-center gap-2.5">
-              <Inbox className={cn('w-4 h-4', selectedFilter === 'inbox' ? 'opacity-100' : 'opacity-70 group-hover:opacity-100')} strokeWidth={1.5} />
-              <span className="text-sm">Inbox</span>
-            </div>
-            <span className={cn('text-xs', selectedFilter === 'inbox' ? 'opacity-60' : 'opacity-40 group-hover:opacity-60')}>{inboxCount}</span>
           </button>
 
           {sortedTags.length > 0 && (

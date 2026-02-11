@@ -26,8 +26,6 @@ export function useBookmarkFilters(bookmarks, { filterView, selectedTag, navigat
 
     if (filterView === 'read-later') {
       filtered = filtered.filter((b) => b.readLater)
-    } else if (filterView === 'inbox') {
-      filtered = filtered.filter((b) => b.inbox)
     } else if (filterView === 'tag' && selectedTag) {
       filtered = filtered.filter(
         (b) => Array.isArray(b.tags) && b.tags.includes(selectedTag)
@@ -59,10 +57,6 @@ export function useBookmarkFilters(bookmarks, { filterView, selectedTag, navigat
     navigate('#/read-later')
   }, [navigate])
 
-  const goToInbox = useCallback(() => {
-    navigate('#/inbox')
-  }, [navigate])
-
   const handleFilterChange = useCallback((view) => {
     navigate(toHash('bookmarks', view, null))
   }, [navigate])
@@ -86,7 +80,6 @@ export function useBookmarkFilters(bookmarks, { filterView, selectedTag, navigat
     filteredBookmarks,
     goToAllBookmarks,
     goToReadLater,
-    goToInbox,
     handleFilterChange,
     handleTagSelect,
     handleTagClick,

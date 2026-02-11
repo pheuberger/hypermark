@@ -9,7 +9,6 @@ import { useBookmarkKeyboardNav } from '../../hooks/useBookmarkKeyboardNav'
 import { BookmarkItem } from './BookmarkItem'
 import { BookmarkInlineCard } from './BookmarkInlineCard'
 import { BookmarkContextMenu } from './BookmarkContextMenu'
-import { InboxView } from './InboxView'
 import { TagSidebar } from './TagSidebar'
 import { FilterBar } from './FilterBar'
 import { SelectionActionBar } from './SelectionActionBar'
@@ -74,7 +73,6 @@ export function BookmarkList() {
   const [bulkTagIds, setBulkTagIds] = useState(null)
   const [contextMenu, setContextMenu] = useState(null)
   const searchInputRef = useRef(null)
-  const inboxViewRef = useRef(null)
 
   // Extracted hooks
   const {
@@ -88,7 +86,6 @@ export function BookmarkList() {
     filteredBookmarks,
     goToAllBookmarks,
     goToReadLater,
-    goToInbox,
     handleFilterChange,
     handleTagSelect,
     handleTagClick,
@@ -113,7 +110,6 @@ export function BookmarkList() {
     getSelectedBookmark,
   } = useBookmarkKeyboardNav(filteredBookmarks, {
     filterView,
-    inboxViewRef,
     selectedTag,
     debouncedSearchQuery,
   })
@@ -153,30 +149,20 @@ export function BookmarkList() {
 
   const openSelected = useCallback(() => {
     if (isAddingNew || editingBookmarkId) return
-    if (filterView === 'inbox') {
-      inboxViewRef.current?.handleEnter()
-    } else if (selectedIndex >= 0 && selectedIndex < filteredBookmarks.length) {
+    if (selectedIndex >= 0 && selectedIndex < filteredBookmarks.length) {
       const bookmark = filteredBookmarks[selectedIndex]
       window.open(bookmark.url, '_blank', 'noopener,noreferrer')
     }
-  }, [selectedIndex, filteredBookmarks, filterView, isAddingNew, editingBookmarkId])
-
-  const exitInbox = useCallback(() => {
-    if (filterView === 'inbox') {
-      goToAllBookmarks()
-    }
-  }, [filterView, goToAllBookmarks])
+  }, [selectedIndex, filteredBookmarks, isAddingNew, editingBookmarkId])
 
   const editSelected = useCallback(() => {
-    if (filterView === 'inbox') return
     if (selectedIndex >= 0 && selectedIndex < filteredBookmarks.length) {
       const bookmark = filteredBookmarks[selectedIndex]
       setEditingBookmarkId(bookmark._id)
     }
-  }, [selectedIndex, filteredBookmarks, filterView])
+  }, [selectedIndex, filteredBookmarks])
 
   const deleteSelected = useCallback(() => {
-    if (filterView === 'inbox') return
     if (selectedIndex >= 0 && selectedIndex < filteredBookmarks.length) {
       const bookmark = filteredBookmarks[selectedIndex]
       try {
@@ -192,7 +178,7 @@ export function BookmarkList() {
         console.error('Failed to delete bookmark:', error)
       }
     }
-  }, [selectedIndex, filteredBookmarks, filterView, addToast])
+  }, [selectedIndex, filteredBookmarks, addToast])
 
   const handleUndo = useCallback(() => {
     if (undo()) {
@@ -254,14 +240,13 @@ export function BookmarkList() {
   }, [selectedIds])
 
   const openTagModal = useCallback(() => {
-    if (filterView === 'inbox') return
     if (isAddingNew || editingBookmarkId) return
     const bookmark = getSelectedBookmark()
     if (bookmark) {
       setTagModalBookmark(bookmark)
       setIsTagModalOpen(true)
     }
-  }, [filterView, isAddingNew, editingBookmarkId, getSelectedBookmark])
+  }, [isAddingNew, editingBookmarkId, getSelectedBookmark])
 
   const closeTagModal = useCallback(() => {
     setIsTagModalOpen(false)
@@ -274,7 +259,6 @@ export function BookmarkList() {
   }, [suppressHoverBriefly, bulkTagIds, exitSelectionMode])
 
   const toggleReadLaterSelected = useCallback(() => {
-    if (filterView === 'inbox') return
     if (isAddingNew || editingBookmarkId) return
     const bookmark = getSelectedBookmark()
     if (bookmark) {
@@ -289,10 +273,9 @@ export function BookmarkList() {
         console.error('Failed to toggle read later:', error)
       }
     }
-  }, [filterView, isAddingNew, editingBookmarkId, getSelectedBookmark, addToast])
+  }, [isAddingNew, editingBookmarkId, getSelectedBookmark, addToast])
 
   const copySelectedUrl = useCallback(() => {
-    if (filterView === 'inbox') return
     if (isAddingNew || editingBookmarkId) return
     const bookmark = getSelectedBookmark()
     if (bookmark) {
@@ -303,17 +286,16 @@ export function BookmarkList() {
         addToast({ message: 'Failed to copy URL', type: 'error', duration: 2000 })
       })
     }
-  }, [filterView, isAddingNew, editingBookmarkId, getSelectedBookmark, addToast])
+  }, [isAddingNew, editingBookmarkId, getSelectedBookmark, addToast])
 
   const openContextMenuForSelected = useCallback(() => {
-    if (filterView === 'inbox') return
     if (isAddingNew || editingBookmarkId) return
     const bookmark = getSelectedBookmark()
     if (bookmark && selectedItemRef.current) {
       const rect = selectedItemRef.current.getBoundingClientRect()
       setContextMenu({ bookmark, position: { x: rect.right - 50, y: rect.bottom } })
     }
-  }, [filterView, isAddingNew, editingBookmarkId, getSelectedBookmark, selectedItemRef])
+  }, [isAddingNew, editingBookmarkId, getSelectedBookmark, selectedItemRef])
 
   // Close inline card and exit selection mode when view/filter changes
   useEffect(() => {
@@ -325,7 +307,6 @@ export function BookmarkList() {
   useHotkeys({
     'g n': openNewBookmarkForm,
     'g a': goToAllBookmarks,
-    'g i': goToInbox,
     'g l': goToReadLater,
     'g s': () => navigate('#/settings'),
     'g g': goToTop,
@@ -344,7 +325,6 @@ export function BookmarkList() {
     'c': copySelectedUrl,
     '.': openContextMenuForSelected,
     'mod+k': focusSearch,
-    'q': exitInbox,
     'mod+z': handleUndo,
     'mod+shift+z': handleRedo,
     'escape': exitSelectionMode,
@@ -439,75 +419,66 @@ export function BookmarkList() {
 
             <div className="flex-1 overflow-y-auto bg-background">
               <div className="px-4 pb-12 pt-1 space-y-1">
-                 {filterView === 'inbox' ? (
-                    <InboxView
-                      ref={inboxViewRef}
-                      bookmarks={filteredBookmarks}
+                {/* New bookmark inline card at top */}
+                {isAddingNew && (
+                  <div className="mb-3 pt-2">
+                    <BookmarkInlineCard
+                      isNew={true}
+                      onDone={handleCloseInlineCard}
+                      onDiscard={handleCloseInlineCard}
                     />
-                 ) : (
-                    <>
-                      {/* New bookmark inline card at top */}
-                      {isAddingNew && (
-                        <div className="mb-3 pt-2">
-                          <BookmarkInlineCard
-                            isNew={true}
-                            onDone={handleCloseInlineCard}
-                            onDiscard={handleCloseInlineCard}
-                          />
-                        </div>
-                      )}
+                  </div>
+                )}
 
-                      {filteredBookmarks.length === 0 && !isAddingNew ? (
-                        isFirstRun && filterView === 'all' ? (
-                          <WelcomeState
-                            onAddBookmark={openNewBookmarkForm}
-                            onImport={() => navigate('#/settings')}
-                            onPairDevice={() => navigate('#/settings')}
-                          />
-                        ) : (
-                          <div className="flex flex-col items-center justify-center py-20 opacity-50">
-                            <PackageOpen className="w-12 h-12 mb-4 stroke-1" />
-                            <p className="text-sm font-medium">No bookmarks found</p>
-                            {filterView !== 'all' && (
-                              <button
-                                onClick={() => handleFilterChange('all')}
-                                className="mt-2 text-sm text-primary hover:underline"
-                              >
-                                Clear filters
-                              </button>
-                            )}
-                          </div>
-                        )
-                      ) : (
-                        filteredBookmarks.map((bookmark, index) => (
-                          editingBookmarkId === bookmark._id ? (
-                            <BookmarkInlineCard
-                              key={bookmark._id}
-                              ref={index === selectedIndex ? selectedItemRef : null}
-                              bookmark={bookmark}
-                              onDone={handleCloseInlineCard}
-                              onDiscard={handleCloseInlineCard}
-                            />
-                          ) : (
-                            <BookmarkItem
-                              key={bookmark._id}
-                              ref={index === selectedIndex ? selectedItemRef : null}
-                              bookmark={bookmark}
-                              isSelected={index === selectedIndex}
-                              isChecked={selectedIds.has(bookmark._id)}
-                              selectionMode={selectionMode}
-                              keyboardNavActive={keyboardNavActive}
-                              onEdit={handleEdit}
-                              onTagClick={handleTagClick}
-                              onToggleSelect={toggleSelectBookmark}
-                              onMouseEnter={() => handleBookmarkHover(index)}
-                              onContextMenu={handleContextMenu}
-                            />
-                          )
-                        ))
+                {filteredBookmarks.length === 0 && !isAddingNew ? (
+                  isFirstRun && filterView === 'all' ? (
+                    <WelcomeState
+                      onAddBookmark={openNewBookmarkForm}
+                      onImport={() => navigate('#/settings')}
+                      onPairDevice={() => navigate('#/settings')}
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-20 opacity-50">
+                      <PackageOpen className="w-12 h-12 mb-4 stroke-1" />
+                      <p className="text-sm font-medium">No bookmarks found</p>
+                      {filterView !== 'all' && (
+                        <button
+                          onClick={() => handleFilterChange('all')}
+                          className="mt-2 text-sm text-primary hover:underline"
+                        >
+                          Clear filters
+                        </button>
                       )}
-                    </>
-                 )}
+                    </div>
+                  )
+                ) : (
+                  filteredBookmarks.map((bookmark, index) => (
+                    editingBookmarkId === bookmark._id ? (
+                      <BookmarkInlineCard
+                        key={bookmark._id}
+                        ref={index === selectedIndex ? selectedItemRef : null}
+                        bookmark={bookmark}
+                        onDone={handleCloseInlineCard}
+                        onDiscard={handleCloseInlineCard}
+                      />
+                    ) : (
+                      <BookmarkItem
+                        key={bookmark._id}
+                        ref={index === selectedIndex ? selectedItemRef : null}
+                        bookmark={bookmark}
+                        isSelected={index === selectedIndex}
+                        isChecked={selectedIds.has(bookmark._id)}
+                        selectionMode={selectionMode}
+                        keyboardNavActive={keyboardNavActive}
+                        onEdit={handleEdit}
+                        onTagClick={handleTagClick}
+                        onToggleSelect={toggleSelectBookmark}
+                        onMouseEnter={() => handleBookmarkHover(index)}
+                        onContextMenu={handleContextMenu}
+                      />
+                    )
+                  ))
+                )}
               </div>
             </div>
           </>

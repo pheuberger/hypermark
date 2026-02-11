@@ -134,7 +134,6 @@ export function importFromNetscapeHtml(html) {
         description,
         tags,
         readLater: false,
-        inbox: false,
       })
 
       result.imported++

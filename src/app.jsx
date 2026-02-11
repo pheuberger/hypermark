@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { useYjs } from './hooks/useYjs'
 import { useNostrSync } from './hooks/useNostrSync'
-import { usePasteToInbox } from './hooks/usePasteToInbox'
+import { usePasteToBookmark } from './hooks/usePasteToBookmark'
 import { useOnlineStatus } from './hooks/useOnlineStatus'
 import { useRelayErrorToasts } from './hooks/useRelayErrorToasts'
 import { BookmarkList } from './components/bookmarks/BookmarkList'
@@ -15,14 +15,14 @@ function AppContent() {
 
   const handlePasteSuccess = useCallback((url) => {
     const domain = new URL(url).hostname.replace('www.', '')
-    addToast({ message: `Added "${domain}" to inbox`, type: 'success' })
+    addToast({ message: `Added "${domain}"`, type: 'success' })
   }, [addToast])
 
   const handlePasteDuplicate = useCallback(() => {
     addToast({ message: 'Already bookmarked', type: 'warning' })
   }, [addToast])
 
-  usePasteToInbox(handlePasteSuccess, handlePasteDuplicate)
+  usePasteToBookmark(handlePasteSuccess, handlePasteDuplicate)
 
   const isOnline = useOnlineStatus()
 

@@ -28,9 +28,6 @@ const {
   findBookmarksByUrl,
   getBookmarksByTag,
   getReadLaterBookmarks,
-  getInboxBookmarks,
-  createInboxItem,
-  moveFromInbox,
   getAllTags,
   searchBookmarks,
 } = await import('./bookmarks.js')
@@ -270,55 +267,6 @@ describe('bookmarks CRUD', () => {
       const results = getReadLaterBookmarks()
       expect(results).toHaveLength(1)
       expect(results[0].title).toBe('A')
-    })
-  })
-
-  describe('getInboxBookmarks', () => {
-    it('returns only inbox bookmarks', () => {
-      createBookmark({ url: 'https://a.com', title: 'A', inbox: true })
-      createBookmark({ url: 'https://b.com', title: 'B', inbox: false })
-
-      const results = getInboxBookmarks()
-      expect(results).toHaveLength(1)
-    })
-  })
-
-  describe('createInboxItem', () => {
-    it('creates an inbox item from URL', () => {
-      const result = createInboxItem('https://example.com')
-      expect(result.inbox).toBe(true)
-      expect(result.url).toContain('example.com')
-      expect(result.title).toBe('example.com')
-    })
-
-    it('throws on invalid URL', () => {
-      expect(() => createInboxItem('not a url')).toThrow()
-    })
-
-    it('throws on empty URL', () => {
-      expect(() => createInboxItem('')).toThrow('URL is required')
-    })
-
-    it('throws on non-string URL', () => {
-      expect(() => createInboxItem(null)).toThrow('URL is required')
-    })
-
-    it('throws on duplicate URL', () => {
-      createInboxItem('https://example.com')
-      expect(() => createInboxItem('https://example.com')).toThrow('already exists')
-    })
-  })
-
-  describe('moveFromInbox', () => {
-    it('sets inbox to false', () => {
-      const item = createInboxItem('https://example.com')
-      moveFromInbox(item.id)
-      const updated = getBookmark(item.id)
-      expect(updated.inbox).toBe(false)
-    })
-
-    it('throws for non-existent ID', () => {
-      expect(() => moveFromInbox('bookmark:nonexistent')).toThrow('Bookmark not found')
     })
   })
 

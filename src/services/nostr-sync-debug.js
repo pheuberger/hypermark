@@ -87,7 +87,6 @@ export const syncDebug = {
       description: bookmark.get('description') || '',
       tags: bookmark.get('tags')?.toArray?.() || bookmark.get('tags') || [],
       readLater: bookmark.get('readLater') || false,
-      inbox: bookmark.get('inbox') || false,
       favicon: bookmark.get('favicon') || null,
       preview: bookmark.get('preview') || null,
       createdAt: bookmark.get('createdAt'),

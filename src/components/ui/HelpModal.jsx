@@ -33,7 +33,6 @@ const HOTKEY_GROUPS = [
     hotkeys: [
       { keys: ['g', 'a'], description: 'All bookmarks' },
       { keys: ['g', 'l'], description: 'Read later' },
-      { keys: ['g', 'i'], description: 'Inbox' },
       { keys: ['g', 's'], description: 'Settings' },
       { keys: ['g', 'n'], description: 'New bookmark' },
     ],

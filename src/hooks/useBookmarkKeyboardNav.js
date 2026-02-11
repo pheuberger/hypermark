@@ -11,14 +11,12 @@ import { useState, useCallback, useEffect, useRef } from 'react'
  * @param {Array} filteredBookmarks - Currently visible bookmarks
  * @param {Object} options
  * @param {string} options.filterView - Current filter view
- * @param {React.RefObject} options.inboxViewRef - Ref to InboxView for delegated nav
  * @param {string|null} options.selectedTag - Currently selected tag
  * @param {string} options.debouncedSearchQuery - Debounced search string
  * @returns {Object} Navigation state and methods
  */
 export function useBookmarkKeyboardNav(filteredBookmarks, {
   filterView,
-  inboxViewRef,
   selectedTag,
   debouncedSearchQuery,
 }) {
@@ -29,55 +27,43 @@ export function useBookmarkKeyboardNav(filteredBookmarks, {
   const ignoreHoverRef = useRef(false)
 
   const selectNext = useCallback(() => {
-    if (filterView === 'inbox') {
-      inboxViewRef.current?.selectNext()
-    } else {
-      setKeyboardNavActive(true)
-      setSelectedIndex((prev) => {
-        const maxIndex = filteredBookmarks.length - 1
-        if (maxIndex < 0) return -1
-        if (prev === -1) {
-          return hoveredIndex >= 0 ? hoveredIndex : 0
-        }
-        return prev < maxIndex ? prev + 1 : prev
-      })
-    }
-  }, [filteredBookmarks.length, filterView, hoveredIndex, inboxViewRef])
+    setKeyboardNavActive(true)
+    setSelectedIndex((prev) => {
+      const maxIndex = filteredBookmarks.length - 1
+      if (maxIndex < 0) return -1
+      if (prev === -1) {
+        return hoveredIndex >= 0 ? hoveredIndex : 0
+      }
+      return prev < maxIndex ? prev + 1 : prev
+    })
+  }, [filteredBookmarks.length, hoveredIndex])
 
   const selectPrev = useCallback(() => {
-    if (filterView === 'inbox') {
-      inboxViewRef.current?.selectPrev()
-    } else {
-      setKeyboardNavActive(true)
-      setSelectedIndex((prev) => {
-        const maxIndex = filteredBookmarks.length - 1
-        if (maxIndex < 0) return -1
-        if (prev === -1) {
-          return hoveredIndex >= 0 ? hoveredIndex : maxIndex
-        }
-        if (prev <= 0) return 0
-        return prev - 1
-      })
-    }
-  }, [filterView, filteredBookmarks.length, hoveredIndex, inboxViewRef])
+    setKeyboardNavActive(true)
+    setSelectedIndex((prev) => {
+      const maxIndex = filteredBookmarks.length - 1
+      if (maxIndex < 0) return -1
+      if (prev === -1) {
+        return hoveredIndex >= 0 ? hoveredIndex : maxIndex
+      }
+      if (prev <= 0) return 0
+      return prev - 1
+    })
+  }, [filteredBookmarks.length, hoveredIndex])
 
   const goToTop = useCallback(() => {
-    if (filterView === 'inbox') {
-      inboxViewRef.current?.goToTop?.()
-    } else if (filteredBookmarks.length > 0) {
+    if (filteredBookmarks.length > 0) {
       setKeyboardNavActive(true)
       setSelectedIndex(0)
     }
-  }, [filterView, filteredBookmarks.length, inboxViewRef])
+  }, [filteredBookmarks.length])
 
   const goToBottom = useCallback(() => {
-    if (filterView === 'inbox') {
-      inboxViewRef.current?.goToBottom?.()
-    } else if (filteredBookmarks.length > 0) {
+    if (filteredBookmarks.length > 0) {
       setKeyboardNavActive(true)
       setSelectedIndex(filteredBookmarks.length - 1)
     }
-  }, [filterView, filteredBookmarks.length, inboxViewRef])
+  }, [filteredBookmarks.length])
 
   const handleBookmarkHover = useCallback((index) => {
     if (ignoreHoverRef.current) return

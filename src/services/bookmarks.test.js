@@ -327,77 +327,6 @@ describe("bookmarks service", () => {
     });
   });
 
-  describe("inbox items", () => {
-    it("allows empty title when inbox is true", () => {
-      const result = validateBookmark({
-        url: "https://example.com",
-        title: "",
-        inbox: true,
-      });
-
-      expect(result.inbox).toBe(true);
-      expect(result.title).toBe("");
-    });
-
-    it("allows missing title when inbox is true", () => {
-      const result = validateBookmark({
-        url: "https://example.com",
-        inbox: true,
-      });
-
-      expect(result.inbox).toBe(true);
-      expect(result.title).toBe("");
-    });
-
-    it("still requires title when inbox is false", () => {
-      expect(() =>
-        validateBookmark({
-          url: "https://example.com",
-          inbox: false,
-        })
-      ).toThrow("Title is required");
-    });
-
-    it("still requires title when inbox is not set", () => {
-      expect(() =>
-        validateBookmark({
-          url: "https://example.com",
-        })
-      ).toThrow("Title is required");
-    });
-
-    it("converts inbox to boolean", () => {
-      const result1 = validateBookmark({
-        url: "https://example.com",
-        title: "Test",
-        inbox: 1,
-      });
-      const result2 = validateBookmark({
-        url: "https://example.com",
-        title: "Test",
-        inbox: 0,
-      });
-      const result3 = validateBookmark({
-        url: "https://example.com",
-        title: "Test",
-        inbox: "yes",
-      });
-
-      expect(result1.inbox).toBe(true);
-      expect(result2.inbox).toBe(false);
-      expect(result3.inbox).toBe(true);
-    });
-
-    it("still validates URL for inbox items", () => {
-      expect(() =>
-        validateBookmark({
-          url: "not a valid url",
-          inbox: true,
-        })
-      ).toThrow("Invalid URL format");
-    });
-  });
-
   describe("favicon and preview fields", () => {
     it("passes through favicon value", () => {
       const result = validateBookmark({
@@ -522,7 +451,6 @@ function seedBookmark(doc, id, overrides = {}) {
     description: "",
     tags: [],
     readLater: false,
-    inbox: false,
     favicon: null,
     preview: null,
     createdAt: now,

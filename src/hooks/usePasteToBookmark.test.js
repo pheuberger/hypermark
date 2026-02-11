@@ -1,10 +1,10 @@
 /**
- * usePasteToInbox Tests
+ * usePasteToBookmark Tests
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { usePasteToInbox } from './usePasteToInbox.js'
+import { usePasteToBookmark } from './usePasteToBookmark.js'
 
 // Mock the bookmarks service
 vi.mock('../services/bookmarks', () => ({
@@ -16,9 +16,16 @@ vi.mock('../services/bookmarks', () => ({
       return false
     }
   }),
-  createInboxItem: vi.fn(),
+  createBookmark: vi.fn(() => ({ id: 'bookmark:new-1', url: 'https://example.com/', title: 'example.com' })),
   findBookmarksByUrl: vi.fn(() => []),
   normalizeUrl: vi.fn((url) => url),
+  updateBookmark: vi.fn(),
+}))
+
+// Mock content suggestion service
+vi.mock('../services/content-suggestion', () => ({
+  isSuggestionsEnabled: vi.fn(() => false),
+  fetchSuggestions: vi.fn(),
 }))
 
 function firePaste(text, target = document.body) {
@@ -30,39 +37,44 @@ function firePaste(text, target = document.body) {
   return event
 }
 
-describe('usePasteToInbox', () => {
+describe('usePasteToBookmark', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     const bookmarks = await import('../services/bookmarks')
     bookmarks.findBookmarksByUrl.mockReturnValue([])
-    bookmarks.createInboxItem.mockResolvedValue({ _id: 'new-inbox' })
+    bookmarks.createBookmark.mockReturnValue({ id: 'bookmark:new-1', url: 'https://example.com/', title: 'example.com' })
   })
 
-  it('creates inbox item from pasted URL', async () => {
+  it('creates bookmark from pasted URL', async () => {
     const onSuccess = vi.fn()
-    renderHook(() => usePasteToInbox(onSuccess))
+    renderHook(() => usePasteToBookmark(onSuccess))
 
     await act(async () => firePaste('https://example.com'))
 
     const bookmarks = await import('../services/bookmarks')
-    expect(bookmarks.createInboxItem).toHaveBeenCalledWith('https://example.com')
+    expect(bookmarks.createBookmark).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: 'https://example.com',
+        title: expect.any(String),
+      })
+    )
     expect(onSuccess).toHaveBeenCalledWith('https://example.com')
   })
 
   it('ignores non-URL pastes', async () => {
     const onSuccess = vi.fn()
-    renderHook(() => usePasteToInbox(onSuccess))
+    renderHook(() => usePasteToBookmark(onSuccess))
 
     await act(async () => firePaste('just some text'))
 
     const bookmarks = await import('../services/bookmarks')
-    expect(bookmarks.createInboxItem).not.toHaveBeenCalled()
+    expect(bookmarks.createBookmark).not.toHaveBeenCalled()
     expect(onSuccess).not.toHaveBeenCalled()
   })
 
   it('ignores paste in input elements', async () => {
     const onSuccess = vi.fn()
-    renderHook(() => usePasteToInbox(onSuccess))
+    renderHook(() => usePasteToBookmark(onSuccess))
 
     const input = document.createElement('input')
     document.body.appendChild(input)
@@ -70,13 +82,13 @@ describe('usePasteToInbox', () => {
     await act(async () => firePaste('https://example.com', input))
 
     const bookmarks = await import('../services/bookmarks')
-    expect(bookmarks.createInboxItem).not.toHaveBeenCalled()
+    expect(bookmarks.createBookmark).not.toHaveBeenCalled()
     document.body.removeChild(input)
   })
 
   it('ignores paste in textarea elements', async () => {
     const onSuccess = vi.fn()
-    renderHook(() => usePasteToInbox(onSuccess))
+    renderHook(() => usePasteToBookmark(onSuccess))
 
     const textarea = document.createElement('textarea')
     document.body.appendChild(textarea)
@@ -84,7 +96,7 @@ describe('usePasteToInbox', () => {
     await act(async () => firePaste('https://example.com', textarea))
 
     const bookmarks = await import('../services/bookmarks')
-    expect(bookmarks.createInboxItem).not.toHaveBeenCalled()
+    expect(bookmarks.createBookmark).not.toHaveBeenCalled()
     document.body.removeChild(textarea)
   })
 
@@ -95,48 +107,58 @@ describe('usePasteToInbox', () => {
     const bookmarks = await import('../services/bookmarks')
     bookmarks.findBookmarksByUrl.mockReturnValue([{ _id: 'existing' }])
 
-    renderHook(() => usePasteToInbox(onSuccess, onDuplicate))
+    renderHook(() => usePasteToBookmark(onSuccess, onDuplicate))
 
     await act(async () => firePaste('https://existing.com'))
 
     expect(onDuplicate).toHaveBeenCalledWith('https://existing.com')
     expect(onSuccess).not.toHaveBeenCalled()
-    expect(bookmarks.createInboxItem).not.toHaveBeenCalled()
+    expect(bookmarks.createBookmark).not.toHaveBeenCalled()
   })
 
   it('handles empty clipboard data', async () => {
     const onSuccess = vi.fn()
-    renderHook(() => usePasteToInbox(onSuccess))
+    renderHook(() => usePasteToBookmark(onSuccess))
 
     await act(async () => firePaste(''))
 
     const bookmarks = await import('../services/bookmarks')
-    expect(bookmarks.createInboxItem).not.toHaveBeenCalled()
+    expect(bookmarks.createBookmark).not.toHaveBeenCalled()
   })
 
   it('cleans up event listener on unmount', async () => {
     const onSuccess = vi.fn()
-    const { unmount } = renderHook(() => usePasteToInbox(onSuccess))
+    const { unmount } = renderHook(() => usePasteToBookmark(onSuccess))
 
     unmount()
 
     await act(async () => firePaste('https://example.com'))
 
     const bookmarks = await import('../services/bookmarks')
-    expect(bookmarks.createInboxItem).not.toHaveBeenCalled()
+    expect(bookmarks.createBookmark).not.toHaveBeenCalled()
   })
 
-  it('handles createInboxItem errors gracefully', async () => {
+  it('handles createBookmark errors gracefully', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const bookmarks = await import('../services/bookmarks')
-    bookmarks.createInboxItem.mockRejectedValueOnce(new Error('DB error'))
+    bookmarks.createBookmark.mockImplementation(() => { throw new Error('DB error') })
 
     const onSuccess = vi.fn()
-    renderHook(() => usePasteToInbox(onSuccess))
+    renderHook(() => usePasteToBookmark(onSuccess))
 
     await act(async () => firePaste('https://example.com'))
 
     expect(onSuccess).not.toHaveBeenCalled()
     expect(consoleSpy).toHaveBeenCalled()
+  })
+
+  it('does not set inbox flag on created bookmark', async () => {
+    renderHook(() => usePasteToBookmark(vi.fn()))
+
+    await act(async () => firePaste('https://example.com'))
+
+    const bookmarks = await import('../services/bookmarks')
+    const callArgs = bookmarks.createBookmark.mock.calls[0][0]
+    expect(callArgs.inbox).toBeUndefined()
   })
 })

@@ -15,7 +15,6 @@ const bookmarks = [
 function setup(bm = bookmarks, opts = {}) {
   const defaultOpts = {
     filterView: 'all',
-    inboxViewRef: { current: null },
     selectedTag: null,
     debouncedSearchQuery: '',
     ...opts,
@@ -147,31 +146,6 @@ describe('useBookmarkKeyboardNav', () => {
     act(() => result.current.handleBookmarkHover(1))
     act(() => result.current.selectNext())
     expect(result.current.selectedIndex).toBe(1)
-  })
-
-  it('delegates to inboxViewRef when filterView is inbox', () => {
-    const inboxMock = {
-      selectNext: vi.fn(),
-      selectPrev: vi.fn(),
-      goToTop: vi.fn(),
-      goToBottom: vi.fn(),
-    }
-    const { result } = setup(bookmarks, {
-      filterView: 'inbox',
-      inboxViewRef: { current: inboxMock },
-    })
-
-    act(() => result.current.selectNext())
-    expect(inboxMock.selectNext).toHaveBeenCalled()
-
-    act(() => result.current.selectPrev())
-    expect(inboxMock.selectPrev).toHaveBeenCalled()
-
-    act(() => result.current.goToTop())
-    expect(inboxMock.goToTop).toHaveBeenCalled()
-
-    act(() => result.current.goToBottom())
-    expect(inboxMock.goToBottom).toHaveBeenCalled()
   })
 
   it('selectNext with empty bookmarks stays at -1', () => {

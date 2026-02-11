@@ -1,6 +1,6 @@
-import { useMemo, useEffect, useState } from 'react'
+import { useMemo, useEffect } from 'react'
 import { Tag as TagIcon, Hash, BookmarkCheck, PackageOpen, X, Settings, Inbox } from '../ui/Icons'
-import { subscribeToWebrtcProvider } from '../../hooks/useYjs'
+import { SyncStatusIndicator } from '../ui/SyncStatusIndicator'
 import { cn } from '@/utils/cn'
 
 export function TagSidebar({
@@ -15,41 +15,6 @@ export function TagSidebar({
   isSettingsActive,
   onHomeClick,
 }) {
-
-  const [connected, setConnected] = useState(false)
-  const [peerCount, setPeerCount] = useState(0)
-  const [synced, setSynced] = useState(false)
-
-  useEffect(() => {
-    const unsubscribe = subscribeToWebrtcProvider((provider) => {
-      if (!provider) {
-        setConnected(false)
-        setPeerCount(0)
-        setSynced(false)
-        return
-      }
-
-      const handleStatus = ({ connected }) => setConnected(connected)
-      const handlePeers = ({ webrtcPeers }) => setPeerCount(webrtcPeers ? webrtcPeers.length : 0)
-      const handleSynced = ({ synced }) => setSynced(synced)
-
-      provider.on('status', handleStatus)
-      provider.on('peers', handlePeers)
-      provider.on('synced', handleSynced)
-
-      setConnected(provider.connected || false)
-      setPeerCount(provider.room?.webrtcConns?.size || 0)
-      setSynced(provider.synced || false)
-
-      return () => {
-        provider.off('status', handleStatus)
-        provider.off('peers', handlePeers)
-        provider.off('synced', handleSynced)
-      }
-    })
-
-    return unsubscribe
-  }, [])
 
   const tagCounts = useMemo(() => {
     const counts = {}
@@ -101,18 +66,6 @@ export function TagSidebar({
     window.addEventListener('keydown', handleEscape)
     return () => window.removeEventListener('keydown', handleEscape)
   }, [isOpen, onClose])
-
-  const getSyncColor = () => {
-    if (!connected) return 'bg-muted-foreground/20'
-    if (synced) return 'bg-green-500'
-    return 'bg-yellow-500'
-  }
-
-  const getSyncText = () => {
-    if (!connected) return 'Offline'
-    if (peerCount === 0) return 'No peers'
-    return `${peerCount} device${peerCount === 1 ? '' : 's'}`
-  }
 
   return (
     <>
@@ -230,9 +183,8 @@ export function TagSidebar({
         </nav>
 
         <div className="p-3 space-y-1">
-          <div className="px-3 py-2 flex items-center gap-2.5 text-xs text-muted-foreground">
-            <div className={cn('w-2 h-2 rounded-full', getSyncColor())} />
-            <span className="font-medium">{getSyncText()}</span>
+          <div className="px-3 py-2">
+            <SyncStatusIndicator popoverDirection="up" />
           </div>
 
           <button

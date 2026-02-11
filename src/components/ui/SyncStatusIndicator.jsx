@@ -88,7 +88,7 @@ function useSyncStatus() {
   }
 }
 
-export function SyncStatusIndicator() {
+export function SyncStatusIndicator({ popoverDirection = 'down' } = {}) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
 
@@ -118,7 +118,7 @@ export function SyncStatusIndicator() {
   }, [open])
 
   return (
-    <div className="relative" ref={ref}>
+    <div className={cn('relative', popoverDirection === 'up' && 'w-full')} ref={ref}>
       <button
         onClick={toggle}
         className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
@@ -129,7 +129,10 @@ export function SyncStatusIndicator() {
       </button>
 
       {open && (
-        <div className="absolute top-full right-0 mt-2 w-64 p-3 bg-popover border border-border rounded-lg shadow-lg z-40 space-y-2">
+        <div className={cn(
+          'absolute p-3 bg-popover border border-border rounded-lg shadow-lg z-40 space-y-2',
+          popoverDirection === 'up' ? 'bottom-full left-0 right-0 mb-2' : 'top-full right-0 mt-2 w-64'
+        )}>
           <div className="flex items-center gap-2 text-sm">
             <Smartphone className="w-4 h-4 text-muted-foreground flex-shrink-0" />
             <span>

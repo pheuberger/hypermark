@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import { useYjs } from './hooks/useYjs'
 import { useNostrSync } from './hooks/useNostrSync'
 import { usePasteToBookmark } from './hooks/usePasteToBookmark'
+import { useShareTarget } from './hooks/useShareTarget'
 import { useOnlineStatus } from './hooks/useOnlineStatus'
 import { useRelayErrorToasts } from './hooks/useRelayErrorToasts'
 import { BookmarkList } from './components/bookmarks/BookmarkList'
@@ -23,6 +24,7 @@ function AppContent() {
   }, [addToast])
 
   usePasteToBookmark(handlePasteSuccess, handlePasteDuplicate)
+  useShareTarget(handlePasteSuccess, handlePasteDuplicate)
 
   const isOnline = useOnlineStatus()
 

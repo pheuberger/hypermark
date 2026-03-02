@@ -146,7 +146,7 @@ export const BookmarkItem = forwardRef(function BookmarkItem(
           <span className="text-xs text-muted-foreground truncate flex-shrink-0 font-normal hidden md:inline">{domain}</span>
           {tags && tags.length > 0 && (
             <div className="items-center gap-1.5 flex-shrink-0 hidden md:flex">
-              {tags.map((tag) => (
+              {[...tags].sort((a, b) => a.localeCompare(b)).map((tag) => (
                 <span
                   key={tag}
                   onClick={(e) => {

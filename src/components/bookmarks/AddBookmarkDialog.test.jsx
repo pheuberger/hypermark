@@ -214,6 +214,46 @@ describe('AddBookmarkDialog', () => {
     })
   })
 
+  describe('soft keyboard (visual viewport) handling', () => {
+    afterEach(() => {
+      delete window.visualViewport
+    })
+
+    it('lifts the sheet by the keyboard height via CSS variables', () => {
+      const listeners = {}
+      window.visualViewport = {
+        height: 500,
+        offsetTop: 0,
+        addEventListener: (ev, fn) => { listeners[ev] = fn },
+        removeEventListener: vi.fn(),
+      }
+      window.innerHeight = 844
+      renderDialog()
+
+      const content = document.querySelector('.add-dialog-content')
+      expect(content.style.getPropertyValue('--keyboard-inset')).toBe('344px')
+      expect(content.style.getPropertyValue('--visual-viewport-height')).toBe('500px')
+
+      // Keyboard dismissed → viewport grows back, inset returns to 0
+      window.visualViewport.height = 844
+      listeners.resize()
+      expect(content.style.getPropertyValue('--keyboard-inset')).toBe('0px')
+    })
+
+    it('accounts for the visual viewport being scrolled down', () => {
+      window.visualViewport = {
+        height: 500,
+        offsetTop: 100,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }
+      window.innerHeight = 844
+      renderDialog()
+      const content = document.querySelector('.add-dialog-content')
+      expect(content.style.getPropertyValue('--keyboard-inset')).toBe('244px')
+    })
+  })
+
   describe('content suggestions', () => {
     it('requests suggestions when a URL is committed and suggestions are enabled', () => {
       suggestionState.enabled = true

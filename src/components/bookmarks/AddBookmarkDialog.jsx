@@ -36,6 +36,9 @@ export function AddBookmarkDialog({ open, onClose, onSaved }) {
   const [tags, setTags] = useState([])
   const [readLater, setReadLater] = useState(false)
   const [urlError, setUrlError] = useState('')
+  // Callback-ref state (not a plain ref): Radix assigns the forwarded ref
+  // after parent effects run, so the keyboard-inset effect keys off this.
+  const [contentEl, setContentEl] = useState(null)
   const [allTags, setAllTags] = useState([])
   // Async Clipboard API is unavailable in some browsers (e.g. Firefox
   // without permission) — only offer the Paste button when readText exists.
@@ -75,6 +78,31 @@ export function AddBookmarkDialog({ open, onClose, onSaved }) {
       }
     }
   }, [open, clearSuggestions])
+
+  // iOS Safari overlays the soft keyboard instead of resizing the layout
+  // viewport (it ignores interactive-widget=resizes-content), which would
+  // leave the sheet's save footer hidden behind the keyboard. Track the
+  // visual viewport and lift the sheet by the keyboard's height via CSS
+  // variables consumed only by the mobile positioning rules in app.css.
+  useEffect(() => {
+    if (!open || !contentEl) return
+    const vv = window.visualViewport
+    if (!vv) return
+
+    const update = () => {
+      const keyboardInset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
+      contentEl.style.setProperty('--keyboard-inset', `${keyboardInset}px`)
+      contentEl.style.setProperty('--visual-viewport-height', `${vv.height}px`)
+    }
+
+    update()
+    vv.addEventListener('resize', update)
+    vv.addEventListener('scroll', update)
+    return () => {
+      vv.removeEventListener('resize', update)
+      vv.removeEventListener('scroll', update)
+    }
+  }, [open, contentEl])
 
   // Fill empty fields when suggestions arrive
   useEffect(() => {
@@ -220,6 +248,7 @@ export function AddBookmarkDialog({ open, onClose, onSaved }) {
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 add-dialog-overlay" />
         <DialogPrimitive.Content
+          ref={setContentEl}
           onOpenAutoFocus={(e) => {
             e.preventDefault()
             urlInputRef.current?.focus()

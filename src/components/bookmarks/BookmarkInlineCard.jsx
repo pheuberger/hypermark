@@ -1,5 +1,5 @@
 import { forwardRef, useRef, useEffect, useState, useCallback } from 'react'
-import { ExternalLink, Check, X } from 'lucide-react'
+import { ExternalLink, Check, X, ClipboardPaste } from 'lucide-react'
 import { TagInput } from '../ui/TagInput'
 import { Tag } from '../ui/Tag'
 import { SaveIndicator } from '../ui/SaveIndicator'
@@ -38,6 +38,11 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
   const [urlError, setUrlError] = useState('')
   const [editMode, setEditMode] = useState(true)
   const [saveCount, setSaveCount] = useState(0)
+  // Async Clipboard API is unavailable in some browsers (e.g. Firefox without
+  // permission) — only offer the Paste button when readText exists.
+  const [canPasteFromClipboard] = useState(
+    () => typeof navigator !== 'undefined' && Boolean(navigator.clipboard?.readText)
+  )
 
   // Extract domain from URL
   let domain = ''
@@ -240,6 +245,29 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
     onDiscard?.()
   }
 
+  // One-tap paste for touch devices, where the document-level
+  // paste-to-bookmark shortcut can't fire
+  const handlePasteUrl = async () => {
+    let text = ''
+    try {
+      text = (await navigator.clipboard.readText())?.trim() || ''
+    } catch {
+      setUrlError("Couldn't read clipboard")
+      return
+    }
+    if (!text) {
+      setUrlError('Clipboard is empty')
+      return
+    }
+    if (!validateUrl(text)) {
+      setUrlError("Clipboard doesn't contain a link")
+      return
+    }
+    setLocalUrl(normalizeUrl(text))
+    setUrlError('')
+    titleInputRef.current?.focus()
+  }
+
   // Ctrl/Cmd+Enter to save from any field
   useHotkeys(
     { 'mod+enter': handleDone },
@@ -337,22 +365,41 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
           />
         )}
         {isNew ? (
-          <div className="flex-1">
-            <input
-              ref={urlInputRef}
-              type="text"
-              value={localUrl}
-              onChange={(e) => {
-                setLocalUrl(e.target.value)
-                setUrlError('')
-              }}
-              onBlur={handleUrlBlur}
-              onKeyDown={(e) => handleKeyDown(e, 'url')}
-              className={`w-full bg-transparent border-none outline-none text-xs placeholder:text-muted-foreground/50 p-0 focus:ring-0 ${urlError ? 'text-destructive' : ''}`}
-              placeholder="https://example.com"
-            />
-            {urlError && (
-              <span className="text-[10px] text-destructive">{urlError}</span>
+          <div className="flex-1 flex items-center gap-2">
+            <div className="flex-1 min-w-0">
+              <input
+                ref={urlInputRef}
+                type="text"
+                inputMode="url"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                enterKeyHint="go"
+                autoFocus
+                value={localUrl}
+                onChange={(e) => {
+                  setLocalUrl(e.target.value)
+                  setUrlError('')
+                }}
+                onBlur={handleUrlBlur}
+                onKeyDown={(e) => handleKeyDown(e, 'url')}
+                className={`w-full bg-transparent border-none outline-none text-xs placeholder:text-muted-foreground/50 py-2 sm:py-0 px-0 focus:ring-0 ${urlError ? 'text-destructive' : ''}`}
+                placeholder="https://example.com"
+              />
+              {urlError && (
+                <span className="text-[10px] text-destructive">{urlError}</span>
+              )}
+            </div>
+            {canPasteFromClipboard && !localUrl.trim() && (
+              <button
+                type="button"
+                onClick={handlePasteUrl}
+                className="flex-shrink-0 inline-flex items-center gap-1.5 h-9 sm:h-7 px-3 sm:px-2.5 rounded-md bg-accent/60 text-xs font-medium text-foreground/80 hover:bg-accent hover:text-foreground transition-colors"
+                aria-label="Paste link from clipboard"
+              >
+                <ClipboardPaste className="w-3.5 h-3.5" />
+                Paste
+              </button>
             )}
           </div>
         ) : (
@@ -378,6 +425,8 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
           <input
             ref={titleInputRef}
             type="text"
+            enterKeyHint="done"
+            autoFocus={!isNew}
             value={localTitle}
             onChange={(e) => setLocalTitle(e.target.value)}
             onBlur={handleTitleBlur}
@@ -425,12 +474,12 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
 
         {/* Read Later checkbox */}
         <div className="pt-1">
-          <label className="flex items-center gap-2 cursor-pointer text-sm text-muted-foreground hover:text-foreground transition-colors">
+          <label className="inline-flex items-center gap-2 py-2 sm:py-0 cursor-pointer text-sm text-muted-foreground hover:text-foreground transition-colors">
             <input
               type="checkbox"
               checked={localReadLater}
               onChange={(e) => handleReadLaterChange(e.target.checked)}
-              className="h-3.5 w-3.5 rounded border-input bg-background"
+              className="h-4 w-4 sm:h-3.5 sm:w-3.5 rounded border-input bg-background"
             />
             <span className="text-xs">Read later</span>
           </label>
@@ -439,10 +488,10 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
 
       {/* Action footer */}
       <div className="pt-3 flex items-center justify-between border-t border-border/40">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-5 sm:gap-3">
           <button
             onClick={handleDone}
-            className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+            className="flex items-center gap-1.5 py-3.5 sm:py-0 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
           >
             <div className="flex items-center justify-center w-4 h-4 rounded-full bg-primary/10">
               <Check className="w-2.5 h-2.5" />
@@ -451,7 +500,7 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
           </button>
           <button
             onClick={handleDiscard}
-            className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-destructive transition-colors"
+            className="flex items-center gap-1.5 py-3.5 sm:py-0 text-xs font-medium text-muted-foreground hover:text-destructive transition-colors"
           >
             <X className="w-3.5 h-3.5" />
             {isNew ? 'Cancel' : 'Close'}
@@ -460,7 +509,9 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
 
         <div className="flex items-center gap-2 text-[10px] text-muted-foreground/50 font-medium">
           <SaveIndicator show={saveCount} />
-          Enter to save · Esc to {isNew ? 'cancel' : 'close'}
+          <span className="hidden sm:inline">
+            Enter to save · Esc to {isNew ? 'cancel' : 'close'}
+          </span>
         </div>
       </div>
     </div>

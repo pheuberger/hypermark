@@ -32,6 +32,19 @@ body {
   color: var(--color-foreground);
 }
 
+/* iOS Safari auto-zooms the page when a focused form control's font-size
+   is below 16px — with the add dialog autofocusing its URL field, that
+   zoomed the whole sheet off screen. Keep every text control at >=16px on
+   small screens (!important to beat Tailwind's .text-sm utility class);
+   desktop keeps the compact sizes. */
+@media (max-width: 39.99rem) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
 /* Add-bookmark dialog: slide up as a sheet on mobile, fade/scale on desktop */
 .add-dialog-overlay[data-state="open"] {
   animation: add-dialog-fade-in 180ms ease-out;

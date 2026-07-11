@@ -20,6 +20,7 @@ export {
   Square,
   CheckSquare,
   ListChecks,
+  ArrowUpDown,
   Upload,
   Cloud,
   CloudOff,

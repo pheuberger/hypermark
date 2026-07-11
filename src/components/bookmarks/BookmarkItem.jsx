@@ -16,6 +16,8 @@ export const BookmarkItem = forwardRef(function BookmarkItem(
 
   const faviconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`
 
+  const sortedTags = Array.isArray(tags) ? [...tags].sort((a, b) => a.localeCompare(b)) : []
+
   // Long-press detection for mobile context menu
   const longPressTimer = useRef(null)
   const isLongPress = useRef(false)
@@ -103,10 +105,14 @@ export const BookmarkItem = forwardRef(function BookmarkItem(
           : ''
       }`}
     >
-      {/* Checkbox */}
+      {/* Checkbox — on mobile only rendered in selection mode so it doesn't
+          reserve space or steal taps; on md+ it appears on hover */}
       <button
         onClick={handleCheckboxClick}
-        className={`flex-shrink-0 w-4 h-4 rounded border transition-all duration-150 flex items-center justify-center ${
+        aria-label={isChecked ? 'Deselect bookmark' : 'Select bookmark'}
+        className={`flex-shrink-0 w-4 h-4 rounded border transition-all duration-150 items-center justify-center ${
+          selectionMode || isChecked ? 'flex' : 'hidden md:flex'
+        } ${
           isChecked
             ? 'bg-primary border-primary'
             : selectionMode
@@ -146,7 +152,7 @@ export const BookmarkItem = forwardRef(function BookmarkItem(
           <span className="text-xs text-muted-foreground truncate flex-shrink-0 font-normal hidden md:inline">{domain}</span>
           {tags && tags.length > 0 && (
             <div className="items-center gap-1.5 flex-shrink-0 hidden md:flex">
-              {[...tags].sort((a, b) => a.localeCompare(b)).map((tag) => (
+              {sortedTags.map((tag) => (
                 <span
                   key={tag}
                   onClick={(e) => {
@@ -163,6 +169,29 @@ export const BookmarkItem = forwardRef(function BookmarkItem(
             </div>
           )}
         </div>
+
+        {/* Second line on mobile: domain + tags (inline on md+) */}
+        {(domain || (tags && tags.length > 0)) && (
+          <div className="flex items-center gap-1.5 mt-1 overflow-hidden md:hidden">
+            {domain && (
+              <span className="text-xs text-muted-foreground truncate flex-shrink-0 max-w-[45%]">{domain}</span>
+            )}
+            {tags && tags.length > 0 && sortedTags.map((tag) => (
+              <span
+                key={tag}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (!selectionMode) {
+                    onTagClick && onTagClick(tag)
+                  }
+                }}
+                className="text-[10px] leading-none px-2 py-1 rounded-full bg-secondary text-secondary-foreground flex-shrink-0 font-medium"
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

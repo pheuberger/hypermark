@@ -8,6 +8,7 @@ import { useBookmarkSelection } from '../../hooks/useBookmarkSelection'
 import { useBookmarkKeyboardNav } from '../../hooks/useBookmarkKeyboardNav'
 import { BookmarkItem } from './BookmarkItem'
 import { BookmarkInlineCard } from './BookmarkInlineCard'
+import { AddBookmarkDialog } from './AddBookmarkDialog'
 import { BookmarkContextMenu } from './BookmarkContextMenu'
 import { TagSidebar } from './TagSidebar'
 import { FilterBar } from './FilterBar'
@@ -419,17 +420,6 @@ export function BookmarkList() {
 
             <div className="flex-1 overflow-y-auto bg-background">
               <div className="px-4 pb-12 pt-1 space-y-1">
-                {/* New bookmark inline card at top */}
-                {isAddingNew && (
-                  <div className="mb-3 pt-2">
-                    <BookmarkInlineCard
-                      isNew={true}
-                      onDone={handleCloseInlineCard}
-                      onDiscard={handleCloseInlineCard}
-                    />
-                  </div>
-                )}
-
                 {filteredBookmarks.length === 0 && !isAddingNew ? (
                   isFirstRun && filterView === 'all' ? (
                     <WelcomeState
@@ -490,6 +480,12 @@ export function BookmarkList() {
           </div>
         )}
       </div>
+
+      <AddBookmarkDialog
+        open={isAddingNew}
+        onClose={() => setIsAddingNew(false)}
+        onSaved={() => addToast({ message: 'Bookmark saved', type: 'success', duration: 2000 })}
+      />
 
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
 

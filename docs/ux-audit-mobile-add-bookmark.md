@@ -86,20 +86,44 @@ by hiding the ↓ hint).
 
 ## Backlog (real, but not top 3)
 
-4. **Multi-line descriptions are impossible on mobile.** Enter in the
-   description textarea saves the card; newline requires Shift+Enter, which
-   soft keyboards don't have.
-5. **Manual adds never fetch content suggestions.** The paste and share-target
-   paths auto-fill title/description via `content-suggestion`, but the draft
-   card doesn't use `useContentSuggestion` at all — on mobile, typing a title
-   is exactly the thing users want automated.
-6. **Draft is lost silently.** Tapping outside/Cancel discards a typed draft
-   with no undo; Android back gesture closes the PWA entirely.
-7. **The draft card renders above the list but below the sticky header** — on
-   short viewports with the keyboard up, the tags/save row can end up under
-   the keyboard; the card could render in a bottom sheet on mobile instead.
+4. **Multi-line descriptions are impossible on mobile.** — FIXED by the
+   redesign below: in `AddBookmarkDialog` the notes field is a normal
+   textarea where Enter inserts a newline (Cmd/Ctrl+Enter saves).
+5. **Manual adds never fetch content suggestions.** — FIXED by the redesign
+   below: committing a URL (paste or blur) fetches suggestions when the
+   feature is enabled, auto-fills empty title/description, and offers
+   suggested tags as one-tap chips.
+6. **Draft is lost silently.** — Largely fixed: tapping outside a non-empty
+   draft no longer discards it (Cancel/Esc still do, as explicit intent).
+7. **The draft card renders above the list but below the sticky header** —
+   FIXED by the redesign below: adding now happens in a bottom sheet with a
+   sticky save footer instead of an inline card.
 8. **Share-target duplicate toast is dead-end** — "Already bookmarked" could
    offer "View it" to jump to the existing bookmark.
+
+---
+
+## Redesign (follow-up to this audit)
+
+The add flow was subsequently redesigned from first principles around one
+job: *capture a link fast*. New bookmarks no longer use the inline draft
+card (`BookmarkInlineCard` is now edit-only); they go through
+`AddBookmarkDialog`:
+
+- **Mobile (<640px): bottom sheet.** Pinned to the bottom of the viewport
+  with a sticky footer, so the full-width **Save bookmark** button stays
+  visible above the soft keyboard (verified at 390×450, i.e. keyboard up —
+  the body scrolls, the footer doesn't move). `index.html` sets
+  `interactive-widget=resizes-content` so Android Chrome resizes the layout
+  viewport instead of overlaying the keyboard.
+- **Desktop (≥640px): centered dialog**, top-anchored so it doesn't jump
+  when suggestions fill in. Enter/Esc and Cmd+Enter still work; the
+  keyboard hints stay desktop-only.
+- **URL is the hero.** The only required field, first in the sheet, with
+  the one-tap Paste button from finding 2 inside the field. Save is
+  disabled until a URL is entered; invalid URLs get an inline error.
+- **All touch targets ≥44px** on mobile (inputs h-12, save h-12, whole
+  "Read later" row is the switch).
 
 ## Verification
 

@@ -137,6 +137,9 @@ export const TagInput = forwardRef(function TagInput({
       <input
         ref={inputRef}
         type="text"
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
         value={inputValue}
         onChange={(e) => setInputValue(e.target.value)}
         onKeyDown={handleKeyDown}
@@ -185,7 +188,7 @@ export const TagInput = forwardRef(function TagInput({
       )}
 
       {!isOpen && safeValue.length === 0 && !inputValue && (
-        <p className="mt-1.5 text-xs text-muted-foreground">
+        <p className="mt-1.5 text-xs text-muted-foreground hidden sm:block">
           Press ↓ to see existing tags
         </p>
       )}

@@ -1,69 +1,47 @@
 import { forwardRef, useRef, useEffect, useState, useCallback } from 'react'
-import { ExternalLink, Check, X, ClipboardPaste } from 'lucide-react'
+import { ExternalLink, Check, X } from 'lucide-react'
 import { TagInput } from '../ui/TagInput'
 import { Tag } from '../ui/Tag'
 import { SaveIndicator } from '../ui/SaveIndicator'
-import { getAllTags, createBookmark, updateBookmark } from '../../services/bookmarks'
+import { getAllTags, updateBookmark } from '../../services/bookmarks'
 import { useHotkeys } from '../../hooks/useHotkeys'
 
 /**
- * BookmarkInlineCard - Inline card for adding/editing bookmarks
- *
- * Used for:
- * - Adding new bookmarks (appears at top of list with URL input)
- * - Editing existing bookmarks (expands in place)
+ * BookmarkInlineCard - Inline card for editing an existing bookmark
+ * (expands in place in the list; new bookmarks go through AddBookmarkDialog)
  *
  * Features:
  * - Auto-save on blur
- * - Keyboard navigation (Tab between fields, Enter to confirm, Esc to cancel)
- * - URL is required minimum for saving
+ * - Keyboard navigation (Tab between fields, Enter to confirm, Esc to close)
  */
 export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
-  { bookmark = null, isNew = false, onDone, onDiscard, onFieldChange },
+  { bookmark, onDone, onDiscard, onFieldChange },
   ref
 ) {
-  const isEditing = Boolean(bookmark?._id)
-
-  const urlInputRef = useRef(null)
   const titleInputRef = useRef(null)
   const descInputRef = useRef(null)
   const tagsInputRef = useRef(null)
 
-  const [localUrl, setLocalUrl] = useState(bookmark?.url || '')
   const [localTitle, setLocalTitle] = useState(bookmark?.title || '')
   const [localDesc, setLocalDesc] = useState(bookmark?.description || '')
   const [localTags, setLocalTags] = useState(bookmark?.tags || [])
   const [localReadLater, setLocalReadLater] = useState(bookmark?.readLater || false)
   const [allTags, setAllTags] = useState([])
-  const [urlError, setUrlError] = useState('')
-  const [editMode, setEditMode] = useState(true)
   const [saveCount, setSaveCount] = useState(0)
-  // Async Clipboard API is unavailable in some browsers (e.g. Firefox without
-  // permission) — only offer the Paste button when readText exists.
-  const [canPasteFromClipboard] = useState(
-    () => typeof navigator !== 'undefined' && Boolean(navigator.clipboard?.readText)
-  )
+
+  const url = bookmark?.url || ''
 
   // Extract domain from URL
   let domain = ''
-  if (localUrl) {
+  if (url) {
     try {
-      domain = new URL(localUrl).hostname.replace('www.', '')
+      domain = new URL(url).hostname.replace('www.', '')
     } catch {
       domain = ''
     }
   }
 
   const faviconUrl = domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=32` : null
-
-  // Focus URL input for new, title for edit
-  useEffect(() => {
-    if (isNew && urlInputRef.current) {
-      urlInputRef.current.focus()
-    } else if (!isNew && titleInputRef.current) {
-      titleInputRef.current.focus()
-    }
-  }, [isNew])
 
   // Load all tags for autocomplete
   useEffect(() => {
@@ -77,7 +55,6 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
   // Sync from props when bookmark changes
   useEffect(() => {
     if (bookmark) {
-      setLocalUrl(bookmark.url || '')
       setLocalTitle(bookmark.title || '')
       setLocalDesc(bookmark.description || '')
       setLocalTags(bookmark.tags || [])
@@ -85,121 +62,40 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
     }
   }, [bookmark])
 
-  const validateUrl = (url) => {
-    if (!url.trim()) return false
-    try {
-      new URL(url)
-      return true
-    } catch {
-      // Try adding https://
-      try {
-        new URL('https://' + url)
-        return true
-      } catch {
-        return false
-      }
-    }
-  }
-
-  const normalizeUrl = (url) => {
-    if (!url.trim()) return ''
-    try {
-      new URL(url)
-      return url
-    } catch {
-      // Try adding https://
-      try {
-        new URL('https://' + url)
-        return 'https://' + url
-      } catch {
-        return url
-      }
-    }
-  }
-
-  // Auto-save logic
-  const saveChanges = useCallback(() => {
-    const normalizedUrl = normalizeUrl(localUrl)
-
-    if (!validateUrl(localUrl)) {
-      if (localUrl.trim()) {
-        setUrlError('Invalid URL')
-      }
-      return false
-    }
-
-    setUrlError('')
-
+  const saveChanges = useCallback((overrides = {}) => {
     const data = {
-      url: normalizedUrl,
-      title: localTitle.trim() || normalizedUrl,
+      title: localTitle.trim() || url,
       description: localDesc,
       tags: localTags,
       readLater: localReadLater,
+      ...overrides,
     }
 
     try {
-      if (isEditing) {
-        updateBookmark(bookmark._id, data)
-        onFieldChange?.(data)
-      } else if (isNew) {
-        // For new bookmarks, create only when we have a valid URL
-        createBookmark(data)
-      }
+      updateBookmark(bookmark._id, data)
+      onFieldChange?.(data)
       return true
     } catch (error) {
       console.error('Failed to save bookmark:', error)
       return false
     }
-  }, [localUrl, localTitle, localDesc, localTags, localReadLater, isEditing, bookmark, onFieldChange, isNew])
-
-  const handleUrlBlur = () => {
-    if (localUrl !== (bookmark?.url || '')) {
-      if (localUrl.trim() && validateUrl(localUrl)) {
-        setLocalUrl(normalizeUrl(localUrl))
-        setUrlError('')
-        if (isEditing) {
-          saveChanges()
-        }
-      } else if (localUrl.trim()) {
-        setUrlError('Invalid URL')
-      }
-    }
-  }
+  }, [localTitle, localDesc, localTags, localReadLater, url, bookmark, onFieldChange])
 
   const handleTitleBlur = () => {
-    if (isEditing && localTitle !== bookmark?.title) {
+    if (localTitle !== bookmark?.title) {
       if (saveChanges()) setSaveCount(c => c + 1)
     }
   }
 
   const handleDescBlur = () => {
-    if (isEditing && localDesc !== bookmark?.description) {
+    if (localDesc !== bookmark?.description) {
       if (saveChanges()) setSaveCount(c => c + 1)
     }
   }
 
   const handleTagsChange = (newTags) => {
     setLocalTags(newTags)
-    if (isEditing) {
-      // Save immediately for existing bookmarks
-      setTimeout(() => {
-        const data = {
-          url: normalizeUrl(localUrl),
-          title: localTitle.trim() || normalizeUrl(localUrl),
-          description: localDesc,
-          tags: newTags,
-          readLater: localReadLater,
-        }
-        try {
-          updateBookmark(bookmark._id, data)
-          onFieldChange?.(data)
-          setSaveCount(c => c + 1)
-        } catch (error) {
-          console.error('Failed to save tags:', error)
-        }
-      }, 0)
-    }
+    if (saveChanges({ tags: newTags })) setSaveCount(c => c + 1)
   }
 
   const removeTag = (tagToRemove) => {
@@ -209,63 +105,17 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
 
   const handleReadLaterChange = (checked) => {
     setLocalReadLater(checked)
-    if (isEditing) {
-      setTimeout(() => {
-        const data = {
-          url: normalizeUrl(localUrl),
-          title: localTitle.trim() || normalizeUrl(localUrl),
-          description: localDesc,
-          tags: localTags,
-          readLater: checked,
-        }
-        try {
-          updateBookmark(bookmark._id, data)
-          onFieldChange?.(data)
-          setSaveCount(c => c + 1)
-        } catch (error) {
-          console.error('Failed to save read later:', error)
-        }
-      }, 0)
-    }
+    if (saveChanges({ readLater: checked })) setSaveCount(c => c + 1)
   }
 
   const handleDone = useCallback(() => {
-    if (!validateUrl(localUrl)) {
-      setUrlError('URL is required')
-      urlInputRef.current?.focus()
-      return
-    }
-
     if (saveChanges()) {
       onDone?.()
     }
-  }, [localUrl, saveChanges, onDone])
+  }, [saveChanges, onDone])
 
   const handleDiscard = () => {
     onDiscard?.()
-  }
-
-  // One-tap paste for touch devices, where the document-level
-  // paste-to-bookmark shortcut can't fire
-  const handlePasteUrl = async () => {
-    let text = ''
-    try {
-      text = (await navigator.clipboard.readText())?.trim() || ''
-    } catch {
-      setUrlError("Couldn't read clipboard")
-      return
-    }
-    if (!text) {
-      setUrlError('Clipboard is empty')
-      return
-    }
-    if (!validateUrl(text)) {
-      setUrlError("Clipboard doesn't contain a link")
-      return
-    }
-    setLocalUrl(normalizeUrl(text))
-    setUrlError('')
-    titleInputRef.current?.focus()
   }
 
   // Ctrl/Cmd+Enter to save from any field
@@ -295,9 +145,7 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
     // Tab navigation
     if (e.key === 'Tab') {
       e.preventDefault()
-      const fields = isNew
-        ? ['url', 'title', 'desc', 'tags']
-        : ['title', 'desc', 'tags']
+      const fields = ['title', 'desc', 'tags']
 
       const currentIndex = fields.indexOf(currentField)
       let nextIndex
@@ -309,7 +157,6 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
       }
 
       const refs = {
-        url: urlInputRef,
         title: titleInputRef,
         desc: descInputRef,
         tags: tagsInputRef,
@@ -329,8 +176,6 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
       e.preventDefault()
       if (e.shiftKey) {
         descInputRef.current?.focus()
-      } else if (isNew) {
-        urlInputRef.current?.focus()
       } else {
         titleInputRef.current?.focus()
       }
@@ -347,13 +192,6 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
       ref={ref}
       className="relative bg-card shadow-lg ring-1 ring-border rounded-lg p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150"
     >
-      {/* Draft indicator for new bookmarks */}
-      {isNew && (
-        <div className="absolute -top-2 left-4 px-2 py-0.5 text-[10px] font-medium bg-primary/10 text-primary rounded-full">
-          Draft
-        </div>
-      )}
-
       {/* URL section */}
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         {faviconUrl && (
@@ -364,58 +202,16 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
             onError={(e) => { e.target.style.opacity = 0 }}
           />
         )}
-        {isNew ? (
-          <div className="flex-1 flex items-center gap-2">
-            <div className="flex-1 min-w-0">
-              <input
-                ref={urlInputRef}
-                type="text"
-                inputMode="url"
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-                enterKeyHint="go"
-                autoFocus
-                value={localUrl}
-                onChange={(e) => {
-                  setLocalUrl(e.target.value)
-                  setUrlError('')
-                }}
-                onBlur={handleUrlBlur}
-                onKeyDown={(e) => handleKeyDown(e, 'url')}
-                className={`w-full bg-transparent border-none outline-none text-xs placeholder:text-muted-foreground/50 py-2 sm:py-0 px-0 focus:ring-0 ${urlError ? 'text-destructive' : ''}`}
-                placeholder="https://example.com"
-              />
-              {urlError && (
-                <span className="text-[10px] text-destructive">{urlError}</span>
-              )}
-            </div>
-            {canPasteFromClipboard && !localUrl.trim() && (
-              <button
-                type="button"
-                onClick={handlePasteUrl}
-                className="flex-shrink-0 inline-flex items-center gap-1.5 h-9 sm:h-7 px-3 sm:px-2.5 rounded-md bg-accent/60 text-xs font-medium text-foreground/80 hover:bg-accent hover:text-foreground transition-colors"
-                aria-label="Paste link from clipboard"
-              >
-                <ClipboardPaste className="w-3.5 h-3.5" />
-                Paste
-              </button>
-            )}
-          </div>
-        ) : (
-          <>
-            <a
-              href={localUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="truncate hover:text-primary transition-colors opacity-70 hover:opacity-100"
-              title={localUrl}
-            >
-              {localUrl}
-            </a>
-            <ExternalLink className="w-3 h-3 flex-shrink-0 opacity-50" />
-          </>
-        )}
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="truncate hover:text-primary transition-colors opacity-70 hover:opacity-100"
+          title={url}
+        >
+          {url}
+        </a>
+        <ExternalLink className="w-3 h-3 flex-shrink-0 opacity-50" />
       </div>
 
       {/* Main Inputs - Linear style (borderless, clean) */}
@@ -426,7 +222,7 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
             ref={titleInputRef}
             type="text"
             enterKeyHint="done"
-            autoFocus={!isNew}
+            autoFocus
             value={localTitle}
             onChange={(e) => setLocalTitle(e.target.value)}
             onBlur={handleTitleBlur}
@@ -496,21 +292,21 @@ export const BookmarkInlineCard = forwardRef(function BookmarkInlineCard(
             <div className="flex items-center justify-center w-4 h-4 rounded-full bg-primary/10">
               <Check className="w-2.5 h-2.5" />
             </div>
-            {isNew ? 'Save' : 'Done'}
+            Done
           </button>
           <button
             onClick={handleDiscard}
             className="flex items-center gap-1.5 py-3.5 sm:py-0 text-xs font-medium text-muted-foreground hover:text-destructive transition-colors"
           >
             <X className="w-3.5 h-3.5" />
-            {isNew ? 'Cancel' : 'Close'}
+            Close
           </button>
         </div>
 
         <div className="flex items-center gap-2 text-[10px] text-muted-foreground/50 font-medium">
           <SaveIndicator show={saveCount} />
           <span className="hidden sm:inline">
-            Enter to save · Esc to {isNew ? 'cancel' : 'close'}
+            Enter to save · Esc to close
           </span>
         </div>
       </div>

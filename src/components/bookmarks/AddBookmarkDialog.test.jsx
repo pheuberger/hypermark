@@ -137,6 +137,179 @@ describe('AddBookmarkDialog', () => {
         screen.queryByRole('button', { name: 'Paste link from clipboard' })
       ).not.toBeInTheDocument()
     })
+
+    // iOS Safari exposes a copied link as text/uri-list with no text/plain
+    // flavor, so readText() alone resolves to '' ("Clipboard is empty").
+    it('reads a URL that only exists as text/uri-list (iOS share sheet copy)', async () => {
+      Object.defineProperty(navigator, 'clipboard', {
+        value: {
+          read: vi.fn(async () => [
+            {
+              types: ['text/uri-list'],
+              getType: vi.fn(async () => ({
+                text: async () => '# comment line\r\nhttps://example.com/from-ios\r\n',
+              })),
+            },
+          ]),
+          readText: vi.fn(async () => ''),
+        },
+        configurable: true,
+      })
+      renderDialog()
+      fireEvent.click(screen.getByRole('button', { name: 'Paste link from clipboard' }))
+      await waitFor(() => {
+        expect(getUrlInput()).toHaveValue('https://example.com/from-ios')
+      })
+    })
+
+    it('reads text/plain via read() when uri-list is absent', async () => {
+      Object.defineProperty(navigator, 'clipboard', {
+        value: {
+          read: vi.fn(async () => [
+            {
+              types: ['text/plain'],
+              getType: vi.fn(async () => ({
+                text: async () => 'example.com/plain',
+              })),
+            },
+          ]),
+        },
+        configurable: true,
+      })
+      renderDialog()
+      fireEvent.click(screen.getByRole('button', { name: 'Paste link from clipboard' }))
+      await waitFor(() => {
+        expect(getUrlInput()).toHaveValue('https://example.com/plain')
+      })
+    })
+
+    it('falls back to readText() when read() is rejected', async () => {
+      Object.defineProperty(navigator, 'clipboard', {
+        value: {
+          read: vi.fn(async () => {
+            throw new Error('NotAllowedError')
+          }),
+          readText: vi.fn(async () => 'https://example.com/fallback'),
+        },
+        configurable: true,
+      })
+      renderDialog()
+      fireEvent.click(screen.getByRole('button', { name: 'Paste link from clipboard' }))
+      await waitFor(() => {
+        expect(getUrlInput()).toHaveValue('https://example.com/fallback')
+      })
+    })
+
+    it('is rendered when only clipboard.read() exists', () => {
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { read: vi.fn(async () => []) },
+        configurable: true,
+      })
+      renderDialog()
+      expect(
+        screen.getByRole('button', { name: 'Paste link from clipboard' })
+      ).toBeInTheDocument()
+    })
+  })
+
+  describe('mobile tag picker', () => {
+    let originalMatchMedia
+
+    beforeEach(() => {
+      originalMatchMedia = window.matchMedia
+      // Pretend we're below the sm breakpoint
+      window.matchMedia = vi.fn(() => ({
+        matches: true,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }))
+    })
+
+    afterEach(() => {
+      window.matchMedia = originalMatchMedia
+    })
+
+    const openPicker = () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Add tags' }))
+    }
+
+    it('replaces the inline tag dropdown with a trigger button on mobile', () => {
+      renderDialog()
+      expect(screen.getByRole('button', { name: 'Add tags' })).toBeInTheDocument()
+      expect(screen.queryByPlaceholderText('Add tags...')).not.toBeInTheDocument()
+    })
+
+    it('opens a full-sheet picker listing all existing tags', () => {
+      renderDialog()
+      openPicker()
+      expect(screen.getByPlaceholderText('Search or add tags')).toHaveFocus()
+      expect(screen.getByRole('button', { name: /react/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /design/ })).toBeInTheDocument()
+      // The form is swapped out while picking
+      expect(screen.queryByText('New bookmark')).not.toBeInTheDocument()
+    })
+
+    it('selects tags by tapping and returns to the form via Done', () => {
+      renderDialog()
+      openPicker()
+      fireEvent.click(screen.getByRole('button', { name: /react/ }))
+      fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+      expect(screen.getByText('New bookmark')).toBeInTheDocument()
+      expect(screen.getByText('react')).toBeInTheDocument()
+
+      fireEvent.change(getUrlInput(), { target: { value: 'https://example.com' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Save bookmark' }))
+      expect(createBookmark).toHaveBeenCalledWith(
+        expect.objectContaining({ tags: ['react'] })
+      )
+    })
+
+    it('tapping an already-selected tag deselects it', () => {
+      renderDialog()
+      openPicker()
+      const reactRow = () => screen.getByRole('button', { name: /react/ })
+      fireEvent.click(reactRow())
+      expect(reactRow()).toHaveAttribute('aria-pressed', 'true')
+      fireEvent.click(reactRow())
+      expect(reactRow()).toHaveAttribute('aria-pressed', 'false')
+    })
+
+    it('filters the list and offers to create an unknown tag', () => {
+      renderDialog()
+      openPicker()
+      const search = screen.getByPlaceholderText('Search or add tags')
+      fireEvent.change(search, { target: { value: 'Newtag' } })
+      expect(screen.queryByRole('button', { name: /design/ })).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: /Create/ }))
+      // Tag added (lowercased), query cleared, full list visible again
+      expect(search).toHaveValue('')
+      expect(screen.getByRole('button', { name: /design/ })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+      expect(screen.getByText('newtag')).toBeInTheDocument()
+    })
+
+    it('Enter picks the first matching tag; Enter on empty query closes the picker', () => {
+      renderDialog()
+      openPicker()
+      const search = screen.getByPlaceholderText('Search or add tags')
+      fireEvent.change(search, { target: { value: 'rea' } })
+      fireEvent.keyDown(search, { key: 'Enter' })
+      expect(search).toHaveValue('')
+      fireEvent.keyDown(search, { key: 'Enter' })
+      // Back on the form with the tag chip present
+      expect(screen.getByText('New bookmark')).toBeInTheDocument()
+      expect(screen.getByText('react')).toBeInTheDocument()
+    })
+
+    it('Escape closes the picker, not the dialog', () => {
+      renderDialog()
+      openPicker()
+      fireEvent.keyDown(screen.getByPlaceholderText('Search or add tags'), {
+        key: 'Escape',
+      })
+      expect(screen.getByText('New bookmark')).toBeInTheDocument()
+      expect(onClose).not.toHaveBeenCalled()
+    })
   })
 
   describe('saving', () => {

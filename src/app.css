@@ -72,6 +72,13 @@ body {
     animation: add-sheet-in 260ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
+  /* Tag-picker mode: pin the sheet at full available height so the tag
+     list fills the space between the search field and the keyboard,
+     instead of the sheet collapsing to fit its content. */
+  .add-dialog-content--full {
+    height: min(85dvh, calc(var(--visual-viewport-height, 100dvh) - 12px));
+  }
+
   @keyframes add-sheet-in {
     from {
       transform: translateY(100%);
